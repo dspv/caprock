@@ -7,7 +7,8 @@
 # it asks. The same for Caprock Terminal.app in Contents/Helpers (ADR-101),
 # which answers for everything a Caprock terminal runs: its executable
 # carries the entitlement and its own Info.plist the usage string, under its
-# own bundle id. Reads the bundle only; records nothing and raises no dialog.
+# own bundle id. The app's Info.plist also says why it asks for speech
+# recognition (the chat's voice input, ADR-102). Reads the bundle only; records nothing and raises no dialog.
 #
 #   scripts/check-app-mic.sh path/to/Caprock.app
 #
@@ -28,6 +29,10 @@ done
 
 why="$(/usr/libexec/PlistBuddy -c "Print :NSMicrophoneUsageDescription" "$APP/Contents/Info.plist" 2>/dev/null || true)"
 [[ -n "$why" ]] || die "Info.plist has no NSMicrophoneUsageDescription"
+# The chat's voice input asks for speech recognition (ADR-102); without this
+# key that request ends the app.
+speech="$(/usr/libexec/PlistBuddy -c "Print :NSSpeechRecognitionUsageDescription" "$APP/Contents/Info.plist" 2>/dev/null || true)"
+[[ -n "$speech" ]] || die "Info.plist has no NSSpeechRecognitionUsageDescription"
 
 HELPER="$APP/Contents/Helpers/Caprock Terminal.app"
 [[ -d "$HELPER" ]] || die "no Caprock Terminal.app in Contents/Helpers"

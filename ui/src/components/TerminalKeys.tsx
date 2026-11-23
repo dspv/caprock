@@ -6,6 +6,7 @@ import { attachLabels, isImageName } from '@/lib/attach'
 import { AttachPicker } from './AttachPicker'
 import { ChatPickerList, useChatPicker } from './ChatPicker'
 import { joinDictation, speechHint, speechSupport, speechWhere, startDictation, type Dictation } from '@/lib/speech'
+import { DeskMic, DeskVoiceLine, useDeskVoice } from './DeskVoice'
 import { COMMON_SPEECH_LANGS, langChip, langIntroDue, langName, markLangIntroSeen, myLangs, nextSpeechLang, setSpeechLang, speechLang } from '@/lib/speechlang'
 
 /** A newline inside the prompt: ESC CR, what a terminal sends for Alt+Enter
@@ -145,7 +146,7 @@ export function heldLabel(h: { text: string; paths?: readonly string[] }): strin
   return h.text ? `${files} ${h.text}` : files
 }
 
-export function TerminalKeys({ send, attach, attachIn, sendPaths, initial = '', state, isPromptWaiting, sessionId, chips = false, submitText, pickers = false, voice = false, foldKeys = false, placeholder }: {
+export function TerminalKeys({ send, attach, attachIn, sendPaths, initial = '', state, isPromptWaiting, sessionId, chips = false, submitText, pickers = false, voice = false, deskVoice = false, foldKeys = false, placeholder }: {
   send: (bytes: string) => void
   /** Attaches photos. Where it returns the saved paths (the chat; one per
    *  file, '' for one that failed), each shows as an "Image N" chip over the
@@ -172,6 +173,10 @@ export function TerminalKeys({ send, attach, attachIn, sendPaths, initial = '', 
   pickers?: boolean
   /** A microphone button that dictates into the field (lib/speech). */
   voice?: boolean
+  /** The desktop app's microphone (ADR-102, components/DeskVoice): hold to
+   *  talk, recognised on this Mac. Shown only where the shell can do it;
+   *  never together with `voice`, the phone's. */
+  deskVoice?: boolean
   /** The six raw keys behind a Keys button: the phone's chat, where a message
    *  is the common case and Esc or an arrow the rare one. */
   foldKeys?: boolean
@@ -203,6 +208,7 @@ export function TerminalKeys({ send, attach, attachIn, sendPaths, initial = '', 
   // set it (the microphone's release, when the last words arrive late).
   const textNow = useRef(text)
   textNow.current = text
+  const desk = useDeskVoice({ enabled: deskVoice && !voice, getText: () => textNow.current, setText })
   const [keysOpen, setKeysOpen] = useState(!foldKeys)
   // Dictation (lib/speech): what was in the field when it started, so what is
   // heard is shown after it, live, and the person reads it before Send.
@@ -449,6 +455,8 @@ export function TerminalKeys({ send, attach, attachIn, sendPaths, initial = '', 
   }
 
   const submit = (said?: string) => {
+    // The desktop microphone: what the field shows goes, the rest is dropped.
+    if (desk.busy) desk.cancel()
     if (said === undefined && dictation.current) {
       // Send while it listens: the last words come after stop(), so it is
       // sent when the speech service ends (or after END_WAIT_MS), with them.
@@ -626,7 +634,8 @@ export function TerminalKeys({ send, attach, attachIn, sendPaths, initial = '', 
         <textarea
           ref={field}
           value={text}
-          onChange={(e) => { setText(e.target.value); trackCaret(e.target) }}
+          onChange={(e) => { setText(e.target.value); trackCaret(e.target); desk.dismiss() }}
+          readOnly={desk.busy}
           onSelect={(e) => trackCaret(e.currentTarget)}
           onKeyDown={(e) => {
             if (chooser.onKeyDown(e)) return
@@ -661,6 +670,7 @@ export function TerminalKeys({ send, attach, attachIn, sendPaths, initial = '', 
             Dictation listens for <b className="font-medium text-fg">{langName(lang)}</b>. Tap <b className="font-medium text-accent">{langChip(lang)}</b> beside the mic to switch.
           </div>
         )}
+        <DeskVoiceLine v={desk} />
         {(listening || voiceNote) && (
           <div role="status" aria-live="polite" className={`text-[13px] leading-snug ${listening ? 'text-fg' : 'text-fg-muted'}`}>
             {listening
@@ -725,6 +735,7 @@ export function TerminalKeys({ send, attach, attachIn, sendPaths, initial = '', 
             <MicIcon />
           </button>
         )}
+        <DeskMic v={desk} />
         <button
           type="button"
           onClick={() => submit()}

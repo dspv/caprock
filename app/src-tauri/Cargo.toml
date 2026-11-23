@@ -66,10 +66,16 @@ objc2 = "0.6"
 # so opening it never activates the app or raises the main window.
 objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSPanel", "NSWindow", "NSResponder", "NSBitmapImageRep", "NSImageRep", "NSGraphics", "NSImage", "NSEvent", "block2"] }
 objc2-core-graphics = { version = "0.3", optional = true, features = ["CGWindow", "CGImage"] }
-objc2-foundation = { version = "0.3", features = ["NSData", "NSDictionary", "NSString", "NSBundle", "NSError", "NSSet", "NSArray"] }
+objc2-foundation = { version = "0.3", features = ["NSData", "NSDictionary", "NSString", "NSBundle", "NSError", "NSSet", "NSArray", "NSLocale", "NSOperation"] }
 objc2-core-foundation = { version = "0.3", optional = true, features = ["CFCGTypes", "CFArray"] }
 objc2-user-notifications = { version = "0.3", default-features = false, features = ["std", "bitflags", "block2", "UNError", "UNNotification", "UNNotificationAction", "UNNotificationCategory", "UNNotificationContent", "UNNotificationRequest", "UNNotificationResponse", "UNNotificationTrigger", "UNUserNotificationCenter"] }
 block2 = "0.6"
+# Voice input in the chat (src/dictate_macos.rs, ADR-102): Apple's speech
+# recognition on this Mac only (requiresOnDeviceRecognition), fed from the
+# microphone through AVAudioEngine; AVCaptureDevice asks for the microphone.
+objc2-speech = { version = "0.3", default-features = false, features = ["std", "block2", "objc2-avf-audio", "SFErrors", "SFSpeechRecognitionRequest", "SFSpeechRecognitionResult", "SFSpeechRecognitionTask", "SFSpeechRecognizer", "SFTranscription"] }
+objc2-avf-audio = { version = "0.3", default-features = false, features = ["std", "block2", "AVAudioEngine", "AVAudioNode", "AVAudioIONode", "AVAudioBuffer", "AVAudioFormat", "AVAudioTime", "AVAudioTypes"] }
+objc2-av-foundation = { version = "0.3", default-features = false, features = ["std", "block2", "AVCaptureDevice", "AVMediaFormat"] }
 
 [dev-dependencies]
 tauri = { version = "2.12", features = ["macos-private-api", "tray-icon", "image-png", "test"] }

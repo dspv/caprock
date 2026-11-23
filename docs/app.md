@@ -1563,6 +1563,32 @@ or Photos library, cloud storage or a volume in the background.
   select one and press **−** under the list. If a session asks again, allow
   it.
 
+### Dictating into the chat
+
+On a Mac, the chat's message field and the composer under a terminal have
+a microphone. **Hold it, speak, and let go**: what you said is in the field,
+not sent yet — read it, fix a word, press Enter. A quick click starts
+listening instead, and a second click stops it. The words appear as you
+speak. It works the same for every agent: Claude Code, Codex, Cursor and
+the rest.
+
+The chip beside the microphone (**EN**, **RU**…) is the language it listens
+for; click it to switch, or to pick another. Recognition runs on your Mac
+with Apple's on-device speech recognition: no audio or text leaves it. A
+language your Mac cannot recognise by itself is refused with a line that
+says so, rather than sent to Apple; adding it under System Settings →
+Keyboard → Dictation may make it available.
+
+You can talk for as long as you like: it keeps listening through pauses
+until you let go or click.
+
+The first time, macOS asks whether Caprock may use the microphone and
+speech recognition. If you let go of the button while it asks, Caprock
+starts listening once you allow it and keeps going until you click the
+microphone. If you said no, allow Caprock in System Settings →
+Privacy & Security → Microphone and → Speech Recognition. Windows, Linux
+and a browser tab do not have this microphone yet.
+
 ### Voice mode and the microphone
 
 An agent's voice input (Claude Code's `/voice`) records from the

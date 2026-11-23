@@ -9,6 +9,9 @@ mod badge;
 mod browser;
 mod capture;
 mod commands;
+mod dictate;
+#[cfg(target_os = "macos")]
+mod dictate_macos;
 mod discovery;
 // The Dock icon is macOS's; the decision is tested on every OS.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
@@ -79,7 +82,10 @@ macro_rules! handler {
             capture::read_dropped_text,
             capture::read_dropped_file,
             browser::browser_tab,
-            commands::app_log
+            commands::app_log,
+            dictate::dictation_status,
+            dictate::dictation_start,
+            dictate::dictation_stop
         ]
     };
 }
@@ -527,6 +533,43 @@ mod tests {
     fn the_daemon_page_may_read_the_status() {
         let state = invoke(DAEMON, "daemon_status", serde_json::json!({})).expect("allowed");
         assert_eq!(state["state"], "searching");
+    }
+
+    #[test]
+    fn only_the_dashboard_may_listen_to_the_microphone() {
+        // The status is safe to read anywhere it is granted; it never asks
+        // for anything (no OS dialog in a test).
+        let status = invoke(DAEMON, "dictation_status", serde_json::json!({})).expect("allowed");
+        assert_eq!(status["supported"], false, "a test binary is not a bundle");
+        let stop = serde_json::json!({"id": 1, "cancel": true});
+        invoke(DAEMON, "dictation_stop", stop.clone()).expect("allowed");
+        let start = serde_json::json!({"lang": "en-US"});
+        for (cmd, body) in [
+            ("dictation_status", serde_json::json!({})),
+            ("dictation_start", start.clone()),
+            ("dictation_stop", stop.clone()),
+        ] {
+            let err = invoke_in("tray", POPOVER, cmd, body.clone()).expect_err("popover");
+            assert!(err.to_string().contains("not allowed"), "{cmd}: {err}");
+            let err = invoke_in("mail", DAEMON, cmd, body.clone()).expect_err("mail");
+            assert!(err.to_string().contains("not allowed"), "{cmd}: {err}");
+            let err = invoke_in("browser-t1", DAEMON, cmd, body.clone()).expect_err("browser");
+            assert!(err.to_string().contains("not allowed"), "{cmd}: {err}");
+            for url in ["https://example.com/", "http://localhost:4391/"] {
+                let err = invoke(url, cmd, body.clone()).expect_err(url);
+                assert!(
+                    err.to_string().contains("not allowed"),
+                    "{url} {cmd}: {err}"
+                );
+            }
+        }
+        let err = invoke(
+            DAEMON,
+            "dictation_start",
+            serde_json::json!({"lang": "en;rm -rf"}),
+        )
+        .expect_err("not a language");
+        assert!(err.to_string().contains("not a language"), "{err}");
     }
 
     #[test]

@@ -21,6 +21,9 @@
  *   the box follow it.
  * - **History**: ↑ and ↓ on an empty box walk the last 50 messages sent from
  *   it to this session (this browser only).
+ * - **Voice** (the Mac app only, ADR-102): a microphone beside the box —
+ *   hold to talk, or click to start and again to stop; the words land in the
+ *   box, not sent, recognised on this Mac (components/DeskVoice.tsx).
  */
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { api, errText } from '@/lib/api'
@@ -30,6 +33,7 @@ import { keys } from '@/lib/appkeys'
 import { historyStep, loadHistory, pushHistory, setComposerEnabled } from '@/lib/composer'
 import { ChatPickerList, useChatPicker } from './ChatPicker'
 import { MoreIcon } from './AppIcons'
+import { DeskMic, DeskVoiceLine, useDeskVoice } from './DeskVoice'
 
 /** Six lines of 20px, the padding and the border: past this the box scrolls. */
 const BOX_MAX_PX = 6 * 20 + 14 + 2
@@ -81,6 +85,10 @@ export function Composer({ sessionId, agent, asking, onFiles, onBack }: {
     document.addEventListener('mousedown', away)
     return () => document.removeEventListener('mousedown', away)
   }, [menu])
+  // The microphone (ADR-102): writes the box while it listens.
+  const textNow = useRef(text)
+  textNow.current = text
+  const voice = useDeskVoice({ enabled: true, getText: () => textNow.current, setText })
   const queue = useQueue(sessionId)
   const saved = useSavedPromptsFor(sessionId)
   const name = composerAgentName(agent)
@@ -117,7 +125,9 @@ export function Composer({ sessionId, agent, asking, onFiles, onBack }: {
   const listId = `composer-picker-${sessionId}`
 
   const submit = async () => {
-    const message = text
+    // Sent while it listens: what the box shows goes, the rest is dropped.
+    if (voice.busy) voice.cancel()
+    const message = textNow.current
     if (!message.trim() || sending) return
     setSending(true)
     setError('')
@@ -151,6 +161,12 @@ export function Composer({ sessionId, agent, asking, onFiles, onBack }: {
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.nativeEvent.isComposing) return
     if (chooser.onKeyDown(e)) return
+    if (e.key === 'Escape' && voice.busy) {
+      // Stops listening; the words stay in the box.
+      e.preventDefault()
+      voice.cancel()
+      return
+    }
     if (e.key === 'Escape') {
       e.preventDefault()
       setMenu('')
@@ -162,6 +178,7 @@ export function Composer({ sessionId, agent, asking, onFiles, onBack }: {
       void submit()
       return
     }
+    if (voice.busy) return
     if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey) {
       if (walk(e.key === 'ArrowUp' ? -1 : 1)) e.preventDefault()
     }
@@ -213,6 +230,7 @@ export function Composer({ sessionId, agent, asking, onFiles, onBack }: {
           )}
         </div>
       )}
+      <DeskVoiceLine v={voice} className="px-1 pb-1" />
       <div data-composer-box data-asking={prompt || undefined} className="app-composer flex items-end gap-1 rounded-[8px] pl-2.5 pr-1">
         <textarea
           ref={field}
@@ -222,7 +240,9 @@ export function Composer({ sessionId, agent, asking, onFiles, onBack }: {
             setText(e.target.value)
             trackCaret(e.target)
             if (error) setError('')
+            voice.dismiss()
           }}
+          readOnly={voice.busy}
           onSelect={(e) => trackCaret(e.currentTarget)}
           onKeyDown={onKeyDown}
           onPaste={onPaste}
@@ -244,6 +264,7 @@ export function Composer({ sessionId, agent, asking, onFiles, onBack }: {
             {status.text}
           </span>
         )}
+        <DeskMic v={voice} compact />
         {saved.length > 0 && (
           <button type="button" aria-haspopup="menu" aria-expanded={menu === 'saved'} title={menu === 'saved' ? undefined : 'Saved prompts: put one in the box'}
             onMouseDown={(e) => e.preventDefault()}
