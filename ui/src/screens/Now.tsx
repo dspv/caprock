@@ -5,7 +5,8 @@ import { live, useLiveAlerts } from '@/lib/live'
 import { branchLabel, projectLabels, sessionHealth } from '@/lib/sessionLabels'
 import { fmtAgo, fmtPct, fmtSpan, fmtTokens, fmtUSD, fmtWhen, shortId } from '@/lib/format'
 import { contextSize } from '@/lib/gaps'
-import { sessionCost } from '@/lib/sessionCost'
+import { GapDash } from '@/components/GapMark'
+import { costGap, sessionCost } from '@/lib/sessionCost'
 import { foldChains } from '@/lib/chains'
 import { ContinueSession } from '@/components/ContinueSession'
 import { InterruptedBanner } from '@/components/Interrupted'
@@ -874,11 +875,11 @@ export function SessionCard({ s, now, earlier, projectLabel }: { s: SessionSumma
       {/* data-session-figures: one session's own figures, where $0.00 can be
         * true (scripts/shots.py tells it from a screen still loading). */}
       <div data-session-figures className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-border border-t border-border">
-        <Stat label="Cost" data="session-cost" value={cost.value} trend={<PlanShare parts={sessionParts(s)} className="mt-0.5" />}
+        <Stat label="Cost" data="session-cost" value={cost.state === 'unknown' && costGap(s) ? <GapDash why={costGap(s)!} /> : cost.value} trend={<PlanShare parts={sessionParts(s)} className="mt-0.5" />}
           sub={cost.note
             ? <span title={cost.title}>{cost.state === 'unknown' ? `${cost.note} · ${s.model || '—'}` : `${s.model || '—'} · ${cost.note}`}</span>
             : s.model || '—'} tone="info" />
-        <Stat label="Tokens" value={s.gaps?.tokens ? '—' : fmtTokens(s.stats.tokens_in + s.stats.tokens_out + s.stats.cache_read + s.stats.cache_write)} sub={s.gaps?.tokens ?? s.gaps?.cache ?? `${fmtPct((s.savings?.hit_rate ?? 0) * 100)} cache hit`} />
+        <Stat label="Tokens" value={s.gaps?.tokens ? <GapDash why={s.gaps.tokens} /> : fmtTokens(s.stats.tokens_in + s.stats.tokens_out + s.stats.cache_read + s.stats.cache_write)} sub={s.gaps?.tokens ?? s.gaps?.cache ?? `${fmtPct((s.savings?.hit_rate ?? 0) * 100)} cache hit`} />
         {/* The caption carries the price of the NEXT call, not the window size
           * the percentage above already states. Every call re-reads the whole
           * context before it does anything, so a full context is not merely
@@ -886,7 +887,7 @@ export function SessionCard({ s, now, earlier, projectLabel }: { s: SessionSumma
           * marginal figure is the one that says so. */}
         <Stat
           label="Context"
-          value={ctx ? fmtPct(ctx.pct) : '—'}
+          value={ctx ? fmtPct(ctx.pct) : s.gaps?.context ? <GapDash why={s.gaps.context} /> : '—'}
           sub={ctx ? ctx.next_call_usd > 0 ? <><span title="what the next tool call costs at this context, before it does any work">{fmtUSD(ctx.next_call_usd)}/call</span> <span className="text-fg-faint">· {fmtTokens(ctx.tokens)}</span></> : ctx.window > 0 ? fmtTokens(ctx.tokens) : contextSize(ctx, s.context_note, fmtTokens) : (s.context_note || 'no turn yet')}
           tone={ctxTone}
         />

@@ -449,6 +449,16 @@ export function metricGap(m: Metric, f: Pick<PeriodFigures, 'gaps'>): string | u
 }
 
 /**
+ * The gap behind a figure drawn as a dash, for its GapMark: the metric's gap
+ * when metricValue reads "—", undefined when there is a figure after all (a
+ * Cursor chat whose cost the agent kept).
+ */
+export function shownGap(m: Metric, f: PeriodFigures): string | undefined {
+  const gap = metricGap(m, f)
+  return gap && metricValue(m, f) === '—' ? gap : undefined
+}
+
+/**
  * The figures with the session's gaps applied: a figure its agent does not
  * record is undefined (a dash), and the gaps ride along for the hover. Cost
  * stays as it is; costNote reads the gap and draws it unknown.
@@ -502,13 +512,15 @@ export interface CostNote {
   state: 'partial' | 'unknown'
   short: string
   title: string
+  /** Unknown because the session's agent does not save it (`gaps`): the dash takes a GapMark. */
+  gap?: true
 }
 
 export function costNote(f: Pick<PeriodFigures, 'cost' | 'unpriced' | 'unpricedModels' | 'gaps'>): CostNote | undefined {
   // The agent keeps no cost for this session and Caprock does not price it
   // from its own table (Cursor, ADR-095): that, not the table, is why.
   const gap = f.gaps?.cost
-  if (gap && !(f.cost !== undefined && f.cost > 0)) return { state: 'unknown', short: `${gap}.`, title: gap }
+  if (gap && !(f.cost !== undefined && f.cost > 0)) return { state: 'unknown', short: `${gap}.`, title: gap, gap: true }
   const n = f.unpriced ?? 0
   if (n <= 0) return undefined
   const models = (f.unpricedModels ?? []).filter(Boolean).join(', ')
@@ -760,7 +772,7 @@ export function chartTotal(m: ChartMetric, f: PeriodFigures): number | undefined
 export function chartNote(m: ChartMetric, f: PeriodFigures): CostNote | undefined {
   if (m === 'cost') return costNote(f)
   const gap = metricGap(m, f)
-  return gap ? { state: 'unknown', short: `${gap}.`, title: gap } : undefined
+  return gap ? { state: 'unknown', short: `${gap}.`, title: gap, gap: true } : undefined
 }
 
 /**

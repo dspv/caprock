@@ -577,11 +577,45 @@ d('SessionCard context tax', () => {
       activity: { phrase: 'done', tool: '', at: new Date().toISOString(), health: 'idle' },
       savings: { billed_with: 0, billed_without: 0, saved: 0, hit_rate: 0, cut_pct: 0 },
       context: { tokens: 0, window: 0, pct: 42.6, next_call_usd: 0 },
-      context_note: "Cursor doesn't record this chat's context in tokens",
+      context_note: "Cursor doesn't save this chat's context in tokens on this computer",
     } as never
     render(<SessionCard s={s} now={Date.now()} />)
-    expect(screen.getByText("Cursor doesn't record this chat's context in tokens")).toBeInTheDocument()
+    expect(screen.getByText("Cursor doesn't save this chat's context in tokens on this computer")).toBeInTheDocument()
     expect(screen.getAllByText(/^42%$/).length).toBeGreaterThan(0)
+  })
+})
+
+// A cursor-agent chat: its tokens, cache and cost are the agent's to save,
+// and a dash alone read as Caprock broken (owner, 2026-11-23).
+d('SessionCard and the Session screen, for figures the agent does not save', () => {
+  const TOK = "Cursor CLI doesn't save token counts on this computer"
+  const COST = "Cursor CLI doesn't save what a chat costs on this computer"
+  const said = (why: string) => `${why}, so there is nothing for Caprock to show.`
+  const cli = {
+    session_id: 'c11c11c1-0001', cwd: '/r', project: 'cursor-proj', status: 'active', agent: 'cursor', model: 'composer-2.5',
+    started_at: 0, last_event_at: Date.now(), has_hooks: true, has_transcript: false, owned: true, files: [], events: [],
+    stats: { session_id: 'c11c11c1-0001', turns: 2, tool_calls: 3, files_touched: 1, tokens_in: 0, tokens_out: 0, cache_read: 0, cache_write: 0, cost_usd: 0 },
+    activity: { phrase: 'done', tool: '', at: new Date().toISOString(), health: 'idle' },
+    savings: { billed_with: 0, billed_without: 0, saved: 0, hit_rate: 0, cut_pct: 0 },
+    gaps: { tokens: TOK, cost: COST, cache: "Cursor CLI doesn't save cache reads or writes on this computer" },
+  }
+
+  it('marks the Now card\'s cost and tokens dashes', () => {
+    render(<SessionCard s={cli as never} now={Date.now()} />)
+    expect(screen.getByRole('button', { name: said(COST) })).toHaveAttribute('data-gap-mark')
+    expect(screen.getByRole('button', { name: said(TOK) })).toHaveAttribute('data-gap-mark')
+    expect(screen.queryByText('$0.00')).toBeNull()
+  })
+
+  it('marks the Session screen\'s cost, tokens and cache tiles', async () => {
+    localStorage.clear()
+    const { api } = await import('@/lib/api')
+    const spy = vi.spyOn(api, 'session').mockResolvedValue(cli as unknown as SessionDetail)
+    render(<SessionScreen id="c11c11c1-0001" tab="timeline" />)
+    await waitFor(() => expect(screen.getByRole('button', { name: said(COST) })).toBeInTheDocument())
+    expect(screen.getAllByRole('button', { name: said(TOK) }).length).toBeGreaterThan(0)
+    expect(screen.getByRole('button', { name: said("Cursor CLI doesn't save cache reads or writes on this computer") })).toBeInTheDocument()
+    spy.mockRestore()
   })
 })
 

@@ -9,10 +9,10 @@ func TestGapsAreOneSentenceForEveryAgent(t *testing.T) {
 		}
 	}
 	want := map[string]map[string]string{
-		"cursor":   {GapCache: "Cursor doesn't record cache reads or writes", GapCompactionCost: "Cursor doesn't record what a summary cost"},
-		"gemini":   {GapCacheWrite: "Gemini doesn't record cache writes"},
-		"deepseek": {GapCacheWrite: "DeepSeek doesn't record cache writes"},
-		"hermes":   {GapContext: "Hermes doesn't record each request's tokens"},
+		"cursor":   {GapCache: "Cursor doesn't save cache reads or writes on this computer", GapCompactionCost: "Cursor doesn't save what a summary cost on this computer"},
+		"gemini":   {GapCacheWrite: "Gemini doesn't save cache writes on this computer"},
+		"deepseek": {GapCacheWrite: "DeepSeek doesn't save cache writes on this computer"},
+		"hermes":   {GapContext: "Hermes doesn't save each request's tokens on this computer"},
 	}
 	for agent, w := range want {
 		g := Gaps(agent, SessionFacts{Tokens: 10, CostUSD: 1})
@@ -29,15 +29,15 @@ func TestGapsAreOneSentenceForEveryAgent(t *testing.T) {
 	// no unpriced turn either (no reply carries tokens): both are gaps, so
 	// the inspector never reads "0 tok · $0.00" as free.
 	g := Gaps("cursor", SessionFacts{})
-	if g[GapTokens] != "Cursor doesn't record token counts for this chat" {
+	if g[GapTokens] != "Cursor CLI doesn't save token counts on this computer" {
 		t.Errorf("tokens gap = %q", g[GapTokens])
 	}
-	if g[GapCost] != "Cursor doesn't record a cost for this chat" {
+	if g[GapCost] != "Cursor CLI doesn't save what a chat costs on this computer" {
 		t.Errorf("cli chat cost gap = %q", g[GapCost])
 	}
 	// An editor chat Cursor recorded no cost for says so instead of "price unknown".
 	g = Gaps("cursor", SessionFacts{Tokens: 30, UnpricedTurns: 2})
-	if g[GapCost] != "Cursor doesn't record a cost for this chat" {
+	if g[GapCost] != "Cursor doesn't save what a chat costs on this computer" {
 		t.Errorf("cost gap = %q", g[GapCost])
 	}
 	if _, ok := g[GapTokens]; ok {

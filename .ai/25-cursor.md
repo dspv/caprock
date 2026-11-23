@@ -105,8 +105,8 @@ Read on the owner's machine on 2026-11-16 (Cursor 2.3.41, `cursor-agent`
   Claude to Auto kept its last Claude prompt's 28.7% while Cursor said
   42.6%. The share is now the reading (`context_pct`, 100 minus
   `percentageRemainingFloat` on a prompt, `contextUsagePercent` on the last
-  reply); the meter shows it with "Cursor doesn't record this chat's
-  context in tokens" where the sizes go. No token count is made from the
+  reply); the meter shows it with "Cursor doesn't save this chat's context
+  in tokens on this computer" where the sizes go. No token count is made from the
   pricing table's window: the window Cursor measured against is not
   recorded, and it is not always the table's (Cursor gives Claude 176k or
   200k where the table has 1M).
@@ -189,7 +189,7 @@ Read on the owner's machine on 2026-11-16 (Cursor 2.3.41, `cursor-agent`
   with a reading before and 74 after. They count in the Context look's last
   compaction and in the machine's typical share kept, but carry no cost or
   saving: those are priced from the table, which never prices Cursor, so the
-  session says "Cursor doesn't record what a summary cost".
+  session says "Cursor doesn't save what a summary cost on this computer".
 - **Legacy chats.** Cursor's spring-2025 builds kept a chat's messages inline
   in `composerData.conversation` and its tool calls in the composer's
   `capabilities` (`bubbleDataMap`), with no `bubbleId` rows. The 9 such chats
@@ -262,9 +262,14 @@ Cursor's own figure, never the table's.
   `tokens` and `cost` whenever a Cursor session has no tokens and no cost
   (`agentcat.Gaps`). Every figure of it the UI would draw — the Session
   screen's tiles, the Now card, the inspector's headline, lines, menus,
-  Numbers and chart, the Live screen's rows — reads **—** with *Cursor
-  doesn't record token counts for this chat* or *Cursor doesn't record a
-  cost for this chat*, never *0 tok* or *$0.00* (a user's report,
+  Numbers and chart, the Live screen's rows — reads **—** with *Cursor CLI
+  doesn't save token counts on this computer* or *Cursor CLI doesn't save
+  what a chat costs on this computer*, never *0 tok* or *$0.00* (a user's
+  report, 2026-11-23). A session with no token counts is named *Cursor CLI*
+  in every gap sentence, since that is what a chat seen only through hooks
+  is. Each of those dashes has a quiet info mark after it (`GapMark`) that
+  says the sentence, *…, so there is nothing for Caprock to show.*, on hover,
+  focus or a tap, so a user does not read the dash as Caprock broken (owner,
   2026-11-23).
 - `pricing.json` has `cursor-composer-2.5` and `cursor-composer-2.5-fast`
   (cursor.com/docs/models, read 2026-11-16), the Grok 4.7, 4.6 and 4.5 rows

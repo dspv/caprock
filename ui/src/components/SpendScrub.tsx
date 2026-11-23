@@ -28,6 +28,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { api, type Event } from '@/lib/api'
 import { barLabel, barLabelShort, callsFromEvents, callsFromSeries, mergeCalls, stepText, timeBars, topTools, windowBars, type CallPoint, type TimeBar } from '@/lib/scrub'
+import { GapMark } from './GapMark'
 import { CHART_METRICS, barCarries, barValue, chartValueText, periodBurn, type ChartMetric, type CostNote, type SpendBar } from '@/lib/spendview'
 import { barPace, paceLabel, paceOf, paceSentence, paceTitle, type Pace, type Usual } from '@/lib/usual'
 
@@ -145,7 +146,7 @@ export function SpendChart({ id, bars, step, now, total, scope, metric = 'cost',
   const rest = (
     <>
       {total !== undefined && <span data-spend-total data-cost-state={metric === 'cost' ? cost?.state : undefined} className={big} title={metric === 'cost' ? cost?.title : undefined}>{totalText}</span>}
-      {total === undefined && cost?.state === 'unknown' && <span data-spend-total data-cost-state="unknown" className={big} title={cost.title}>—</span>}
+      {total === undefined && cost?.state === 'unknown' && <span data-spend-total data-cost-state="unknown" className={`${big} inline-flex items-center`} title={cost.title}>—{cost.gap && <GapMark why={cost.title} />}</span>}
       {chooser}
       {whose ?? <span className="ml-auto min-w-0 truncate text-right text-[11px] leading-[18px] text-fg-faint" title={scope}>{scope}</span>}
     </>

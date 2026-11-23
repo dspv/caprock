@@ -8,7 +8,8 @@ import { LoopAlertCard } from '@/components/LoopAlertCard'
 import { useLoopHidden } from '@/lib/loopalert'
 import { fmtAgo, fmtPct, fmtTokens, fmtUSD, basename } from '@/lib/format'
 import { contextSize } from '@/lib/gaps'
-import { costLine, sessionCost } from '@/lib/sessionCost'
+import { GapDash } from '@/components/GapMark'
+import { costGap, costLine, sessionCost } from '@/lib/sessionCost'
 import { Badge, Empty, Panel, Skeleton, Sparkline, StaleNote, Stat } from '@/components/ui'
 import { CursorOverheadPanel } from '@/components/CursorOverhead'
 import { href, navigate } from '@/lib/router'
@@ -360,7 +361,7 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
               name without truncating — and it is the basis that would be cut.
               The model stays visible; the basis is on hover, and stated in
               full on the screens whose whole subject is money. */}
-          <Stat label="Cost" data="session-cost" value={sc.value} trend={<PlanShare parts={sessionParts(s)} className="mt-0.5" />}
+          <Stat label="Cost" data="session-cost" value={sc.state === 'unknown' && costGap(s) ? <GapDash why={costGap(s)!} /> : sc.value} trend={<PlanShare parts={sessionParts(s)} className="mt-0.5" />}
             sub={sc.note
               ? <span title={sc.title}>{sc.state === 'unknown' ? `${sc.note} · ${s.model || 'unknown model'}` : `${s.model || 'unknown model'} · ${sc.note}`}</span>
               : <span title={costBasisLong(plan)}>{s.model || 'unknown model'}</span>} />
@@ -369,11 +370,11 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
           {/* A figure the agent does not record is "—" with the one sentence
             * every agent's gap is said in (lib/gaps.ts), in the sub-line
             * slot the Context tile uses for "no turn yet". */}
-          <Stat label="Tokens" value={gaps.tokens ? '—' : fmtTokens(total)} sub={gaps.tokens ?? `in ${fmtTokens(s.stats.tokens_in)} · out ${fmtTokens(s.stats.tokens_out)} · cache ${fmtTokens(s.stats.cache_read + s.stats.cache_write)}`} />
-          <Stat label="Cache" value={gaps.cache || gaps.tokens ? '—' : fmtPct((s.savings?.hit_rate ?? 0) * 100)}
+          <Stat label="Tokens" value={gaps.tokens ? <GapDash why={gaps.tokens} /> : fmtTokens(total)} sub={gaps.tokens ?? `in ${fmtTokens(s.stats.tokens_in)} · out ${fmtTokens(s.stats.tokens_out)} · cache ${fmtTokens(s.stats.cache_read + s.stats.cache_write)}`} />
+          <Stat label="Cache" value={gaps.cache || gaps.tokens ? <GapDash why={(gaps.cache ?? gaps.tokens)!} /> : fmtPct((s.savings?.hit_rate ?? 0) * 100)}
             sub={gaps.cache ?? gaps.tokens ?? (gaps.cache_write ? <span title={`read ${fmtTokens(s.stats.cache_read)}`}>{gaps.cache_write}</span> : `read ${fmtTokens(s.stats.cache_read)} · write ${fmtTokens(s.stats.cache_write)}`)}
             tone={!gaps.cache && (s.savings?.hit_rate ?? 0) > 0.5 ? 'ok' : undefined} />
-          <Stat label="Context" value={s.context ? fmtPct(s.context.pct) : '—'} sub={s.context ? contextSize(s.context, s.context_note, fmtTokens) : (s.context_note || 'no turn yet')} tone={s.context && s.context.pct >= 85 ? 'danger' : s.context && s.context.pct >= 60 ? 'warn' : undefined} />
+          <Stat label="Context" value={s.context ? fmtPct(s.context.pct) : gaps.context ? <GapDash why={gaps.context} /> : '—'} sub={s.context ? contextSize(s.context, s.context_note, fmtTokens) : (s.context_note || 'no turn yet')} tone={s.context && s.context.pct >= 85 ? 'danger' : s.context && s.context.pct >= 60 ? 'warn' : undefined} />
           {/* Cursor counts requests, not turns, for its cost: a usage record
             * is not a turn, and the requests it carries are shown beside. */}
           <Stat label="Turns" value={s.stats.turns} sub={s.stats.requests ? `${s.stats.requests.toLocaleString('en-US')} requests · ${s.stats.tool_calls} tool calls` : `${s.stats.tool_calls} tool calls`} />

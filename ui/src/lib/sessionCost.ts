@@ -51,7 +51,7 @@ export function sessionCost(stats: Pick<Stats, 'cost_usd' | 'unpriced_turns'>, m
 /**
  * The sentence a session's cost figure is replaced by when its agent keeps
  * no cost and nothing was priced (a cursor-agent chat: `gaps.cost`, "Cursor
- * doesn't record a cost for this chat"); undefined when there is a figure.
+ * CLI doesn't save what a chat costs on this computer"); undefined when there is a figure.
  * A row that would print "$0.00" prints "—" with this as its title.
  */
 export function costGap(s: { stats?: Pick<Stats, 'cost_usd'>; gaps?: { cost?: string } }): string | undefined {

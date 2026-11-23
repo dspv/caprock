@@ -9,8 +9,11 @@ package agentcat
 // recorded no cost", "claude-4-sonnet not in pricing table") or not at all,
 // so a missing figure read differently per agent and sometimes as a fault.
 // This is the one map of them, and the one sentence they are said in:
-// "<Agent> doesn't record <what>", in the slot under the tile the figure would
-// be in (the Context tile's `context_note` slot, ADR-095 for Cursor).
+// "<Agent> doesn't save <what> on this computer", in the slot under the tile
+// the figure would be in (the Context tile's `context_note` slot, ADR-095 for
+// Cursor) and behind the info mark beside its dash (ui GapMark). It names the
+// agent and where the figure is missing, so a dash reads as the agent's limit
+// and never as Caprock broken (owner, 2026-11-23).
 //
 // Only what a session screen shows is listed. Each entry was read from the
 // agent's importer (2026-11-17): what it writes into event.TokenDelta and
@@ -64,17 +67,23 @@ type SessionFacts struct {
 	UnpricedTurns int64
 }
 
-// DoesntRecord is the one sentence a gap is said in: "Cursor doesn't record
-// cache reads or writes". The dashboard builds the same sentence for figures
-// that are not a session's (ui/src/lib/gaps.ts).
+// DoesntRecord is the one sentence a gap is said in: "Cursor doesn't save
+// cache reads or writes on this computer". The dashboard builds the same
+// sentence for figures that are not a session's (ui/src/lib/gaps.ts).
 func DoesntRecord(agentLabel, what string) string {
-	return agentLabel + " doesn't record " + what
+	return agentLabel + " doesn't save " + what + " on this computer"
 }
 
 // Gaps is what this session's agent does not record, field → sentence; nil
 // when it records everything shown.
 func Gaps(agent string, f SessionFacts) map[string]string {
 	label := gapLabel(agent)
+	if agent == "cursor" && f.Tokens == 0 {
+		// No tokens at all is a cursor-agent chat seen through Cursor's
+		// hooks (an editor chat has tokens from its database): its gaps are
+		// the CLI's, and named so.
+		label = "Cursor CLI"
+	}
 	out := map[string]string{}
 	for k, what := range agentGaps[agent] {
 		out[k] = DoesntRecord(label, what)
@@ -83,7 +92,7 @@ func Gaps(agent string, f SessionFacts) map[string]string {
 		// A cursor-agent chat is seen through Cursor's hooks, and no hook
 		// carries usage; an editor chat has tokens from its database.
 		if f.Tokens == 0 {
-			out[GapTokens] = DoesntRecord(label, "token counts for this chat")
+			out[GapTokens] = DoesntRecord(label, "token counts")
 		}
 		// Cursor keeps a cost for some chats only (usageData), and the
 		// pricing table is never applied to Cursor's turns: an editor chat
@@ -92,7 +101,7 @@ func Gaps(agent string, f SessionFacts) map[string]string {
 		// cost_basis "none", so none counts as unpriced). Either way the
 		// cost is Cursor's missing figure, never $0.00.
 		if f.CostUSD <= 0 && (f.UnpricedTurns > 0 || f.Tokens == 0) {
-			out[GapCost] = DoesntRecord(label, "a cost for this chat")
+			out[GapCost] = DoesntRecord(label, "what a chat costs")
 		}
 	}
 	if len(out) == 0 {

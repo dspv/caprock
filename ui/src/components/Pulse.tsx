@@ -34,6 +34,7 @@ import { showsAgentMark } from '@/components/Projects'
 import { AgentGlyph } from '@/components/AgentMarks'
 import { sessionTitle } from '@/lib/sidebar'
 import { costGap } from '@/lib/sessionCost'
+import { GapMark } from './GapMark'
 import { loadPulseOrder, pulseOrder, savePulseOrder, tabSessionOrder } from '@/lib/pulseOrder'
 import { moveKey } from '@/lib/rowOrder'
 import { isMacPlatform } from '@/lib/appmode'
@@ -491,7 +492,7 @@ function Track({
           title={costGap(s) ?? `${fmtUSD(s.stats?.cost_usd)} for the whole session`}
         >
           {/* An agent that keeps no cost (a cursor-agent chat) is a dash, never $0.00. */}
-          {costGap(s) ? '—' : fmtUSD(windowCost(pulse))}
+          {costGap(s) ? <>—<GapMark why={costGap(s)!} /></> : fmtUSD(windowCost(pulse))}
         </div>
         <WorkingNow s={s} state={state} repeatSample={pulse.repeatSample} />
       </div>
@@ -664,6 +665,7 @@ function LiveSession({ x, now, hourCost }: { x: SessionSummary; now: number; hou
       <div className="min-w-0 pl-[30px] sm:pl-0 sm:text-right text-[11.5px] text-fg-muted" data-pulse-facts={x.session_id}>
         <div className="num whitespace-nowrap">
           <span className="text-fg" title={costGap(x) ?? 'What this session has cost so far'}>{costGap(x) ? '—' : fmtUSD(x.stats?.cost_usd)}</span>
+          {costGap(x) && <GapMark why={costGap(x)!} />}
           {hourCost !== undefined && !costGap(x) && <span title="What it cost in the last hour"> · {fmtUSD(hourCost)}/h</span>}
           <span title={`Started ${fmtAgo(x.started_at, now)}`}> · {fmtRunning(now - x.started_at)}</span>
           {ctx && (

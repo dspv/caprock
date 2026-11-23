@@ -1039,7 +1039,7 @@ func TestContextFromCursorsShareReading(t *testing.T) {
 	if c == nil || c.Pct != 42.6 || c.Tokens != 0 || c.Window != 0 || c.NextCallUSD != 0 {
 		t.Fatalf("context %+v, want Cursor's 42.6%% and nothing else", c)
 	}
-	if sum.ContextNote != "Cursor doesn't record this chat's context in tokens" {
+	if sum.ContextNote != "Cursor doesn't save this chat's context in tokens on this computer" {
 		t.Fatalf("note %q", sum.ContextNote)
 	}
 }
@@ -1266,8 +1266,8 @@ func TestSettingsPromptsMergeAndValidate(t *testing.T) {
 	}
 }
 
-// A missing figure reads the same for every agent: "<Agent> doesn't record
-// <what>", in the slot under the tile (agentcat.Gaps). Cursor's turn tokens
+// A missing figure reads the same for every agent: "<Agent> doesn't save
+// <what> on this computer", in the slot under the tile (agentcat.Gaps). Cursor's turn tokens
 // are sums over requests, so its Context says so rather than measuring a sum
 // against a window — unless the turn carries Cursor's own reading. Gemini's
 // context is measured, and its missing cache writes are named.
@@ -1309,19 +1309,19 @@ func TestSessionGapsSayWhatTheAgentDoesNotRecord(t *testing.T) {
 	if sum.Context != nil || sum.ContextNote != "no context reading yet" {
 		t.Errorf("cursor context = %+v, note %q", sum.Context, sum.ContextNote)
 	}
-	if got := sum.Gaps["cache"]; got != "Cursor doesn't record cache reads or writes" {
+	if got := sum.Gaps["cache"]; got != "Cursor doesn't save cache reads or writes on this computer" {
 		t.Errorf("cursor cache gap = %q", got)
 	}
 	if _, ok := sum.Gaps["cost"]; ok {
 		t.Errorf("a priced cursor chat has a cost gap: %v", sum.Gaps)
 	}
-	if got := by["cu-free"].Gaps["cost"]; got != "Cursor doesn't record a cost for this chat" {
+	if got := by["cu-free"].Gaps["cost"]; got != "Cursor doesn't save what a chat costs on this computer" {
 		t.Errorf("unpriced cursor chat cost gap = %q", got)
 	}
 	if own := by["cu-own"]; own.Context == nil || own.Context.Tokens != 50000 || own.Context.Window != 200000 || own.ContextNote != "" {
 		t.Errorf("cursor's own context reading = %+v, note %q", own.Context, own.ContextNote)
 	}
-	if got := by["gem"].Gaps["cache_write"]; got != "Gemini doesn't record cache writes" {
+	if got := by["gem"].Gaps["cache_write"]; got != "Gemini doesn't save cache writes on this computer" {
 		t.Errorf("gemini gaps = %v", by["gem"].Gaps)
 	}
 	if by["cc"].Gaps != nil {
