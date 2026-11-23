@@ -32,7 +32,7 @@
 import { useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { ReleaseCI, SessionCIStats, SessionRepoCI, Work, WorkEntry, WorkRepo } from '@/lib/api'
 import { asBoard, type ShipsBy } from '@/lib/prboard'
-import { nextHint, OUT_RECENT_MS, prKind, releaseFold, releaseStatus, STATUS_TEXT, tagUnpublished, type BatchPR, type NextHint, type ReleaseStatus } from '@/lib/releasestatus'
+import { mainChecks, nextHint, OUT_RECENT_MS, prKind, releaseFold, releaseStatus, STATUS_TEXT, tagUnpublished, type BatchPR, type NextHint, type ReleaseStatus } from '@/lib/releasestatus'
 import { batchOf, groupNotes, notesHeading, notesOf, notInIt, viaLine, type NotesHeading, type NotInIt, type ViaLine } from '@/lib/releasenotes'
 import { stageWords, stripStages } from '@/lib/releasestatus'
 import { LastRelease, ReleaseInFlight, ReleaseStages, ReleaseStrip, ReleaseWhy } from './ReleaseStatus'
@@ -651,6 +651,12 @@ function useKeepRepo(repo: WorkRepo | undefined) {
 /** How old the kept entry may be before the folded section reads the Work answer itself. */
 export const REPO_KEPT_MS = 10 * 60_000
 
+/** How long after the newest merge the section asks for the default branch's checks itself. */
+export const MAIN_ASK_MS = 3_600_000
+
+/** A failed read of the default branch's checks kept over the answer it would replace. */
+const keepMainCI = (prev: SessionRepoCI, next: SessionRepoCI) => !!next.error && !!prev.ci && !next.ci
+
 /** A Work answer standing for one kept repository entry alone: the plan's version and merges, no agents. */
 function keptWork(repo: WorkRepo, now: number): Work {
   return { now, day_start: 0, sessions: [], hive: 'off', queued: [], repos: [repo], totals: { live: 0, working: 0, waiting_you: 0, today_usd: 0, machine_today_usd: 0 } }
@@ -670,7 +676,9 @@ function keptWork(repo: WorkRepo, now: number): Work {
  * Folded, its one line says where the release is, in the words and colour
  * of the stage dots (owner, 2026-11-18 and 2026-11-20; lib/releasestatus
  * releaseFold): *Nothing new since v0.182.4*, *Ready to release 0.183.1 ·
- * not started · 2 changes*, *Waiting for #949 to merge · 0.183.1 · 2
+ * not started · 2 changes* (*· master checks running · 12 of 17* or
+ * *· master checks failed* in place of *not started* while the default
+ * branch's checks run or failed after a merge), *Waiting for #949 to merge · 0.183.1 · 2
  * changes*, *Releasing 0.183.0 · checks 1 of 3 systems*, *Release 0.183.0
  * stopped · checks failed*, *0.183.0 released · 5 min ago*. It needs the repository's tags and
  * changelog entries: the entry of the Work answer kept whenever a page read
@@ -685,7 +693,8 @@ function keptWork(repo: WorkRepo, now: number): Work {
  * age — or *Releasing 0.183.1*, *0.183.1 released · 5 min ago*, *Nothing
  * new since v0.183.0 · 8h ago*) over the stage dots with the status in
  * words beside them (none while nothing is new); the entries grouped by kind in their own
- * words; then the batch pull request as one *via* line and *Not in it yet*,
+ * words; then the batch pull request (the release vehicle the daemon names,
+ * never an ordinary feature pull request) as one *via* line and *Not in it yet*,
  * folded: pushed branches with no pull request and other open pull
  * requests. The pull request and agent rows of
  * 2026-10-18 are gone: the CI section lists the pull requests, the
@@ -737,10 +746,22 @@ export function CockpitRelease({ sessionId, repoRoot }: { sessionId: string; rep
     // *fix: <job>*, which is CI red in plain words with the job on hover.
     return { number: batchPR.number, ci: card?.ci, next: via?.next, failed: card?.failed, state: via && via.ci.tone !== 'fail' ? via.state : undefined }
   }, [batchPR, board, via])
+  // The default branch's checks while the release is ready and nothing has
+  // started it (owner, 2026-11-23: *Ready to release · not started* while
+  // master's CI ran after a merge): the copy the Pipeline keeps
+  // (`main:<root>`), asked here only within MAIN_ASK_MS of the newest merge
+  // or while the kept copy says they run; the daemon answers from its kept read.
+  const ready = status.phase === 'pre' && !status.pr && !!(repo?.unreleased?.count || merged)
+  const lastMerge = useMemo(() => Math.max(0, ...(stats.d?.prs ?? []).filter((p) => p.state === 'merged' && (!p.base || !board?.default_branch || p.base === board.default_branch)).map((p) => p.merged_at ?? 0)), [stats.d?.prs, board?.default_branch])
+  const keptMain = useDeckAnswer<SessionRepoCI>(repoRoot ? `main:${repoRoot}` : '')
+  const askMain = ready && !!repoRoot && (Date.now() - lastMerge < MAIN_ASK_MS || keptMain.d?.ci?.state === 'running')
+  const [mainRead] = usePoll<SessionRepoCI>(askMain, `cockpit-main:${sessionId}`, () => api.sessionCIMain(sessionId), (d) => d.ci?.state === 'running', CI_RUNNING_MS, repoRoot ? `main:${repoRoot}` : undefined, keepMainCI)
+  const mainAnswer = mainRead ?? keptMain.d
+  const main = useMemo(() => (ready ? mainChecks(mainAnswer?.ci, { branch: board?.default_branch ?? mainAnswer?.branch, since: lastMerge || undefined }) : undefined), [ready, mainAnswer, board?.default_branch, lastMerge])
   if (!plan) return null
   const n = plan.rows.length
   const merge = plan.ships === 'merge'
-  const fold = merge ? undefined : releaseFold(status, { waiting: repo?.unreleased?.count || merged, batch, lastTag: repo?.tags?.last?.name, now, cards: board?.cards })
+  const fold = merge ? undefined : releaseFold(status, { waiting: repo?.unreleased?.count || merged, batch, lastTag: repo?.tags?.last?.name, now, cards: board?.cards, main })
   const keptText = statsKept.kept && statsKept.at ? asOfText(now - statsKept.at) : undefined
   const label = (
     <SectionLabel right={!folded ? (keptText ? <span data-release-kept-age title="The pull requests and their checks as last read, drawn faint while they are read again" className="shrink-0 whitespace-nowrap text-[10.5px] text-fg-faint">{keptText}</span> : undefined) : (fold ? (
@@ -778,7 +799,7 @@ export function CockpitRelease({ sessionId, repoRoot }: { sessionId: string; rep
   // say the same again (owner, 2026-11-20), so it goes, and the words open
   // the Pipeline on it as the via line did.
   const out = head.state === 'out'
-  const words = head.state !== 'idle' ? stageWords(status, stripStages(status, { out }), { cards: board?.cards, out, now, batch }) : undefined
+  const words = head.state !== 'idle' ? stageWords(status, stripStages(status, { out }), { cards: board?.cards, out, now, batch, main }) : undefined
   const viaInWords = !!via && words?.key === 'merged'
   const showVia = !!via && head.state !== 'shipping' && !viaInWords
   // Nothing new since the last tag: the section stays and says so. Hiding
@@ -790,7 +811,7 @@ export function CockpitRelease({ sessionId, repoRoot }: { sessionId: string; rep
       <div data-release-plan={plan.name} className="grid min-w-0 gap-[10px]">
         <div data-release-group="head" className="grid min-w-0 gap-1.5">
           {!repo && !work.data ? <p className="text-[12px] text-fg-muted">Reading…</p> : <NotesHead head={head} />}
-          {head.state !== 'idle' && <ReleaseStrip status={status} out={out} cards={board?.cards} batch={batch} now={now}
+          {head.state !== 'idle' && <ReleaseStrip status={status} out={out} cards={board?.cards} batch={batch} main={main} now={now}
             href={viaInWords && via ? pipelineHref(plan.root, via.number) : undefined} kept={keptText ? `${keptText}, being read again` : undefined} />}
           {hint && <NextHintLine hint={hint} />}
         </div>

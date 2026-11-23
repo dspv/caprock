@@ -5,7 +5,7 @@
  * request rows' pills, and one line for the last release. Reads nothing
  * itself.
  */
-import { STATUS_TEXT, stageWords, stripStages, TONE_STATE, type BatchPR, type ReleaseStatus, type StatusTone, type StripStage } from '@/lib/releasestatus'
+import { STATUS_TEXT, stageWords, stripStages, TONE_STATE, type BatchPR, type MainChecks, type ReleaseStatus, type StatusTone, type StripStage } from '@/lib/releasestatus'
 import type { BoardCard } from '@/lib/prboard'
 import { fmtAgo } from '@/lib/format'
 import { openExternal } from '@/lib/nudges'
@@ -89,7 +89,7 @@ function dotState(x: StripStage, current: boolean, tone: StatusTone): string {
  * not started*, cut with an ellipsis before it wraps. `version` puts a tag
  * already under way first, where no heading above names it.
  */
-export function ReleaseStrip({ status: s, version, out, cards, batch, now = Date.now(), href, kept }: {
+export function ReleaseStrip({ status: s, version, out, cards, batch, main, now = Date.now(), href, kept }: {
   status: ReleaseStatus; version?: boolean; out?: boolean
   /** Where the words go when they name the batch pull request (*Waiting for #977 · CI red*): the Pipeline on it. */
   href?: string
@@ -99,10 +99,12 @@ export function ReleaseStrip({ status: s, version, out, cards, batch, now = Date
   cards?: readonly BoardCard[]
   /** The batch pull request, for *Waiting for #949 to merge*. */
   batch?: BatchPR
+  /** The default branch's checks running or red, for *Ready to release · master checks running · 12 of 17*. */
+  main?: MainChecks
   now?: number
 }) {
   const stages = stripStages(s, { out })
-  const w = stageWords(s, stages, { cards, out, now, batch })
+  const w = stageWords(s, stages, { cards, out, now, batch, main })
   if (!stages.length || !w) return null
   const at = w.index - 1
   const current = stages[at]?.state === 'current'
@@ -130,7 +132,7 @@ export function ReleaseStrip({ status: s, version, out, cards, batch, now = Date
         * the cockpit's width — the lead with it was cut (owner, 2026-11-21). */}
       {href && w.key === 'merged'
         ? <a data-release-stage-words href={href} title={[w.title ?? stages[at]?.title, kept].filter(Boolean).join('\n')} className={`ml-2.5 min-w-0 truncate tabular-nums no-underline hover:underline ${current ? STATUS_TEXT[w.tone] : 'text-ok'}`}>{w.text}</a>
-        : <span data-release-stage-words title={[w.title ?? stages[at]?.title, kept].filter(Boolean).join('\n')} className={`ml-2.5 min-w-0 truncate tabular-nums ${current ? STATUS_TEXT[w.tone] : 'text-ok'}`}>{current && w.tone === 'active' && w.detail ? w.detail : w.text}</span>}
+        : <span data-release-stage-words title={[w.title ?? stages[at]?.title, kept].filter(Boolean).join('\n')} className={`ml-2.5 min-w-0 truncate tabular-nums ${current ? STATUS_TEXT[w.tone] : 'text-ok'}`}>{current && (w.tone === 'active' || w.detailOnly) && w.detail ? w.detail : w.text}</span>}
     </div>
   )
 }

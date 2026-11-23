@@ -155,10 +155,28 @@ export function notesOf(repo: WorkRepo | undefined, h: NotesHeading, s: ReleaseS
   return u.entries ?? u.items.map(plainItem)
 }
 
-/** The batch pull request: the newest open one that is not a release pull request. */
+/** A release pull request, by its head (*chore/release-0.190.1*, what the release opens) or its title. */
+export function isReleasePR(p: { title?: string; head?: string }): boolean {
+  return !!p.head?.startsWith('chore/release-') || !!releasePRVersion(p.title)
+}
+
+/** A pull request marked as a batch: its head *batch/…*, or a title naming the version, *feat: 0.175.0 batch — …* (internal/store/batchpr.go). */
+export function isBatchPR(p: { title?: string; head?: string }): boolean {
+  return !!p.head?.startsWith('batch/') || /\bv?\d+\.\d+\.\d+ batch\b/i.test(p.title ?? '')
+}
+
+/**
+ * The batch pull request: the one the daemon read the entries from
+ * (`unreleased.via`), else the newest open one marked as a batch. Never a
+ * release pull request (the stages say that one), and never an ordinary
+ * feature pull request (owner, 2026-11-23: #1030, a feature, was drawn as
+ * *via #1030 · ready to merge* and its entry made the version a minor one);
+ * those stay under *Not in it yet*.
+ */
 export function batchOf(prs: readonly BranchPR[], via?: number): BranchPR | undefined {
-  const open = prs.filter((p) => p.state === 'open' && !releasePRVersion(p.title))
-  return open.find((p) => p.number === via) ?? [...open].sort((a, b) => (b.created_at ?? 0) - (a.created_at ?? 0) || b.number - a.number)[0]
+  const open = prs.filter((p) => p.state === 'open' && !isReleasePR(p))
+  return open.find((p) => p.number === via)
+    ?? open.filter(isBatchPR).sort((a, b) => (b.created_at ?? 0) - (a.created_at ?? 0) || b.number - a.number)[0]
 }
 
 export interface ViaLine {

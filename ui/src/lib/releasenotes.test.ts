@@ -55,11 +55,16 @@ describe('the release notes', () => {
     expect(notesOf(repo({ released: { ...released, version: '0.183.0' }, unreleased: undefined }), oh, out)).toEqual([])
   })
 
-  it('picks the batch: the daemon’s via first, else the newest open one that is not a release PR', () => {
-    const prs = [pr(948, 'fix: old'), pr(950, 'chore(release): 0.183.1'), pr(949, 'fix: batch', { created_at: T }), pr(947, 'merged', { state: 'merged' })]
+  // Owner, 2026-11-23: #1030, an ordinary feature PR, was taken for the batch.
+  it('picks the batch: the daemon’s via first, else the newest open one marked as a batch, never a feature or release PR', () => {
+    const prs = [pr(948, 'fix: old'), pr(950, 'chore(release): 0.183.1'), pr(949, 'fix: batch', { created_at: T, head: 'batch/0.183.1' }), pr(951, 'feat(app): offline voice', { created_at: T + 1 }), pr(947, 'merged', { state: 'merged' })]
     expect(batchOf(prs)?.number).toBe(949)
     expect(batchOf(prs, 948)?.number).toBe(948)
+    expect(batchOf([pr(951, 'feat(app): offline voice')])).toBeUndefined()
+    expect(batchOf([pr(952, 'feat: 0.175.0 batch — two things')])?.number).toBe(952)
     expect(batchOf([pr(950, 'chore(release): 0.183.1')])).toBeUndefined()
+    expect(batchOf([pr(950, 'chore(release): 0.183.1')], 950)).toBeUndefined()
+    expect(batchOf([pr(953, 'release notes', { head: 'chore/release-0.183.2' })], 953)).toBeUndefined()
   })
 
   it('says the via line’s checks and state, and the next step', () => {

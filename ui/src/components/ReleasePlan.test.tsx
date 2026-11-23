@@ -459,7 +459,9 @@ describe('where it is drawn', () => {
   })
 
   it('says a batch PR’s red CI on its via line, the failing check in plain words', async () => {
-    h.data = withKinds()
+    const w = withKinds()
+    w.repos[0]!.unreleased!.via = { number: 631, head: 'feat/folder-search', sha: 'abc' }
+    h.data = w
     const stats = statsFixture()
     const c = stats.board!.cards.find((x) => x.number === 631)!
     Object.assign(c, { ci: 'fail', why: 'ci', stage: 'fix', failed: ['go (windows-latest)'] })
@@ -485,7 +487,7 @@ describe('where it is drawn', () => {
     await within(region).findByRole('heading', { name: 'Next release 0.118.0' })
     const later = region.querySelector('[data-release-section="branch"]')!
     await within(region).findByText(/1 branch, no PR/)
-    expect(later).toHaveTextContent('Not in it yet: 1 branch, no PR · 1 other PR▸')
+    expect(later).toHaveTextContent('Not in it yet: 1 branch, no PR · 2 other PRs▸')
     // Folded by default; the line opens it, remembered per viewer.
     expect(region.querySelector('[data-release-row="b:feat/batch-1"]')).toBeNull()
     fireEvent.click(later)
@@ -514,7 +516,7 @@ describe('where it is drawn', () => {
     await within(region).findByRole('heading', { name: 'Next release 0.118.0' })
     const rows = () => [...region.querySelectorAll('[data-stage="branch"]')].map((e) => e.getAttribute('data-release-row'))
     await within(region).findByText(/7 branches, no PR/)
-    expect(region.querySelector('[data-release-section="branch"]')!.textContent).toBe('Not in it yet: 7 branches, no PR · 1 other PR▸')
+    expect(region.querySelector('[data-release-section="branch"]')!.textContent).toBe('Not in it yet: 7 branches, no PR · 2 other PRs▸')
     expect(rows()).toEqual(['b:fix/b-0', 'b:fix/b-1', 'b:fix/b-2', 'b:fix/b-3', 'b:fix/b-4'])
     fireEvent.click(within(region).getByRole('button', { name: 'Show all 7' }))
     expect(rows()).toHaveLength(7)
