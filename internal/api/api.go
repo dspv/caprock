@@ -3408,7 +3408,7 @@ func (s *Server) handleAgentModels(w http.ResponseWriter, r *http.Request) {
 		if m := codex.ListedModels(); len(m) > 0 {
 			out.Models = m
 		}
-		out.Default = codex.ConfiguredModel()
+		out.Default = codex.DefaultModel()
 	case "claude", "gemini", "opencode", "grok", "hermes", "cursor":
 	default:
 		http.Error(w, `agent must be one of claude, codex, opencode, gemini, grok, hermes, cursor`, http.StatusBadRequest)

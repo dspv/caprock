@@ -105,6 +105,9 @@ describe('earlyexit words', () => {
     expect(earlyExitHint('Error: Session ID 7873cb1c is already in use.')).toMatch(/new one/)
     expect(earlyExitHint('Error: EPERM: operation not permitted, uv_cwd')).toMatch(/Files and Folders/)
     expect(earlyExitHint('Settings Error … Invalid or malformed JSON')).toMatch(/not valid JSON/)
+    // Codex, 2026-11-23: the JSON it printed, and the same line wrapped on screen.
+    expect(earlyExitHint(`{"type":"error","status":400,"error":{"message":"The 'gpt-6.2-sol' model is not supported when using Codex with a ChatGPT account.","code":"model_not_found"}}`)).toBe('Your Codex sign-in can’t use this model. Pick another one.')
+    expect(earlyExitHint("■ The 'gpt-6.2-sol' model is not supported when using\nCodex with a ChatGPT account.")).toMatch(/can’t use this model/)
     expect(earlyExitHint('something else entirely')).toBeUndefined()
   })
 })

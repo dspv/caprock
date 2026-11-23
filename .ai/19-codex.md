@@ -574,6 +574,37 @@ starting the TUI with it:
   `$CODEX_HOME/models_cache.json` (`visibility: "list"`, in `priority` order;
   `codex-auto-review` and other hidden entries are not offered), with the
   top-level `model` of `config.toml` as the default. "Default" sends no `-m`.
+  The list is then narrowed to what the sign-in can run, as Codex's own
+  picker does (`ModelPreset::filter_by_auth`, codex-rs/protocol
+  `src/openai_models.rs`, read 2026-11-23). The mode is `auth_mode` in
+  `$CODEX_HOME/auth.json`, else inferred as Codex does (`OPENAI_API_KEY` set
+  → `apikey`, otherwise `chatgpt`). On a sign-in that does not use the Codex
+  backend (`apikey`, Bedrock), an entry with `supported_in_api: false` is
+  left out. On a ChatGPT account, an entry whose `available_in_plans` lacks
+  the account's plan (the id_token's `chatgpt_plan_type` claim; only that
+  word is read) is left out: the server refuses it with "The 'gpt-6.2-sol'
+  model is not supported when using Codex with a ChatGPT account"
+  (2026-11-23). When a field is absent or there is no `auth.json` (Codex can
+  keep credentials in the keyring), the model stays listed; it is never made
+  the default, which is only ever `config.toml`'s. Current Codex drops
+  `available_in_plans` when it writes its cache, so for a ChatGPT account the
+  list is usually the cache as is, as in Codex's own picker.
+  So Caprock also learns from failure. Codex keeps no error in its rollout
+  (`EventMsg::Error` is transient, codex-rs/rollout `src/policy.rs`), so the
+  daemon watches the first 4 MB of a Codex session's terminal output it
+  started for the refusal — "The '<model>' model is not supported when using
+  Codex with a ChatGPT account", or `model_not_found` with the `-m` it passed
+  — escape codes and whitespace taken out, since the screen wraps it
+  (`internal/agents/codexrefusal.go`). The model is written to
+  `<data dir>/codex-refused-models.json` (Caprock's file; nothing under
+  `$CODEX_HOME` is written) with the sign-in it was learnt on (mode and plan
+  only). From then the dialog lists it last, labelled *· didn't run on your
+  account*, still pickable, and never as the default — when `config.toml`
+  names it, `default` is left empty. The file starts over when the sign-in's
+  mode or plan changes, and an entry is forgotten after 30 days
+  (`codex.RefusedFor`), since a plan's models change. A session that exits at
+  once on it shows *Your Codex sign-in can't use this model. Pick another
+  one.* (04-ui.md, early exit).
 - **Permissions**, mapped from Claude's words onto Codex's two axes:
   `acceptEdits` → `--sandbox workspace-write --ask-for-approval on-request`;
   `plan` → `--sandbox read-only --ask-for-approval on-request`;

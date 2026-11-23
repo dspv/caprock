@@ -203,6 +203,9 @@ type Agent struct {
 	// argv0 and argv are what was run, for the log line of an early exit.
 	argv0 string
 	argv  []string
+	// refusal watches a Codex session's output for a refused model
+	// (codexrefusal.go); touched only by pump.
+	refusal refusalWatch
 }
 
 // Manager owns the set of running agents.
@@ -1148,6 +1151,7 @@ func (a *Agent) pump(onOutput func(string)) {
 			chunk := make([]byte, n)
 			copy(chunk, buf[:n])
 			a.ring.write(chunk)
+			a.watchRefusal(chunk)
 			if a.setupDone != nil && a.sawSetupMarker(chunk) {
 				// What is drawn next is the agent's: "ready" is measured
 				// from here, not from the setup's last line.

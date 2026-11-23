@@ -1761,7 +1761,9 @@ export interface CatalogEntry {
   /** The model its own config names. */
   default?: string
   /** The models its own files list; empty for Claude Code and Gemini CLI, whose lists the page keeps. */
-  models: { id: string; label: string }[]
+  /** `refused`: Codex refused it on this sign-in in a session Caprock
+   *  started; listed last, its label already says so. */
+  models: { id: string; label: string; refused?: boolean }[]
   /** A model may be typed (OpenCode's provider/model). */
   typed_model?: boolean
   /** Caprock reads its sessions' turns and cost. */
