@@ -26,6 +26,9 @@ mod notify;
 mod notify_linux;
 #[cfg(target_os = "macos")]
 mod notify_macos;
+// The peek's decision is tested on every OS; only macOS shows it.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+mod peek;
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 mod popover;
 mod recover;

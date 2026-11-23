@@ -730,7 +730,7 @@ export function AppShell() {
 
   // The menu bar or tray and the badge (WP-10); a waiting session clicked
   // there arrives as an event from the shell.
-  useShellTray(model.inbox, model.done)
+  useShellTray(model.inbox, model.done, focused?.sessionId)
   useEffect(() => {
     const onOpen = (e: Event) => {
       const id = (e as CustomEvent<unknown>).detail

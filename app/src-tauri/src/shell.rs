@@ -227,11 +227,16 @@ pub fn build(
     #[cfg(target_os = "macos")]
     {
         let hidden = w.clone();
-        w.on_window_event(move |e| {
-            if let tauri::WindowEvent::CloseRequested { api, .. } = e {
+        w.on_window_event(move |e| match e {
+            tauri::WindowEvent::CloseRequested { api, .. } => {
                 api.prevent_close();
                 let _ = hidden.hide();
             }
+            // You came to the window: a peek nobody touched goes.
+            tauri::WindowEvent::Focused(true) => {
+                crate::popover::main_focused(hidden.app_handle());
+            }
+            _ => {}
         });
     }
     // If the first page is slow, show the window anyway rather than nothing.

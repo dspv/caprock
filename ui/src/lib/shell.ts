@@ -16,6 +16,8 @@ interface TauriInternals {
 export interface TrayWaiting {
   id: string
   label: string
+  /** May show the menu bar panel by itself (the peek, macOS); a shell that predates it ignores it. */
+  peek?: boolean
 }
 
 /** What the menu bar or tray shows (app/src-tauri/src/tray.rs). */
@@ -27,6 +29,8 @@ export interface TrayView {
   waiting: TrayWaiting[]
   /** Done, nothing needed: a submenu (a shell that predates it ignores it). */
   done?: TrayWaiting[]
+  /** The session the window's front tab shows, sent only with the peek on: no peek for it while the window is in front. */
+  shown?: string
 }
 
 /** The global hotkey as the shell holds it (app/src-tauri/src/hotkey.rs). */
@@ -83,8 +87,8 @@ export const shell = {
   trayOpen: (session?: string) => shellInvoke<void>('tray_open', { session: session ?? null }),
   /** From the menu bar popover: the height its content needs (the shell clamps it). */
   trayFit: (height: number) => shellInvoke<void>('tray_fit', { height }),
-  /** From the menu bar popover: hide it. */
-  trayHide: () => shellInvoke<void>('tray_hide'),
+  /** From the menu bar popover: hide it; `answered` after Approve or Deny in a peek (no quiet minute follows). */
+  trayHide: (answered = false) => shellInvoke<void>('tray_hide', { answered }),
   /** The app's updater (F20): its version, whether it can update itself, where it stands. */
   updateStatus: () => shellInvoke<AppUpdateInfo>('app_update_status'),
   /** Fetch latest.json once. */

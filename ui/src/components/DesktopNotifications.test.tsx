@@ -7,6 +7,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { DesktopNotifications } from './DesktopNotifications'
 import type { Settings } from '@/lib/api'
+import { PEEK_KEY } from '@/lib/tray'
 
 const saved = vi.hoisted(() => ({ calls: [] as Partial<Settings>[] }))
 
@@ -35,5 +36,32 @@ describe('DesktopNotifications', () => {
     fireEvent.click(needs)
     expect(saved.calls).toEqual([{ notify_approval: false }])
     expect(needs).not.toBeChecked()
+  })
+
+  it('on macOS, offers the menu bar panel peek, off until switched on', async () => {
+    localStorage.removeItem(PEEK_KEY)
+    const platform = vi.spyOn(navigator, 'platform', 'get').mockReturnValue('MacIntel')
+    try {
+      render(<DesktopNotifications />)
+      const peek = await screen.findByLabelText(/Show the menu bar panel when an agent needs you/)
+      expect(peek).not.toBeChecked()
+      fireEvent.click(peek)
+      expect(peek).toBeChecked()
+      expect(localStorage.getItem(PEEK_KEY)).toBe('on')
+    } finally {
+      platform.mockRestore()
+      localStorage.removeItem(PEEK_KEY)
+    }
+  })
+
+  it('elsewhere, has no peek switch: there is no menu bar panel', async () => {
+    const platform = vi.spyOn(navigator, 'platform', 'get').mockReturnValue('Win32')
+    try {
+      render(<DesktopNotifications />)
+      await waitFor(() => expect(screen.getByText('Desktop notifications')).toBeInTheDocument())
+      expect(screen.queryByLabelText(/menu bar panel/)).toBeNull()
+    } finally {
+      platform.mockRestore()
+    }
   })
 })

@@ -2,7 +2,7 @@
  * The menu bar popover's page: what needs you first, Approve only with the
  * whole request shown, a calm empty state, keys that move and close.
  */
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Permission, SessionSummary } from '@/lib/api'
 import { ApiError } from '@/lib/api'
@@ -35,12 +35,20 @@ vi.mock('@/lib/api', async (orig) => {
   }
 })
 
+const trayHide = vi.fn(async (_answered?: boolean) => undefined as void)
+vi.mock('@/lib/shell', async (orig) => {
+  const actual = await orig<typeof import('@/lib/shell')>()
+  return { ...actual, shell: { ...actual.shell, trayHide: (a?: boolean) => trayHide(a) } }
+})
+
 import { PopoverView } from './TrayPanel'
+import { TRAY_SHOWN_EVENT } from '@/lib/traydata'
 
 beforeEach(() => {
   state.sessions = []
   state.perms = {}
   answer.mockReset()
+  trayHide.mockClear()
   vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 404 })))
 })
 afterEach(() => { vi.unstubAllGlobals() })
@@ -101,6 +109,27 @@ describe('PopoverView', () => {
     render(<PopoverView />)
     fireEvent.click(await screen.findByRole('button', { name: 'Deny' }))
     expect(await screen.findByText('Already answered.')).toBeInTheDocument()
+  })
+
+  it('shown as a peek, hides itself once answered, with no quiet minute', async () => {
+    state.sessions = [sess({ session_id: 'a', title: 'Fix login' })]
+    state.perms = { a: { id: 'p1', tool: 'Bash', detail: 'npm test', since: '' } }
+    render(<PopoverView />)
+    const approve = await screen.findByRole('button', { name: 'Approve' })
+    act(() => { window.dispatchEvent(new CustomEvent(TRAY_SHOWN_EVENT, { detail: { peek: true, session: 'a' } })) })
+    fireEvent.click(approve)
+    await waitFor(() => expect(trayHide).toHaveBeenCalledWith(true))
+  })
+
+  it('opened from the icon, stays open after an answer', async () => {
+    state.sessions = [sess({ session_id: 'a', title: 'Fix login' })]
+    state.perms = { a: { id: 'p1', tool: 'Bash', detail: 'npm test', since: '' } }
+    render(<PopoverView />)
+    const approve = await screen.findByRole('button', { name: 'Approve' })
+    act(() => { window.dispatchEvent(new Event(TRAY_SHOWN_EVENT)) })
+    fireEvent.click(approve)
+    await waitFor(() => expect(answer).toHaveBeenCalledWith('a', 'p1', 'allow'))
+    expect(trayHide).not.toHaveBeenCalled()
   })
 
   it('moves between rows with the arrow keys', async () => {

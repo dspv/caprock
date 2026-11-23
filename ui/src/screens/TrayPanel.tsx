@@ -4,6 +4,11 @@
  * What needs you first — a prompt to answer, a turn that ended — then what
  * is running, the plan windows and today's spend. A row opens its session in
  * the main window; Escape or a click elsewhere hides the popover.
+ *
+ * Shown by itself (the peek, Settings → Desktop notifications, off by
+ * default), it is the same page: the shell says so in `caprock:tray-shown`'s
+ * detail, and an Approve or Deny then hides it without the quiet minute a
+ * dismiss starts (app/src-tauri/src/peek.rs).
  */
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { api, ApiError, errText, type PermissionChoice } from '@/lib/api'
@@ -13,7 +18,7 @@ import { fmtUSD } from '@/lib/format'
 import { requester } from '@/lib/cockpit'
 import { useLiveLink, live } from '@/lib/live'
 import { shell } from '@/lib/shell'
-import { buildPopover, usePopoverData, type ApprovalRow, type LimitRow, type SessionRow } from '@/lib/traydata'
+import { buildPopover, isPeekShown, TRAY_SHOWN_EVENT, usePopoverData, type ApprovalRow, type LimitRow, type SessionRow } from '@/lib/traydata'
 import { useNow } from '@/lib/useNow'
 import { CaprockMark } from '@/components/AppIcons'
 import { AgentGlyph } from '@/components/AgentMarks'
@@ -75,6 +80,20 @@ export default function TrayPanel() {
 
 export function PopoverView() {
   const data = usePopoverData()
+  // Shown by the shell as a peek rather than by a click on the icon.
+  const [peek, setPeek] = useState(false)
+  useEffect(() => {
+    const onShown = (e: Event) => setPeek(isPeekShown(e))
+    window.addEventListener(TRAY_SHOWN_EVENT, onShown)
+    return () => window.removeEventListener(TRAY_SHOWN_EVENT, onShown)
+  }, [])
+  const onAnswered = () => {
+    data.refresh()
+    if (peek) {
+      setPeek(false)
+      shell.trayHide(true).catch(() => { /* in a browser: nothing to hide */ })
+    }
+  }
   const now = useNow(30_000)
   const model = useMemo(
     () => buildPopover({ sessions: data.sessions, permissions: data.permissions, summary: data.summary, now }),
@@ -127,7 +146,7 @@ export function PopoverView() {
           <Calm working={working} />
         ) : (
           <Section title="Needs you" count={model.approvals.length + model.waiting.length}>
-            {model.approvals.map((a) => <Approval key={a.session.session_id} row={a} onDone={data.refresh} />)}
+            {model.approvals.map((a) => <Approval key={a.session.session_id} row={a} onDone={data.refresh} onAnswered={onAnswered} />)}
             {model.waiting.map((r) => <SessionLine key={r.session.session_id} row={r} waiting />)}
           </Section>
         )}
@@ -251,7 +270,7 @@ function SessionLine({ row, waiting = false, done = false }: { row: SessionRow; 
   )
 }
 
-function Approval({ row, onDone }: { row: ApprovalRow; onDone: () => void }) {
+function Approval({ row, onDone, onAnswered }: { row: ApprovalRow; onDone: () => void; onAnswered: () => void }) {
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState('')
   const p = row.permission
@@ -261,10 +280,12 @@ function Approval({ row, onDone }: { row: ApprovalRow; onDone: () => void }) {
     setNote('')
     try {
       await api.answerPermission(row.session.session_id, p.id, choice)
-      onDone()
+      onAnswered()
     } catch (e) {
-      setNote(e instanceof ApiError && e.status === 409 ? 'Already answered.' : errText(e))
-      onDone()
+      const gone = e instanceof ApiError && e.status === 409
+      setNote(gone ? 'Already answered.' : errText(e))
+      if (gone) onAnswered()
+      else onDone()
     } finally {
       setBusy(false)
     }

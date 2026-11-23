@@ -64,7 +64,7 @@ snapshot = ["dep:objc2-core-graphics", "dep:objc2-core-foundation"]
 objc2 = "0.6"
 # NSPanel: the menu bar popover is a non-activating panel (src/popover.rs),
 # so opening it never activates the app or raises the main window.
-objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSPanel", "NSWindow", "NSResponder", "NSBitmapImageRep", "NSImageRep", "NSGraphics", "NSImage"] }
+objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSPanel", "NSWindow", "NSResponder", "NSBitmapImageRep", "NSImageRep", "NSGraphics", "NSImage", "NSEvent", "block2"] }
 objc2-core-graphics = { version = "0.3", optional = true, features = ["CGWindow", "CGImage"] }
 objc2-foundation = { version = "0.3", features = ["NSData", "NSDictionary", "NSString", "NSBundle", "NSError", "NSSet", "NSArray"] }
 objc2-core-foundation = { version = "0.3", optional = true, features = ["CFCGTypes", "CFArray"] }

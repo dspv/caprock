@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildTrayView, waitingOnYou } from './tray'
+import { buildTrayView, loadPeek, mayPeek, PEEK_KEY, savePeek, waitingOnYou } from './tray'
 import type { InboxItem } from './sidebar'
 import type { SessionSummary, Summary } from './api'
 import { fmtUSD } from './format'
@@ -62,5 +62,44 @@ describe('waitingOnYou', () => {
   it('is empty when nothing waits, so the badge clears', () => {
     expect(waitingOnYou([])).toHaveLength(0)
     expect(waitingOnYou([item('b', 'waiting')])).toHaveLength(1)
+  })
+})
+
+describe('the peek', () => {
+  const owned = (id: string, reason: InboxItem['reason'], need?: InboxItem['need']): InboxItem => ({
+    ...item(id, reason),
+    session: { session_id: id, owned: true } as SessionSummary,
+    need,
+  })
+
+  it('may peek only a session Caprock started, blocked on a dialog', () => {
+    expect(mayPeek(owned('a', 'permission'))).toBe(true)
+    expect(mayPeek(owned('b', 'waiting', { reason: 'question' }))).toBe(true)
+    expect(mayPeek(owned('c', 'waiting', { reason: 'plan' }))).toBe(true)
+    // A turn that ended on what reads like a question, or an error: listed, never peeked.
+    expect(mayPeek(owned('d', 'waiting', { reason: 'asks' }))).toBe(false)
+    expect(mayPeek(owned('e', 'waiting', { reason: 'error' }))).toBe(false)
+    // One the user started himself (rule 7), or one put down long ago.
+    expect(mayPeek(item('f', 'permission'))).toBe(false)
+    expect(mayPeek({ ...owned('g', 'permission'), stale: true })).toBe(false)
+  })
+
+  it('marks rows and names the front session only with the switch on', () => {
+    const inbox = [owned('a', 'permission'), item('b', 'permission'), owned('c', 'waiting', { reason: 'asks' })]
+    const off = buildTrayView({ inbox, conn: 'open', now, shown: 'a' })
+    expect(off.waiting.some((w) => 'peek' in w)).toBe(false)
+    expect(off.shown).toBeUndefined()
+    const on = buildTrayView({ inbox, conn: 'open', now, peek: true, shown: 'a' })
+    expect(on.waiting.map((w) => w.peek ?? false)).toEqual([true, false, false])
+    expect(on.shown).toBe('a')
+  })
+
+  it('is off until switched on, and the switch is remembered', () => {
+    localStorage.removeItem(PEEK_KEY)
+    expect(loadPeek()).toBe(false)
+    savePeek(true)
+    expect(loadPeek()).toBe(true)
+    savePeek(false)
+    expect(loadPeek()).toBe(false)
   })
 })

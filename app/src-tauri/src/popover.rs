@@ -9,10 +9,17 @@
 //! it or clicking a row never activates Caprock, so the main window stays
 //! where it is and the app you were in keeps its focus. Only "Open" brings
 //! Caprock forward, on purpose.
+//!
+//! The peek (peek.rs, off by default): when a session Caprock started begins
+//! waiting on you, the same panel shows itself under the icon without
+//! becoming key, so a key typed elsewhere cannot answer it. A click into it
+//! makes it an ordinary popover; a click elsewhere, Escape there, an answer
+//! or 15 s untouched takes it away.
 
 use crate::hotkey;
+use crate::peek::{self, Action, Peeker};
 use std::sync::atomic::{AtomicU16, Ordering};
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 use tauri::{
     AppHandle, LogicalSize, Manager, PhysicalPosition, Rect, Runtime, Url, WebviewUrl,
@@ -29,9 +36,20 @@ const MAX_HEIGHT: f64 = 640.0;
 /// this soon after a blur closed it, so it must not reopen it.
 const REOPEN_GUARD: Duration = Duration::from_millis(300);
 
-/// When the popover last hid because it lost focus.
+/// When the popover last hid because it lost focus, and the peek's state.
 #[derive(Default)]
-pub struct Popover(Mutex<Option<Instant>>);
+pub struct Popover {
+    blurred: Mutex<Option<Instant>>,
+    peek: Mutex<Peeker>,
+}
+
+fn peeker<R: Runtime>(app: &AppHandle<R>) -> MutexGuard<'_, Peeker> {
+    app.state::<Popover>()
+        .inner()
+        .peek
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+}
 
 pub fn url(port: u16) -> Url {
     format!("http://127.0.0.1:{port}{ROUTE}")
@@ -77,6 +95,9 @@ pub fn ensure<R: Runtime>(app: &AppHandle<R>, port: u16) {
         .visible_on_all_workspaces(true)
         .visible(false)
         .focused(false)
+        // A peek is not the key window: the first click on Approve must
+        // press it, not only make the panel key.
+        .accept_first_mouse(true)
         // Only the daemon's own page: a link goes to the main window's
         // browser handling, never into the popover.
         .on_navigation(move |u| crate::shell::is_daemon(u, Some(port)));
@@ -102,15 +123,23 @@ pub fn ensure<R: Runtime>(app: &AppHandle<R>, port: u16) {
         });
     }
     let handle = app.clone();
-    w.on_window_event(move |e| {
-        if let tauri::WindowEvent::Focused(false) = e {
+    w.on_window_event(move |e| match e {
+        // Clicked into: a peek becomes an ordinary popover, which hides on blur.
+        tauri::WindowEvent::Focused(true) => {
+            peeker(&handle).touch();
+            #[cfg(target_os = "macos")]
+            panel::unwatch_clicks();
+        }
+        tauri::WindowEvent::Focused(false) => {
             *handle
                 .state::<Popover>()
-                .0
+                .blurred
                 .lock()
                 .unwrap_or_else(|e| e.into_inner()) = Some(Instant::now());
+            peeker(&handle).dismiss(Instant::now());
             hide(&handle);
         }
+        _ => {}
     });
 }
 
@@ -134,17 +163,25 @@ pub fn toggle<R: Runtime>(app: &AppHandle<R>, rect: Rect) {
         return;
     };
     if w.is_visible().unwrap_or(false) {
+        peeker(app).dismiss(Instant::now());
         hide(app);
         return;
     }
     let blurred = *app
         .state::<Popover>()
-        .0
+        .blurred
         .lock()
         .unwrap_or_else(|e| e.into_inner());
     if blurred.is_some_and(|t| t.elapsed() < REOPEN_GUARD) {
         return;
     }
+    place(&w, rect);
+    let _ = w.eval("window.dispatchEvent(new Event('caprock:tray-shown'))");
+    present(app, &w);
+}
+
+/// Puts the popover under the menu bar icon at `rect`, on the icon's screen.
+fn place<R: Runtime>(w: &tauri::WebviewWindow<R>, rect: Rect) {
     let scale = w.scale_factor().unwrap_or(1.0);
     let icon = rect.position.to_physical::<f64>(scale);
     let size = rect.size.to_physical::<f64>(scale);
@@ -160,8 +197,123 @@ pub fn toggle<R: Runtime>(app: &AppHandle<R>, rect: Rect) {
         x = x.clamp(left + 8.0 * scale, (right - width - 8.0 * scale).max(left));
     }
     let _ = w.set_position(PhysicalPosition::new(x, y));
-    let _ = w.eval("window.dispatchEvent(new Event('caprock:tray-shown'))");
-    present(app, &w);
+}
+
+/// Whether the main window is the frontmost window, the user looking at it.
+fn main_frontmost<R: Runtime>(app: &AppHandle<R>) -> bool {
+    app.get_webview_window(crate::shell::MAIN)
+        .is_some_and(|m| m.is_visible().unwrap_or(false) && m.is_focused().unwrap_or(false))
+}
+
+/// The page sent a new waiting list (tray.rs): show, move or hide the peek.
+/// `eligible` are the sessions that may peek; `shown` the one the main
+/// window's front tab shows. Main thread.
+pub fn peek_update<R: Runtime>(app: &AppHandle<R>, eligible: &[String], shown: Option<&str>) {
+    let Some(w) = app.get_webview_window(POPOVER) else {
+        return;
+    };
+    let visible = w.is_visible().unwrap_or(false);
+    let front = shown.filter(|_| main_frontmost(app));
+    let action = {
+        let mut p = peeker(app);
+        let ctx = peek::Ctx {
+            opened_by_user: visible && !p.showing(),
+            front,
+        };
+        p.update(eligible, ctx, Instant::now())
+    };
+    match action {
+        Action::Nothing => {}
+        Action::Hide => hide(app),
+        Action::Show(session) => peek_show(app, &w, &session),
+    }
+}
+
+/// Shows the popover as a peek for `session`: under the icon, in front,
+/// never key (macOS). Only as the non-activating panel; a popover that stayed
+/// an ordinary window never peeks, since showing it could take the focus.
+fn peek_show<R: Runtime>(app: &AppHandle<R>, w: &tauri::WebviewWindow<R>, session: &str) {
+    #[cfg(target_os = "macos")]
+    {
+        let rect = app
+            .tray_by_id(crate::tray::ID)
+            .and_then(|t| t.rect().ok().flatten());
+        let Some(rect) = rect.filter(|_| panel::is_panel(w)) else {
+            peeker(app).answered();
+            return;
+        };
+        place(w, rect);
+        let detail = serde_json::json!({ "peek": true, "session": session });
+        let _ = w.eval(format!(
+            "window.dispatchEvent(new CustomEvent('caprock:tray-shown', {{ detail: {detail} }}))"
+        ));
+        panel::order_in(w);
+        let handle = app.clone();
+        panel::watch_clicks(move || {
+            // A click in another app: the peek was not wanted.
+            let dismissed = {
+                let mut p = peeker(&handle);
+                p.untouched() && p.dismiss(Instant::now())
+            };
+            if dismissed {
+                hide(&handle);
+            }
+        });
+        let generation = peeker(app).generation();
+        let handle = app.clone();
+        std::thread::spawn(move || peek_timer(handle, generation));
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (app, w, session);
+    }
+}
+
+/// Takes peek `generation` away once it has sat untouched for
+/// `peek::UNTOUCHED`, waiting while the pointer rests on it.
+fn peek_timer<R: Runtime>(app: AppHandle<R>, generation: u64) {
+    std::thread::sleep(peek::UNTOUCHED);
+    loop {
+        let over = pointer_over(&app);
+        let expired = {
+            let mut p = peeker(&app);
+            if p.generation() != generation || !p.untouched() {
+                return;
+            }
+            p.expire(generation, over, Instant::now())
+        };
+        if expired {
+            let handle = app.clone();
+            let _ = app.run_on_main_thread(move || hide(&handle));
+            return;
+        }
+        std::thread::sleep(Duration::from_secs(1));
+    }
+}
+
+/// Whether the pointer is over the popover.
+fn pointer_over<R: Runtime>(app: &AppHandle<R>) -> bool {
+    let Some(w) = app.get_webview_window(POPOVER) else {
+        return false;
+    };
+    let (Ok(c), Ok(p), Ok(s)) = (app.cursor_position(), w.outer_position(), w.outer_size()) else {
+        return false;
+    };
+    c.x >= p.x as f64
+        && c.y >= p.y as f64
+        && c.x < p.x as f64 + s.width as f64
+        && c.y < p.y as f64 + s.height as f64
+}
+
+/// The main window came forward: a peek still untouched has done its job.
+pub fn main_focused<R: Runtime>(app: &AppHandle<R>) {
+    let dismissed = {
+        let mut p = peeker(app);
+        p.untouched() && p.dismiss(Instant::now())
+    };
+    if dismissed {
+        hide(app);
+    }
 }
 
 /// Shows the popover with the keyboard in its page. On macOS the panel
@@ -290,6 +442,41 @@ pub mod panel {
         }
     }
 
+    /// Orders the panel in without making it key: a peek. Keys typed in the
+    /// app you are in stay there. Main thread.
+    pub fn order_in<R: tauri::Runtime>(w: &tauri::WebviewWindow<R>) {
+        if let Some(win) = window(w) {
+            win.orderFrontRegardless();
+        }
+    }
+
+    std::thread_local! {
+        static CLICKS: std::cell::RefCell<Option<objc2::rc::Retained<AnyObject>>> =
+            const { std::cell::RefCell::new(None) };
+    }
+
+    /// Calls `on_click` on a mouse click in another app, until
+    /// `unwatch_clicks`. A global monitor of mouse clicks needs no
+    /// permission (only keys would ask for Accessibility). Main thread.
+    pub fn watch_clicks(on_click: impl Fn() + 'static) {
+        use objc2_app_kit::{NSEvent, NSEventMask};
+        unwatch_clicks();
+        let block = block2::RcBlock::new(move |_: std::ptr::NonNull<NSEvent>| on_click());
+        let monitor = NSEvent::addGlobalMonitorForEventsMatchingMask_handler(
+            NSEventMask::LeftMouseDown | NSEventMask::RightMouseDown | NSEventMask::OtherMouseDown,
+            &block,
+        );
+        CLICKS.with(|c| *c.borrow_mut() = monitor);
+    }
+
+    /// Stops `watch_clicks`. Main thread.
+    pub fn unwatch_clicks() {
+        if let Some(m) = CLICKS.with(|c| c.borrow_mut().take()) {
+            // SAFETY: the object addGlobalMonitor… returned, removed once.
+            unsafe { objc2_app_kit::NSEvent::removeMonitor(&m) };
+        }
+    }
+
     /// Orders the panel in and makes it key without activating the app.
     /// False when it is not a panel (the caller falls back). Main thread.
     pub fn present<R: tauri::Runtime>(w: &tauri::WebviewWindow<R>) -> bool {
@@ -335,6 +522,8 @@ pub mod panel {
 
 /// Hides the popover and tells its page, which stops asking the daemon.
 pub fn hide<R: Runtime>(app: &AppHandle<R>) {
+    #[cfg(target_os = "macos")]
+    panel::unwatch_clicks();
     if let Some(w) = app.get_webview_window(POPOVER) {
         let _ = w.hide();
         let _ = w.eval("window.dispatchEvent(new Event('caprock:tray-hidden'))");
@@ -345,6 +534,7 @@ pub fn hide<R: Runtime>(app: &AppHandle<R>) {
 /// session when one is named.
 #[tauri::command]
 pub fn tray_open<R: Runtime>(session: Option<String>, app: AppHandle<R>) {
+    peeker(&app).answered();
     hide(&app);
     match session.filter(|s| !s.is_empty()) {
         Some(s) => crate::tray::open_session(&app, &s),
@@ -352,9 +542,15 @@ pub fn tray_open<R: Runtime>(session: Option<String>, app: AppHandle<R>) {
     }
 }
 
-/// From the popover's page: hide it (Escape).
+/// From the popover's page: hide it — Escape, or `answered` after Approve or
+/// Deny in a peek, which starts no quiet minute (peek.rs).
 #[tauri::command]
-pub fn tray_hide<R: Runtime>(app: AppHandle<R>) {
+pub fn tray_hide<R: Runtime>(answered: Option<bool>, app: AppHandle<R>) {
+    if answered == Some(true) {
+        peeker(&app).answered();
+    } else {
+        peeker(&app).dismiss(Instant::now());
+    }
     hide(&app);
 }
 
