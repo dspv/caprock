@@ -11,11 +11,14 @@
  * requests and their board cards, the published releases with their asset
  * counts (the Pipeline answer) and the newest release run
  * (`…/ci/release`). A stage nothing read can say is drawn neutral with
- * *not known* on hover — the site's deploy always is.
+ * *not known* on hover — the site's deploy always is. A tagged version's
+ * release pull request and its CI are done whether or not the pull request
+ * is listed: the tag says it merged.
  *
  * Which release it is:
- * - **a release pull request** (`chore(release): 1.2.3`, `release: v1.2.3`),
- *   open or merged, for a version past every known tag — that version;
+ * - **a release pull request** (`chore(release): 1.2.3`, `release: v1.2.3`,
+ *   or a head branch `chore/release-1.2.3`), open or merged, for a version
+ *   past every known tag — that version;
  * - else **the newest tag while its release run is unfinished, red, or has
  *   published nothing yet** — that tag (`phase` `tagged`): the work merged
  *   since is the release after it;
@@ -87,6 +90,18 @@ const RELEASE_TITLE = /^(?:chore\(release\)|release)!?\s*:?\s*v?(\d+\.\d+\.\d+)\
 /** The version a release pull request's title names: "chore(release): 0.126.0 (#724)" → "0.126.0". */
 export function releasePRVersion(title: string | undefined): string | undefined {
   return title ? RELEASE_TITLE.exec(title.trim())?.[1] : undefined
+}
+
+const RELEASE_BRANCH = /^(?:chore\/)?release[-/]v?(\d+\.\d+\.\d+)$/i
+
+/** The version a release branch names: "chore/release-0.191.0" → "0.191.0", "release/v1.2.3" → "1.2.3". */
+export function releaseBranchVersion(head: string | undefined): string | undefined {
+  return head ? RELEASE_BRANCH.exec(head.trim())?.[1] : undefined
+}
+
+/** A pull request's release version: its title's (`chore(release): 0.191.0`), else its head branch's (`chore/release-0.191.0`). */
+export function releaseVersionOf(p: Pick<BranchPR, 'title' | 'head'>): string | undefined {
+  return releasePRVersion(p.title) ?? releaseBranchVersion(p.head)
 }
 
 /** The bump from one version to the next. */
@@ -224,7 +239,7 @@ export function releaseStatus(input: ReleaseStatusInput): ReleaseStatus {
   const lastLine = (r: BoardRelease | undefined): ReleaseStatus['last'] => r && { tag: r.tag, url: r.url, at: r.published_at, assets: r.assets, prerelease: r.prerelease }
 
   // A release pull request past every tag, open or merged, the newest.
-  const relPRs = prs.filter((p) => p.state !== 'closed' && releasePRVersion(p.title) && (!latest || cmp(releasePRVersion(p.title)!, latest) > 0))
+  const relPRs = prs.filter((p) => p.state !== 'closed' && releaseVersionOf(p) && (!latest || cmp(releaseVersionOf(p)!, latest) > 0))
     .sort((a, b) => b.number - a.number)
   const relPR = relPRs[0]
 
@@ -238,7 +253,7 @@ export function releaseStatus(input: ReleaseStatusInput): ReleaseStatus {
   let why: ReleaseStatus['why']
   if (relPR) {
     phase = 'pre'
-    version = releasePRVersion(relPR.title)
+    version = releaseVersionOf(relPR)
     bump = bumpBetween(latest, version!)
     const tagName = [lastTag?.name, ...releases.map((r) => r.tag)].find((t) => plainVersion(t) === latest) ?? (latest && `v${latest}`)
     why = whyOf(version, bump, tagName, u, `Named by #${relPR.number}’s title. A feature (an Added changelog entry) makes a minor release, fixes alone a patch.`)
@@ -260,7 +275,8 @@ export function releaseStatus(input: ReleaseStatusInput): ReleaseStatus {
   }
 
   // A tag under way: its own release pull request, merged, when listed.
-  const ownPR = relPR ?? (version ? prs.find((p) => p.state === 'merged' && releasePRVersion(p.title) === version) : undefined)
+  // Found by its title or its head branch (`chore/release-0.191.0`).
+  const ownPR = relPR ?? (version ? prs.find((p) => p.state === 'merged' && releaseVersionOf(p) === version) : undefined)
   const stages = stagesOf({ phase, version, relPR: ownPR, cards, merged, u, rel: version ? relOf(version) : undefined, prev: prevOf(version), run: version ? runOf(version) : undefined, tagged: !!version && tags.has(version) })
   const current = stages.find((s) => s.state === 'current')?.key
   const last = lastLine(releases.find((r) => plainVersion(r.tag) !== version || phase === 'pre'))
@@ -307,8 +323,11 @@ export function stagesOf(f: StageFacts): ReleaseStage[] {
         ? { key: 'pr', text: `#${pr.number} draft`, state: 'now', tone: 'muted', title: `Release pull request #${pr.number} is a draft: ${pr.title ?? ''}`.trim() }
         : { key: 'pr', text: `#${pr.number}`, state: 'done', tone: 'ok', title: `Release pull request #${pr.number} is open: ${pr.title ?? ''}`.trim() })
   } else {
+    // Tagged, its release pull request merged (or the tag went out without
+    // one): done, without a number when none listed says it (2026-11-23: a
+    // released 0.191.0 drew its PR step dashed, as not known).
     out.push(past
-      ? { key: 'pr', text: 'release PR', state: 'unknown', tone: 'faint', title: `Not known: no release pull request for ${v} among the pull requests listed.` }
+      ? { key: 'pr', text: 'release PR', state: 'done', tone: 'ok', title: `${v} is tagged, so its release pull request is merged; none of the pull requests listed is it, so its number is not said.` }
       : { key: 'pr', text: 'release PR', state: 'todo', tone: 'faint', title: `No release pull request for ${v} yet (a title like “chore(release): ${f.version ?? 'x.y.z'}”).` })
   }
 
@@ -322,7 +341,7 @@ export function stagesOf(f: StageFacts): ReleaseStage[] {
     else out.push({ key: 'ci', text: 'CI', state: 'unknown', tone: 'faint', title: `Not known: #${pr.number}’s checks were not read.` })
   } else {
     out.push(past
-      ? { key: 'ci', text: 'CI', state: 'unknown', tone: 'faint', title: 'Not known: no release pull request listed to read the checks of.' }
+      ? { key: 'ci', text: 'CI', state: 'done', tone: 'ok', title: `${v} is tagged, so the checks that let its release pull request merge passed.` }
       : { key: 'ci', text: 'CI', state: 'todo', tone: 'faint', title: 'The release pull request’s checks.' })
   }
 

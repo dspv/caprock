@@ -3172,6 +3172,8 @@ export interface SubagentDone {
   /** Unix ms: its first event in the window, and its SubagentStop. */
   started_at: number
   stopped_at: number
+  /** Set when it never sent its SubagentStop and is read as stopped: restart — its parent's process started again; ended — the session ended; quiet — silent 15 min behind an idle parent. stopped_at is then the restart, else its newest event. */
+  ended_by?: 'restart' | 'ended' | 'quiet'
   model?: string
   model_display?: string
   cost_usd?: number
@@ -3225,6 +3227,8 @@ export interface SubagentDetail {
   parent_tool_use_id?: string
   background?: boolean
   state: 'working' | 'finished' | 'quiet'
+  /** With state quiet: read as stopped though heard from lately, and why (as SubagentDone's `ended_by`). */
+  ended_by?: 'restart' | 'ended' | 'quiet'
   asking: boolean
   started_at: number
   last_at: number

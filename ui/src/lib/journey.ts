@@ -314,3 +314,20 @@ export function openFlightLead(f: Flight): PipelineRow | undefined {
   const lead = flightLead(f)
   return lead && OPEN_STAGES.has(stageOf(lead)) ? lead : undefined
 }
+
+/**
+ * The newest open pull request in flight whose checks failed (its board
+ * card says `ci` fail), other than `skip`: the folded CI line's when the
+ * session's own is not failing, so *Fix CI* is in reach whichever session
+ * opened it (owner, 2026-11-23: #1042 failed, opened from a subagent's
+ * branch, and no Fix CI showed). Another repository's never counts.
+ */
+export function failingFlightLead(f: Flight, skip?: number): PipelineRow | undefined {
+  return f.rows.filter((r) => !r.foreign && r.number !== skip && OPEN_STAGES.has(stageOf(r)) && r.card?.ci === 'fail')
+    .reduce<PipelineRow | undefined>((best, r) => (!best || (r.created_at ?? 0) > (best.created_at ?? 0) ? r : best), undefined)
+}
+
+/** Whether a listed pull request is open with a real failure, as its board card says: the rows that offer *Fix CI* once its checks are read. */
+export function failsCI(r: PipelineRow): boolean {
+  return !r.foreign && OPEN_STAGES.has(stageOf(r)) && r.card?.ci === 'fail'
+}

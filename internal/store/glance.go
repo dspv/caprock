@@ -213,24 +213,33 @@ func TokensByModel(ctx context.Context, q Querier, from int64) ([]ModelTokens, e
 const LiveSubagentWindow = 30 * time.Minute
 
 // LiveSubagents counts the subagents working in a session now: each agent id
-// heard from since `since` whose latest event is not its SubagentStop.
+// heard from since `since` (now - LiveSubagentWindow, at every caller) whose
+// latest event is not its SubagentStop and that SubagentBounds does not read
+// as stopped.
 //
 // Claude Code sends no event when a subagent starts, only hooks from inside it
 // (they carry its agent_id) and a SubagentStop when it finishes. So a subagent
 // is live from its first event until its stop, and `since` bounds how long a
 // silent one is believed: one whose stop never arrived must not count forever.
+// Sooner than that, one whose parent's process started again since, whose
+// session ended, or that went quiet behind an idle parent is not counted
+// (SubagentBounds): its SubagentStop will never come.
 func LiveSubagents(ctx context.Context, q Querier, sessionID string, since int64) (int, error) {
-	var n int
-	err := q.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM (
-		  SELECT agent_id,
-		         MAX(ts) AS last,
-		         MAX(CASE WHEN kind = 'agent.stop' THEN ts ELSE 0 END) AS stopped
-		  FROM events
-		  WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND ts >= ? AND agent_id IS NOT NULL AND agent_id <> ''
-		  GROUP BY agent_id
-		) WHERE stopped < last`, sessionID, since).Scan(&n)
-	return n, err
+	groups, err := readSubagentGroups(ctx, q, sessionID, since, ``)
+	if err != nil {
+		return 0, err
+	}
+	b, err := boundsIfOpen(ctx, q, sessionID, groups, since, liveNow(since))
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, g := range groups {
+		if g.stopped < g.last && b.Lost(g.last, g.pending) == "" {
+			n++
+		}
+	}
+	return n, nil
 }
 
 // FirstEventTs is when the first event was recorded (unix ms), or 0 with

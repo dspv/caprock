@@ -355,6 +355,33 @@ describe('the agent cockpit', () => {
     }
   })
 
+  // Owner, 2026-11-23: one subagent stayed "working" after the lead's
+  // process restarted; the daemon now lists it stopped, saying why.
+  it('marks a subagent stopped by a restart grey, saying why, not a green finish', async () => {
+    h.subagents = {
+      working: [{ agent_id: 'w1', agent_type: 'Explore', tool_calls: 1, started_at: now - 9_000, last_at: now - 2_000, tool: 'Read', detail: 'a.go', tool_at: now - 4_000, running: false, asking: false }],
+      finished: 1,
+      recent: [{ agent_id: 'r1', agent_type: 'general-purpose', description: 'Fix the tiles', tool_calls: 3, started_at: now - 900_000, stopped_at: now - 600_000, ended_by: 'restart' }],
+    }
+    try {
+      show(agent({ live_subagents: 1 }))
+      const section = await nowTree()
+      const done = within(section).queryByRole('button', { name: /1 done/ })
+      if (done) fireEvent.click(done)
+      const row = await waitFor(() => {
+        const r = section.querySelector('[data-subagent="r1"]')
+        if (!r) throw new Error('no row')
+        return r
+      })
+      const mark = row.querySelector('[data-ended-by="restart"]')!
+      expect(mark).toHaveTextContent('stopped')
+      expect(mark).toHaveAttribute('title', 'stopped when the session restarted')
+      expect(within(row as HTMLElement).queryByLabelText('finished')).toBeNull()
+    } finally {
+      h.subagents = { working: [], finished: 0 }
+    }
+  })
+
   // "Maybe a switch for what to see?" (owner, 2026-10-14, translated).
   it('lets the viewer pick what each subagent row shows, and remembers it', async () => {
     h.subagents = {

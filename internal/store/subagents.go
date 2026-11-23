@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"sort"
 	"strings"
 )
 
@@ -39,49 +40,89 @@ type SubagentActivity struct {
 	// Asking is true when its newest event is a permission prompt: a
 	// subagent waiting on a dialog records nothing else.
 	Asking bool
+	// Lost, for one listed as stopped that never sent its SubagentStop, is
+	// why it is read as stopped (SubagentBounds.Lost): "restart", "ended" or
+	// "quiet"; StoppedAt is then the restart, else its newest event.
+	Lost string
 }
 
-// SubagentsNow returns the subagents working in a session — each agent id
-// heard from since `since` whose newest event is not its SubagentStop, the
-// rule LiveSubagents counts by — newest activity first, and how many stopped
-// within the window after making at least one tool call. Claude Code also
-// fires SubagentStop for small internal agents that run no tools; they are
-// not counted.
-func SubagentsNow(ctx context.Context, q Querier, sessionID string, since int64) ([]SubagentActivity, int, error) {
-	rows, err := q.QueryContext(ctx, `
+// subagentGroups is a session's subagents heard from since `since`, one row
+// each: first and newest event, newest SubagentStop, calls, and whether
+// the newest event is a call with no result yet.
+const subagentGroups = `
 		SELECT agent_id, MIN(ts), MAX(ts),
 		       MAX(CASE WHEN kind = 'agent.stop' THEN ts ELSE 0 END),
-		       SUM(kind = 'tool.pre')
+		       SUM(kind = 'tool.pre'),
+		       MAX(CASE WHEN kind = 'tool.pre' THEN ts ELSE 0 END) >= MAX(ts)
 		  FROM events
 		 WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND ts >= ? AND agent_id IS NOT NULL AND agent_id <> ''
-		 GROUP BY agent_id
-		 ORDER BY MAX(ts) DESC`, sessionID, since)
+		 GROUP BY agent_id`
+
+// subagentGroup is one row of subagentGroups.
+type subagentGroup struct {
+	id                   string
+	first, last, stopped int64
+	calls                int
+	pending              bool
+}
+
+func readSubagentGroups(ctx context.Context, q Querier, sessionID string, since int64, order string) ([]subagentGroup, error) {
+	rows, err := q.QueryContext(ctx, subagentGroups+order, sessionID, since)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []subagentGroup
+	for rows.Next() {
+		var g subagentGroup
+		if err := rows.Scan(&g.id, &g.first, &g.last, &g.stopped, &g.calls, &g.pending); err != nil {
+			return nil, err
+		}
+		out = append(out, g)
+	}
+	return out, rows.Err()
+}
+
+// boundsIfOpen reads the session's SubagentBounds only when some group has
+// no SubagentStop after its newest event: the common case asks nothing more.
+func boundsIfOpen(ctx context.Context, q Querier, sessionID string, groups []subagentGroup, since, now int64) (SubagentBounds, error) {
+	for _, g := range groups {
+		if g.stopped < g.last {
+			return SubagentBoundsOf(ctx, q, sessionID, since, now)
+		}
+	}
+	return SubagentBounds{}, nil
+}
+
+// liveNow is the moment a caller's `since` was counted back from: every
+// caller passes now - LiveSubagentWindow.
+func liveNow(since int64) int64 { return since + LiveSubagentWindow.Milliseconds() }
+
+// SubagentsNow returns the subagents working in a session — each agent id
+// heard from since `since` (now - LiveSubagentWindow) whose newest event is
+// not its SubagentStop and that SubagentBounds does not read as stopped, the
+// rule LiveSubagents counts by — newest activity first, and how many stopped
+// within the window after making at least one tool call, the lost ones
+// among them. Claude Code also fires SubagentStop for small internal agents
+// that run no tools; they are not counted.
+func SubagentsNow(ctx context.Context, q Querier, sessionID string, since int64) ([]SubagentActivity, int, error) {
+	groups, err := readSubagentGroups(ctx, q, sessionID, since, ` ORDER BY MAX(ts) DESC`)
+	if err != nil {
+		return nil, 0, err
+	}
+	b, err := boundsIfOpen(ctx, q, sessionID, groups, since, liveNow(since))
 	if err != nil {
 		return nil, 0, err
 	}
 	var working []SubagentActivity
 	finished := 0
-	for rows.Next() {
-		var a SubagentActivity
-		var stopped int64
-		var calls int
-		if err := rows.Scan(&a.AgentID, &a.StartedAt, &a.LastAt, &stopped, &calls); err != nil {
-			_ = rows.Close()
-			return nil, 0, err
-		}
+	for _, g := range groups {
 		switch {
-		case stopped < a.LastAt:
-			working = append(working, a)
-		case calls > 0:
+		case g.stopped < g.last && b.Lost(g.last, g.pending) == "":
+			working = append(working, SubagentActivity{AgentID: g.id, StartedAt: g.first, LastAt: g.last})
+		case g.calls > 0:
 			finished++
 		}
-	}
-	if err := rows.Err(); err != nil {
-		_ = rows.Close()
-		return nil, 0, err
-	}
-	if err := rows.Close(); err != nil {
-		return nil, 0, err
 	}
 	if len(working) > maxSubagentsShown {
 		working = working[:maxSubagentsShown]
@@ -281,38 +322,37 @@ func fillSubagent(ctx context.Context, q Querier, sessionID string, a *SubagentA
 }
 
 // SubagentsDone returns up to limit subagents of a session that stopped
-// since `since` after making at least one tool call, newest stop first: the
-// ones SubagentsNow counts as finished. StoppedAt is their SubagentStop.
+// since `since` (now - LiveSubagentWindow) after making at least one tool
+// call, newest stop first: the ones SubagentsNow counts as finished.
+// StoppedAt is their SubagentStop; for one SubagentBounds reads as stopped
+// without one, Lost says why and StoppedAt is the restart, else its newest
+// event.
 func SubagentsDone(ctx context.Context, q Querier, sessionID string, since int64, limit int) ([]SubagentActivity, error) {
-	rows, err := q.QueryContext(ctx, `
-		SELECT agent_id, MIN(ts), MAX(ts),
-		       MAX(CASE WHEN kind = 'agent.stop' THEN ts ELSE 0 END) AS stopped,
-		       SUM(kind = 'tool.pre') AS calls
-		  FROM events
-		 WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND ts >= ? AND agent_id IS NOT NULL AND agent_id <> ''
-		 GROUP BY agent_id
-		HAVING stopped >= MAX(ts) AND calls > 0
-		 ORDER BY stopped DESC
-		 LIMIT ?`, sessionID, since, limit)
+	groups, err := readSubagentGroups(ctx, q, sessionID, since, ``)
+	if err != nil {
+		return nil, err
+	}
+	b, err := boundsIfOpen(ctx, q, sessionID, groups, since, liveNow(since))
 	if err != nil {
 		return nil, err
 	}
 	var done []SubagentActivity
-	for rows.Next() {
-		var a SubagentActivity
-		var calls int
-		if err := rows.Scan(&a.AgentID, &a.StartedAt, &a.LastAt, &a.StoppedAt, &calls); err != nil {
-			_ = rows.Close()
-			return nil, err
+	for _, g := range groups {
+		if g.calls == 0 {
+			continue
+		}
+		a := SubagentActivity{AgentID: g.id, StartedAt: g.first, LastAt: g.last, StoppedAt: g.stopped}
+		if g.stopped < g.last {
+			if a.Lost = b.Lost(g.last, g.pending); a.Lost == "" {
+				continue
+			}
+			a.StoppedAt = b.StoppedAt(a.Lost, g.last)
 		}
 		done = append(done, a)
 	}
-	if err := rows.Err(); err != nil {
-		_ = rows.Close()
-		return nil, err
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
+	sort.SliceStable(done, func(i, j int) bool { return done[i].StoppedAt > done[j].StoppedAt })
+	if len(done) > limit {
+		done = done[:max(limit, 0)]
 	}
 	if len(done) == 0 {
 		return nil, nil
@@ -422,42 +462,32 @@ type SubagentSpan struct {
 // covering index. Claude Code sends no event when a subagent starts: its
 // first event read is its start.
 func SubagentSpans(ctx context.Context, q Querier, sessionID string, since, liveSince, now int64) ([]SubagentSpan, error) {
-	rows, err := q.QueryContext(ctx, `
-		SELECT agent_id, MIN(ts), MAX(ts),
-		       MAX(CASE WHEN kind = 'agent.stop' THEN ts ELSE 0 END),
-		       SUM(kind = 'tool.pre')
-		  FROM events
-		 WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND ts >= ? AND agent_id IS NOT NULL AND agent_id <> ''
-		 GROUP BY agent_id`, sessionID, since)
+	groups, err := readSubagentGroups(ctx, q, sessionID, since, ``)
+	if err != nil {
+		return nil, err
+	}
+	b, err := boundsIfOpen(ctx, q, sessionID, groups, liveSince, now)
 	if err != nil {
 		return nil, err
 	}
 	var spans []SubagentSpan
-	for rows.Next() {
-		var sp SubagentSpan
-		var last, stopped int64
-		var calls int
-		if err := rows.Scan(&sp.AgentID, &sp.From, &last, &stopped, &calls); err != nil {
-			_ = rows.Close()
-			return nil, err
-		}
+	for _, g := range groups {
+		sp := SubagentSpan{AgentID: g.id, From: g.first}
 		switch {
-		case stopped >= last && calls == 0:
+		case g.stopped >= g.last && g.calls == 0:
 			continue
-		case stopped >= last:
-			sp.To = stopped
-		case last >= liveSince:
-			sp.To = max(now, last)
+		case g.stopped >= g.last:
+			sp.To = g.stopped
+		case g.last >= liveSince && b.Lost(g.last, g.pending) == "":
+			sp.To = max(now, g.last)
 		default:
-			sp.To = last
+			// Gone quiet past the window, or read as stopped without its
+			// SubagentStop: its span ends at its newest event.
+			sp.To = g.last
 		}
 		spans = append(spans, sp)
 	}
-	if err := rows.Err(); err != nil {
-		_ = rows.Close()
-		return nil, err
-	}
-	return spans, rows.Close()
+	return spans, nil
 }
 
 // SubagentCounts is how many of the spans were working in each of n steps of

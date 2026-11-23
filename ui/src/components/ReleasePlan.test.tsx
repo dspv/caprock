@@ -456,7 +456,15 @@ describe('where it is drawn', () => {
     expect(row.querySelector('[data-release-title]')).toHaveClass('truncate')
     expect(row.querySelector('[data-release-number]')).toHaveTextContent('#633')
     const sq = [...row.querySelectorAll('[data-os]')]
-    expect(sq.map((s) => `${s.textContent}:${s.getAttribute('data-os-state')}`)).toEqual(['M:fail', 'W:running', 'L:pass'])
+    // Each tile is the OS's glyph, not a letter (owner, 2026-11-23, variant
+    // A1): the tile neutral, the glyph in the state's colour.
+    expect(sq.map((s) => `${s.querySelector('[data-os-glyph]')!.getAttribute('data-os-glyph')}:${s.getAttribute('data-os-state')}`)).toEqual(['macos:fail', 'windows:running', 'linux:pass'])
+    expect(sq.map((s) => s.textContent)).toEqual(['', '', ''])
+    expect(sq[0]).toHaveClass('size-[15px]', 'border-[var(--app-hairline)]', 'text-danger')
+    expect(sq[0]!.className).not.toMatch(/\bbg-/)
+    expect(sq[1]).toHaveClass('text-warn')
+    expect(sq[2]).toHaveClass('text-ok')
+    expect(sq[0]!.querySelector('svg')).toHaveAttribute('aria-hidden')
     expect(sq[0]).toHaveAttribute('title', 'macOS: failed: go (macos-14)')
     expect(row.querySelector('[data-release-os]')!.getAttribute('aria-label')).toMatch(/^CI: macOS: failed: go \(macos-14\); Windows: running 1m: e2e \(windows-latest\); Linux: passed \(3 checks\)$/)
     // The squares say the CI state: no state word beside them.

@@ -27,7 +27,7 @@
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { api, errText, type CIJob, type CIRun, type SessionCI, type SessionCIStats, type SessionPRLive, type SessionPRs, type SessionRepoCI, type SessionSummary, type SpawnRequest } from '@/lib/api'
-import { ciActive, ciTone, fmtRun, investigateMessage, jobVsMedian, keyStep, prReviewText, prVerdict, repoShort, type CITone } from '@/lib/ci'
+import { ciActive, ciTone, fmtRun, investigateMessage, keepStats, jobVsMedian, keyStep, prReviewText, prVerdict, repoShort, type CITone } from '@/lib/ci'
 import { hasConflict, isBehind, topChip, type DeckWorktree } from '@/lib/prforce'
 import { FORCE_LABEL, FORCE_TITLE, usePRForce, type ForceKind } from '@/lib/usePRForce'
 import { GRID_OS_LABEL, SCOPE_LABEL, jobGrid, spanText, tabRows, vsMedianText, type TabPR, type TabScope } from '@/lib/prstats'
@@ -82,10 +82,8 @@ function readScope(): TabScope {
   } catch { return 'repo' }
 }
 
-/** A refused read with nothing in it (a daemon just started, GitHub down)
- *  never replaces a list that had pull requests: it stays, said to be not
- *  refreshed. */
-export const keepStats = (prev: SessionCIStats, next: SessionCIStats) => !!next.error && (next.prs?.length ?? 0) === 0 && (prev.prs?.length ?? 0) > 0
+/** A refused read with nothing in it never replaces a list that had pull requests (lib/ci keepStats). */
+export { keepStats }
 
 /** The repository a session's kept answers are filed under. */
 const relScopeOf = (s: Pick<SessionSummary, 'repo_root' | 'cwd'> | undefined, sessionId: string) => s?.repo_root || s?.cwd || sessionId
