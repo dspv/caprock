@@ -86,6 +86,9 @@ export function versus(m: Metric, f: SpendFigures, u: Usual | undefined): Versus
   // A cost or burn rate with unpriced turns left out is a lower bound: set
   // against the usual it could read as "below" when it is not.
   if ((m === 'cost' || m === 'burn') && (f.unpriced ?? 0) > 0) return undefined
+  // A figure the agent does not record (a cursor-agent chat's cost) has
+  // nothing to set against the usual.
+  if (m === 'cost' && f.gaps?.cost) return undefined
   const now = m === 'burn' ? f.burn?.perHour : m === 'cost' ? f.cost : m === 'tokens' ? f.tokens : undefined
   const dist = m === 'burn' ? u.burn : m === 'cost' ? u.cost : m === 'tokens' ? u.tokens : undefined
   if (now === undefined || !dist || dist.q.length !== 11 || dist.n < (MIN_SAMPLES[m] ?? Infinity)) return undefined

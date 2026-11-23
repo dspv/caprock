@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { costNote, metricTitle, spendFigures, getSpendPick, periodChip, resetSpendPrefsForTest, setSpendScope, setSpendWindow, shownPick, spendLabel, windowFigures, windowStart, WHOLE_SESSION, barCarries, barValue, burnRate, chartTotal, chartValueText, foldedFigures, periodBurn, metricValue, migrateSpendPrefs, normalizeHero, normalizeSlots, normalizeSpendPrefs, rangeFigures, pickHero, pickSlot, shownSlots, type SpendBar, type SpendFigures } from './spendview'
+import { chartNote, costNote, costText, metricGap, metricTitle, withGaps, spendFigures, getSpendPick, periodChip, resetSpendPrefsForTest, setSpendScope, setSpendWindow, shownPick, spendLabel, windowFigures, windowStart, WHOLE_SESSION, barCarries, barValue, burnRate, chartTotal, chartValueText, foldedFigures, periodBurn, metricValue, migrateSpendPrefs, normalizeHero, normalizeSlots, normalizeSpendPrefs, rangeFigures, pickHero, pickSlot, shownSlots, type SpendBar, type SpendFigures } from './spendview'
 import type { CallPoint } from './scrub'
 import type { SessionSummary, Summary } from './api'
 
@@ -334,5 +334,52 @@ describe('a cost with unpriced turns', () => {
   it('counts a period’s unpriced turns from its summary', () => {
     const sum = { tokens_in: 0, cache_read: 0, cache_write: 0, cost_usd: 4, turns: 3, tool_calls: 0, projects: [], unpriced: { turns: 2, tokens: 9, models: ['deepseek-v9'] } } as unknown as Summary
     expect(metricValue('cost', rangeFigures(sum))).toBe('$4.00+')
+  })
+})
+
+// A cursor-agent chat: its hooks carry no tokens and no cost, and the
+// inspector read "0 tok · $0.00" (2026-11-23). A figure the agent does not
+// record is a dash with its sentence, in every view of the session.
+describe('figures the agent does not record', () => {
+  const TOK = "Cursor doesn't record token counts for this chat"
+  const COST = "Cursor doesn't record a cost for this chat"
+  const cli = {
+    session_id: 's', agent: 'cursor', started_at: 1_000, last_event_at: 9 * 60_000,
+    stats: { session_id: 's', turns: 2, tool_calls: 3, files_touched: 0, tokens_in: 0, tokens_out: 0, cache_read: 0, cache_write: 0, cost_usd: 0 },
+    gaps: { tokens: TOK, cost: COST, cache: "Cursor doesn't record cache reads or writes" },
+  } as unknown as SessionSummary
+  const calls = [call(1, 2 * 60_000, 0), call(2, 8 * 60_000, 0)]
+
+  it('draws a dash for tokens, cost, burn, cache and the last call, never a zero', () => {
+    const f = spendFigures(cli, calls)
+    expect(f.tokens).toBeUndefined()
+    expect(f.burn).toBeUndefined()
+    for (const m of ['tokens', 'cost', 'burn', 'cache', 'last'] as const) expect(metricValue(m, f)).toBe('—')
+    expect(metricValue('turns', f)).toBe('2')
+    expect(costText(f)).toBe('—')
+    expect(metricTitle('cost', f)).toBe(COST)
+    expect(metricTitle('burn', f)).toBe(COST)
+    expect(metricTitle('tokens', f)).toBe(TOK)
+    expect(metricGap('turns', f)).toBeUndefined()
+    expect(costNote(f)).toEqual({ state: 'unknown', short: `${COST}.`, title: COST })
+    // The chart: no total, the sentence in its place, for every metric it does not record.
+    const pf = withGaps({ ...f, activeBurn: 0, series: { step: 60_000, bars: [] } }, cli.gaps)
+    expect(chartTotal('cost', pf)).toBeUndefined()
+    expect(chartTotal('burn', pf)).toBeUndefined()
+    expect(chartTotal('tokens', pf)).toBeUndefined()
+    expect(chartTotal('turns', pf)).toBe(2)
+    expect(chartNote('tokens', pf)).toEqual({ state: 'unknown', short: `${TOK}.`, title: TOK })
+    expect(chartNote('turns', pf)).toBeUndefined()
+    // Folded, the strip leaves the dashes out.
+    expect(foldedFigures('cost', pf).map((x) => x.id)).toEqual(['turns', 'time'])
+  })
+
+  it('leaves a priced session alone', () => {
+    const priced = { ...cli, gaps: { cache: "Cursor doesn't record cache reads or writes" }, stats: { ...cli.stats!, tokens_in: 40, cost_usd: 0.42 } } as SessionSummary
+    const f = spendFigures(priced, [call(1, 2 * 60_000, 0.2), call(2, 8 * 60_000, 0.22)])
+    expect(costText(f)).toBe('$0.42')
+    expect(f.burn).toBeDefined()
+    expect(metricValue('tokens', f)).not.toBe('—')
+    expect(metricValue('cache', f)).toBe('—')
   })
 })

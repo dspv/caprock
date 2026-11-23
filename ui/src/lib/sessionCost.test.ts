@@ -32,6 +32,12 @@ describe('a session cost the agent keeps no record of', () => {
     // A priced sum stays a priced sum.
     expect(sessionCost({ cost_usd: 2, unpriced_turns: 1 }, 'm', 'gap').state).toBe('partial')
   })
+
+  it('names it on a cursor-agent chat, which has no unpriced turn to count', () => {
+    // Its hooks carry no tokens, so no turn is "unpriced": it read $0.00.
+    const c = sessionCost({ cost_usd: 0, unpriced_turns: 0 }, 'composer-2.5', "Cursor doesn't record a cost for this chat")
+    expect(c).toMatchObject({ state: 'unknown', value: '—', title: "Cursor doesn't record a cost for this chat" })
+  })
 })
 
 describe('the cumulative cost caption', () => {

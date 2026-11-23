@@ -257,7 +257,15 @@ Cursor's own figure, never the table's.
   `gpt-5`, `o3`, `gpt-4.1`) already resolves to a table row through
   `modelclass.Family`; none was a missing price.
 - The CLI's hooks carry no tokens and no cost, so a CLI chat shows turns and
-  tools and no spend. The UI says so on the session.
+  tools and no spend. Its replies are `cost_basis: "none"` with no tokens,
+  so none counts as an unpriced turn; the session's `gaps` name both
+  `tokens` and `cost` whenever a Cursor session has no tokens and no cost
+  (`agentcat.Gaps`). Every figure of it the UI would draw — the Session
+  screen's tiles, the Now card, the inspector's headline, lines, menus,
+  Numbers and chart, the Live screen's rows — reads **—** with *Cursor
+  doesn't record token counts for this chat* or *Cursor doesn't record a
+  cost for this chat*, never *0 tok* or *$0.00* (a user's report,
+  2026-11-23).
 - `pricing.json` has `cursor-composer-2.5` and `cursor-composer-2.5-fast`
   (cursor.com/docs/models, read 2026-11-16), the Grok 4.7, 4.6 and 4.5 rows
   (`cursor-grok-*`, with Fast and 500k variants) and `cursor-muse-wonder`

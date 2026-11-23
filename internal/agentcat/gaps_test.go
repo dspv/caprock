@@ -25,17 +25,36 @@ func TestGapsAreOneSentenceForEveryAgent(t *testing.T) {
 			}
 		}
 	}
-	// A cursor-agent chat seen through hooks has no tokens; an editor chat
-	// Cursor recorded no cost for says so instead of "price unknown".
+	// A cursor-agent chat seen through hooks has no tokens and no cost, and
+	// no unpriced turn either (no reply carries tokens): both are gaps, so
+	// the inspector never reads "0 tok · $0.00" as free.
 	g := Gaps("cursor", SessionFacts{})
 	if g[GapTokens] != "Cursor doesn't record token counts for this chat" {
 		t.Errorf("tokens gap = %q", g[GapTokens])
 	}
-	if _, ok := g[GapCost]; ok {
-		t.Errorf("a chat with no turns priced or unpriced has a cost gap")
+	if g[GapCost] != "Cursor doesn't record a cost for this chat" {
+		t.Errorf("cli chat cost gap = %q", g[GapCost])
 	}
+	// An editor chat Cursor recorded no cost for says so instead of "price unknown".
 	g = Gaps("cursor", SessionFacts{Tokens: 30, UnpricedTurns: 2})
 	if g[GapCost] != "Cursor doesn't record a cost for this chat" {
 		t.Errorf("cost gap = %q", g[GapCost])
+	}
+	if _, ok := g[GapTokens]; ok {
+		t.Errorf("an editor chat with tokens has a tokens gap")
+	}
+	// An editor chat with usageData is priced: no cost gap, no tokens gap.
+	g = Gaps("cursor", SessionFacts{Tokens: 30, CostUSD: 0.42})
+	if _, ok := g[GapCost]; ok {
+		t.Errorf("a priced editor chat has a cost gap")
+	}
+	// Tokens, every turn priced, and a cost of 0 (no unpriced turn): not a gap.
+	g = Gaps("cursor", SessionFacts{Tokens: 30})
+	if _, ok := g[GapCost]; ok {
+		t.Errorf("a chat with tokens and no unpriced turn has a cost gap")
+	}
+	// Other agents never get a cost gap from having nothing yet.
+	if g := Gaps("claude", SessionFacts{}); g != nil {
+		t.Errorf("an empty claude session has gaps %v", g)
 	}
 }

@@ -30,7 +30,7 @@ import { WINDOW_MS, pace } from '@/lib/pace'
 import { SessionChart, SpendBars, SpendChart, useSessionBars } from './SpendScrub'
 import { callsFromEvents } from '@/lib/scrub'
 import { everyWhileVisible } from '@/lib/visible'
-import { CHART_METRICS, HEADLINES, costNote, costText, METRICS, SCOPE_NAMES, SPEND_SCOPES, WINDOW_NAMES, chartTotal, chartValueText, foldedFigures, isWholeSession, metricTitle, metricValue, periodChip, pickHero, pickSlot, rangeFigures, setSpendPrefs, setSpendScope, setSpendWindow, shownPick, shownSlots, spendFigures, spendLabel, useSpendPick, useSpendPrefs, windowFigures, windowPhrase, windowStart, windowsFor, type ChartMetric, type Metric, type PeriodFigures, type RangeWindow, type SpendBar, type SpendFigures, type SpendPick, type SpendScope, type SpendView } from '@/lib/spendview'
+import { CHART_METRICS, HEADLINES, chartNote, costText, METRICS, SCOPE_NAMES, SPEND_SCOPES, WINDOW_NAMES, chartTotal, chartValueText, foldedFigures, isWholeSession, metricTitle, metricValue, periodChip, pickHero, pickSlot, rangeFigures, setSpendPrefs, setSpendScope, setSpendWindow, shownPick, shownSlots, spendFigures, spendLabel, useSpendPick, useSpendPrefs, windowFigures, windowPhrase, windowStart, windowsFor, withGaps, type ChartMetric, type Metric, type PeriodFigures, type RangeWindow, type SpendBar, type SpendFigures, type SpendPick, type SpendScope, type SpendView } from '@/lib/spendview'
 import { UsualDelta } from './HeroUsual'
 import { paceOf, versus, type Usual } from '@/lib/usual'
 import { agentName } from './Characters'
@@ -838,12 +838,14 @@ function Spend({ s, sessionId, events, now, figures, summary }: { s: SessionSumm
   const own = useSessionBars(sessionId, events, chartBy, pick.scope === 'session' && (folded || view === 'chart' || !!part), win)
   if (!s.stats) return null
   const label = spendLabel(pick)
+  // A figure the session's agent does not record stays a dash in every
+  // window of it (withGaps), never a zero summed from calls that carry none.
   const pf: PeriodFigures = whole
-    ? { ...figures, series: { step: own.step, bars: own.bars }, activeBurn: own.burn }
+    ? withGaps({ ...figures, series: { step: own.step, bars: own.bars }, activeBurn: own.burn }, s.gaps)
     : part && win
       // The calls do not say which window an unpriced turn fell in: a session
       // with any marks every window's cost a lower bound (rule 6).
-      ? { ...windowFigures(own.calls, win.from, win.to), series: { step: own.step, bars: own.bars }, ...(figures.unpriced ? { unpriced: figures.unpriced, unpricedModels: figures.unpricedModels } : {}) }
+      ? withGaps({ ...windowFigures(own.calls, win.from, win.to), series: { step: own.step, bars: own.bars }, ...(figures.unpriced ? { unpriced: figures.unpriced, unpricedModels: figures.unpricedModels } : {}) }, s.gaps)
       : rangeFigures(range)
   // The usual is the last 30 days whatever the period; today's summary carries it.
   const usual = range?.usual ?? summary?.usual
@@ -851,8 +853,9 @@ function Spend({ s, sessionId, events, now, figures, summary }: { s: SessionSumm
   const whose = <WhoseMenu pick={pick} label={label} onPick={(x) => setSpendScope(sessionId, x)} />
   // Whose, on a line of its own where no chart top line carries it.
   const whoseLine = <div data-spend-whose-line className="flex h-[18px] min-w-0 items-baseline text-[11px] leading-[18px]">{whose}</div>
-  // Turns with no price: the cost total says partial, or unknown, never $0.00.
-  const cost = chartBy === 'cost' ? costNote(pf) : undefined
+  // Turns with no price: the cost total says partial, or unknown, never
+  // $0.00; a figure the agent does not record says so, for any metric.
+  const cost = chartNote(chartBy, pf)
   // A window of the session before its calls are read, or with none in it: a sentence, not zeros.
   const partNote = part && !own.loaded
     ? 'Reading this session’s calls…'

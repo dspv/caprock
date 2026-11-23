@@ -86,8 +86,12 @@ func Gaps(agent string, f SessionFacts) map[string]string {
 			out[GapTokens] = DoesntRecord(label, "token counts for this chat")
 		}
 		// Cursor keeps a cost for some chats only (usageData), and the
-		// pricing table is never applied to Cursor's turns.
-		if f.CostUSD <= 0 && f.UnpricedTurns > 0 {
+		// pricing table is never applied to Cursor's turns: an editor chat
+		// with tokens and no usageData has unpriced turns, and a
+		// cursor-agent chat has neither tokens nor a cost (its replies are
+		// cost_basis "none", so none counts as unpriced). Either way the
+		// cost is Cursor's missing figure, never $0.00.
+		if f.CostUSD <= 0 && (f.UnpricedTurns > 0 || f.Tokens == 0) {
 			out[GapCost] = DoesntRecord(label, "a cost for this chat")
 		}
 	}

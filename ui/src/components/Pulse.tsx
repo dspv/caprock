@@ -33,6 +33,7 @@ import { href, navigate } from '@/lib/router'
 import { showsAgentMark } from '@/components/Projects'
 import { AgentGlyph } from '@/components/AgentMarks'
 import { sessionTitle } from '@/lib/sidebar'
+import { costGap } from '@/lib/sessionCost'
 import { loadPulseOrder, pulseOrder, savePulseOrder, tabSessionOrder } from '@/lib/pulseOrder'
 import { moveKey } from '@/lib/rowOrder'
 import { isMacPlatform } from '@/lib/appmode'
@@ -204,7 +205,7 @@ export function PulsePanel({ sessions, now }: { sessions: SessionSummary[]; now:
         toText={(alias) => rows.length === 0 ? `Nothing ran in the last ${PULSE_MINUTES} minutes.` : `Last ${PULSE_MINUTES} minutes.\n\n${mdTable(
           ['Session', 'Project', 'Branch', 'Turns and tools', `Cost · ${PULSE_MINUTES} min`],
           rows.map(({ s, pulse }) => [alias('session', sessionTitle(s)), alias('project', labels.get(s.session_id) || s.project || 'unknown project'),
-            branchLabel(s.git_branch) ? alias('branch', branchLabel(s.git_branch)) : '–', windowEvents(pulse), fmtUSD(windowCost(pulse))]),
+            branchLabel(s.git_branch) ? alias('branch', branchLabel(s.git_branch)) : '–', windowEvents(pulse), costGap(s) ? '—' : fmtUSD(windowCost(pulse))]),
         )}`} />
       <div>
         {rows.length === 0 ? (
@@ -487,9 +488,10 @@ function Track({
         <div
           data-pulse-cost
           className="num text-[13px] font-semibold text-right tabular-nums whitespace-nowrap"
-          title={`${fmtUSD(s.stats?.cost_usd)} for the whole session`}
+          title={costGap(s) ?? `${fmtUSD(s.stats?.cost_usd)} for the whole session`}
         >
-          {fmtUSD(windowCost(pulse))}
+          {/* An agent that keeps no cost (a cursor-agent chat) is a dash, never $0.00. */}
+          {costGap(s) ? '—' : fmtUSD(windowCost(pulse))}
         </div>
         <WorkingNow s={s} state={state} repeatSample={pulse.repeatSample} />
       </div>
@@ -661,8 +663,8 @@ function LiveSession({ x, now, hourCost }: { x: SessionSummary; now: number; hou
       </div>
       <div className="min-w-0 pl-[30px] sm:pl-0 sm:text-right text-[11.5px] text-fg-muted" data-pulse-facts={x.session_id}>
         <div className="num whitespace-nowrap">
-          <span className="text-fg" title="What this session has cost so far">{fmtUSD(x.stats?.cost_usd)}</span>
-          {hourCost !== undefined && <span title="What it cost in the last hour"> · {fmtUSD(hourCost)}/h</span>}
+          <span className="text-fg" title={costGap(x) ?? 'What this session has cost so far'}>{costGap(x) ? '—' : fmtUSD(x.stats?.cost_usd)}</span>
+          {hourCost !== undefined && !costGap(x) && <span title="What it cost in the last hour"> · {fmtUSD(hourCost)}/h</span>}
           <span title={`Started ${fmtAgo(x.started_at, now)}`}> · {fmtRunning(now - x.started_at)}</span>
           {ctx && (
             <span className={ctx.pct >= 85 ? 'text-warn' : ''} title={ctx.window > 0 ? `${fmtTokens(ctx.tokens)} of ${fmtTokens(ctx.window)} context` : `${fmtPct(ctx.pct)} of the context window used`}> · ctx {fmtPct(ctx.pct)}</span>
