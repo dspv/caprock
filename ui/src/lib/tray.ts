@@ -6,7 +6,7 @@
  * code the dashboard uses, and so it moves with the same live frame: the
  * summary is asked again on each live tick, exactly as Now asks it.
  */
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { api, type RateLimits, type RateWindow, type Summary } from './api'
 import { isTauri } from './appmode'
 import { fmtUSD } from './format'
@@ -25,6 +25,10 @@ export interface TrayInput {
   done?: InboxItem[]
   conn: ConnState
   now: number
+  /** Settings: the menu bar panel shows itself when an agent needs you (peek). */
+  peek?: boolean
+  /** The session the window's front tab shows: never peeked while the window is in front. */
+  shown?: string
 }
 
 /** "Claude 5h  42% · resets 15:20", the dashboard's figure and clock. */
@@ -62,7 +66,55 @@ function rowLabel(i: InboxItem): string {
   return why && why !== 'done' ? `${label} · ${why}` : label
 }
 
-export function buildTrayView({ summary, inbox, done = [], conn, now }: TrayInput): TrayView {
+/**
+ * Whether a waiting session may show the menu bar panel by itself (the peek,
+ * macOS, app/src-tauri/src/peek.rs): one Caprock started (rule 7), blocked on
+ * a dialog — a permission, a question, a plan to approve. A turn that ended
+ * on what reads like a question, or an error, is listed but never peeks.
+ */
+export function mayPeek(i: InboxItem): boolean {
+  if (i.stale || !i.session.owned) return false
+  if (i.reason === 'permission') return true
+  const r = i.need?.reason
+  return r === 'permission' || r === 'question' || r === 'plan'
+}
+
+/** Settings → Desktop notifications: the peek switch, this app only, off unless turned on. */
+export const PEEK_KEY = 'caprock.trayPeek'
+const PEEK_EVENT = 'caprock:tray-peek-pref'
+
+export function loadPeek(): boolean {
+  try {
+    return localStorage.getItem(PEEK_KEY) === 'on'
+  } catch {
+    return false
+  }
+}
+
+export function savePeek(on: boolean): void {
+  try {
+    if (on) localStorage.setItem(PEEK_KEY, 'on')
+    else localStorage.removeItem(PEEK_KEY)
+  } catch { /* private window: for this page only */ }
+  window.dispatchEvent(new Event(PEEK_EVENT))
+}
+
+export function usePeek(): [boolean, (on: boolean) => void] {
+  const [on, setOn] = useState(loadPeek)
+  useEffect(() => {
+    const read = () => setOn(loadPeek())
+    const onStorage = (e: StorageEvent) => { if (e.key === PEEK_KEY) read() }
+    window.addEventListener(PEEK_EVENT, read)
+    window.addEventListener('storage', onStorage)
+    return () => {
+      window.removeEventListener(PEEK_EVENT, read)
+      window.removeEventListener('storage', onStorage)
+    }
+  }, [])
+  return [on, savePeek]
+}
+
+export function buildTrayView({ summary, inbox, done = [], conn, now, peek = false, shown }: TrayInput): TrayView {
   const waiting = waitingOnYou(inbox)
   const lines = [
     ...limitLines('Claude', summary?.rate_limits, now),
@@ -91,25 +143,30 @@ export function buildTrayView({ summary, inbox, done = [], conn, now }: TrayInpu
   const tooltip = ['Caprock', waiting.length ? `${waiting.length} need you` : '', summary ? `today ${fmtUSD(summary.cost_usd)}` : '']
     .filter(Boolean)
     .join(' · ')
-  return {
+  const view: TrayView = {
     title,
     tooltip,
     lines,
-    waiting: waiting.map((i) => ({ id: i.session.session_id, label: rowLabel(i) })),
+    waiting: waiting.map((i) => (peek && mayPeek(i)
+      ? { id: i.session.session_id, label: rowLabel(i), peek: true }
+      : { id: i.session.session_id, label: rowLabel(i) })),
     done: done.map((i) => ({ id: i.session.session_id, label: rowLabel(i) })),
   }
+  if (peek && shown) view.shown = shown
+  return view
 }
 
 /** Keeps the shell's tray and badge in step with the workspace. Does nothing outside the app. */
-export function useShellTray(inbox: InboxItem[], done: InboxItem[] = []): void {
+export function useShellTray(inbox: InboxItem[], done: InboxItem[] = [], shown?: string): void {
   const inApp = isTauri()
   const conn = useLiveConn()
+  const [peek] = usePeek()
   // The same question Now asks, on the same live tick: spend and limits move
   // with events, which the tick follows. The interval is only a backstop, so
   // a slow one (WP-16: every poll re-renders the workspace), and slower still
   // with the window hidden, where the menu bar must stay current.
   const summary = useApi(() => (inApp ? api.summary('today') : Promise.resolve(undefined)), [inApp], { intervalMs: 30_000, hiddenIntervalMs: 60_000, keepUnchanged: true })
-  const view = buildTrayView({ summary: summary.data, inbox, done, conn, now: Date.now() })
+  const view = buildTrayView({ summary: summary.data, inbox, done, conn, now: Date.now(), peek, shown })
   const key = JSON.stringify(view)
   const count = view.waiting.length
   useEffect(() => {

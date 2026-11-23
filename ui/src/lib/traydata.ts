@@ -16,6 +16,16 @@ import { readWindow } from '@/components/PlanLimits'
 /** The event the shell dispatches each time it shows the popover. */
 export const TRAY_SHOWN_EVENT = 'caprock:tray-shown'
 
+/**
+ * Whether a `caprock:tray-shown` came from the peek (the shell showed the
+ * popover by itself because a session started waiting) rather than a click
+ * on the icon: its detail says `{ peek: true }`.
+ */
+export function isPeekShown(e: Event): boolean {
+  const d = (e as CustomEvent<unknown>).detail
+  return typeof d === 'object' && d !== null && (d as { peek?: unknown }).peek === true
+}
+
 /** The event the shell dispatches when it hides the popover. */
 export const TRAY_HIDDEN_EVENT = 'caprock:tray-hidden'
 

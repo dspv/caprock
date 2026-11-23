@@ -388,6 +388,24 @@ in the page, so it is not taken for a click on a notification.
   `snapshot` dev feature can toggle it and report whether the app activated
   (`src/snapshot.rs`), which is how this was checked without input on a
   shared desktop.
+- **The peek (macOS)** (`src-tauri/src/peek.rs`, off by default: Settings →
+  Desktop notifications → *Show the menu bar panel when an agent needs
+  you*): the page marks the waiting rows of `set_tray` that may peek
+  (`peek: true` — the switch on, a session Caprock started, a dialog
+  waiting) and names the session its front tab shows (`shown`). The shell
+  then orders the popover in under the icon with `orderFrontRegardless`
+  and never makes it key, so it takes no keystroke; the page hears
+  `caprock:tray-shown` with `{peek: true, session}`. A click into it
+  (`accept_first_mouse`, so the first click presses Approve) makes it an
+  ordinary popover. A global mouse-down monitor (`NSEvent`, no permission:
+  only a key monitor would ask for Accessibility) hides it on a click in
+  another app; the main window gaining focus, the session no longer
+  waiting, 15 s untouched, or `tray_hide` hide it too. `tray_hide`
+  takes `answered` (after Approve or Deny), which starts no quiet minute;
+  every other dismiss starts 60 s without peeks. Once per session per
+  waiting episode, never over a popover the user opened, never for the
+  session in the frontmost main window. Windows and Linux have no popover,
+  so the shell ignores the fields there.
 - **Closing the window.** On macOS it hides the window and the app stays in
   the menu bar (Cmd+Q or **Quit Caprock** quits; the Dock icon reopens it).
   On Windows and Linux closing still quits, because a tray may not be shown

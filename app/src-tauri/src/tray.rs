@@ -16,7 +16,7 @@ use tauri::menu::{IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Manager, Runtime};
 
-const ID: &str = "caprock";
+pub(crate) const ID: &str = "caprock";
 const SHOW: &str = "show";
 const QUIT: &str = "quit";
 const CHECK_UPDATES: &str = "check-updates";
@@ -31,6 +31,11 @@ const MAX_CHARS: usize = 80;
 pub struct Waiting {
     pub id: String,
     pub label: String,
+    /// May show the popover by itself (peek.rs): the page sets it only with
+    /// the Settings switch on, for a session Caprock started, while a
+    /// dialog waits (a permission, a question, a plan).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub peek: bool,
 }
 
 /// What the tray shows, as the page computed it.
@@ -50,6 +55,10 @@ pub struct View {
     /// Done, nothing needed: one level away in a submenu, never counted.
     #[serde(default)]
     pub done: Vec<Waiting>,
+    /// The session the main window's front tab shows: no peek for it while
+    /// the window is frontmost. Not drawn, so not part of the comparison.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shown: Option<String>,
 }
 
 impl View {
@@ -59,6 +68,17 @@ impl View {
             lines: vec![line.into()],
             ..Default::default()
         }
+    }
+
+    /// The waiting sessions that may peek, in the page's order. Only macOS
+    /// has the popover to peek with; the parsing is tested everywhere.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    pub fn peekable(&self) -> Vec<String> {
+        self.waiting
+            .iter()
+            .filter(|w| w.peek)
+            .map(|w| w.id.clone())
+            .collect()
     }
 
     /// Bounded, whatever the page sent: a menu must fit on a screen.
@@ -127,8 +147,15 @@ pub fn install<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
 }
 
 /// Draws a view from the page. Unchanged views are skipped.
-pub fn set<R: Runtime>(app: &AppHandle<R>, view: View) -> tauri::Result<()> {
+pub fn set<R: Runtime>(app: &AppHandle<R>, mut view: View) -> tauri::Result<()> {
+    let shown = view.shown.take();
     let view = view.clamp();
+    // Before the unchanged-view skip: the main window's focus moves the
+    // decision without the view changing.
+    #[cfg(target_os = "macos")]
+    crate::popover::peek_update(app, &view.peekable(), shown.as_deref());
+    #[cfg(not(target_os = "macos"))]
+    let _ = shown;
     let state = app.state::<Tray>();
     let mut last = state.0.lock().unwrap_or_else(|e| e.into_inner());
     if last.as_ref() == Some(&view) {
@@ -269,6 +296,7 @@ mod tests {
             .map(|i| Waiting {
                 id: format!("s{i}"),
                 label: format!("api · fix login {i}"),
+                peek: false,
             })
             .collect()
     }
@@ -339,5 +367,25 @@ mod tests {
         .unwrap();
         assert_eq!(v.waiting[0].id, "abc");
         assert_eq!(v.tooltip, "");
+        assert!(
+            !v.waiting[0].peek,
+            "a page that predates the peek never peeks"
+        );
+        assert!(v.peekable().is_empty());
+    }
+
+    #[test]
+    fn only_rows_the_page_marked_may_peek() {
+        let v: View = serde_json::from_value(serde_json::json!({
+            "waiting": [
+                {"id": "a", "label": "x", "peek": true},
+                {"id": "b", "label": "y"},
+                {"id": "c", "label": "z", "peek": true}
+            ],
+            "shown": "a"
+        }))
+        .unwrap();
+        assert_eq!(v.peekable(), vec!["a".to_string(), "c".to_string()]);
+        assert_eq!(v.shown.as_deref(), Some("a"));
     }
 }
