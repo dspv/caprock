@@ -255,3 +255,88 @@ describe('New agent on a Windows PC: the folder is chosen, not typed', () => {
     for (const b of [cancel, start]) for (const c of ['shrink-0', 'whitespace-nowrap']) expect(b.classList.contains(c)).toBe(true)
   })
 })
+
+// The owner's Windows PC, 2026-11-23: Model was a bare "its default" field,
+// because Claude Code's list is the page's own and never in a catalog. And
+// Effort at start, read from that computer's catalog.
+describe('New agent on another computer: model and effort', () => {
+  afterEach(() => {
+    cleanup()
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+    try { localStorage.clear() } catch { /* none */ }
+  })
+  const claude = {
+    id: 'claude', label: 'Claude Code', installed: true, ready: true, models: [], observed: true, prompt: true,
+    efforts: ['low', 'medium', 'high', 'xhigh', 'max'],
+    model_efforts: { 'claude-opus-5-5': 'high', 'claude-sonnet-5-5': 'medium', 'claude-haiku-5-5': 'medium', 'claude-fable-5-2': 'medium' },
+  }
+  const codex = { id: 'codex', label: 'Codex', installed: true, ready: true, models: [{ id: 'gpt-6-astra', label: 'GPT-6-Astra' }, { id: 'gpt-6-sol', label: 'GPT-6-Sol' }], default: 'gpt-6-astra', observed: true, prompt: true, efforts: ['low', 'medium', 'high', 'xhigh'], effort_default: 'xhigh' }
+  const gemini = { id: 'gemini', label: 'Gemini CLI', installed: true, ready: true, models: [], observed: true, prompt: true }
+  const setup = () => {
+    let sent: Record<string, unknown> = {}
+    stubFetch({
+      ...homeRoutes((init) => { sent = JSON.parse(String(init?.body)); return { body: { session_id: 'far-1', cwd: '/home/me/api' } } }),
+      [`${far}/v1/agents/catalog`]: { body: { licensed: false, agents: [claude, codex, gemini] } },
+    })
+    render(<NewAgentSheet projects={[]} onClose={vi.fn()} onStarted={vi.fn()} onStartedOn={vi.fn()} />)
+    return { sent: () => sent }
+  }
+  const open = async () => {
+    fireEvent.change(await screen.findByRole('combobox', { name: 'Machine' }), { target: { value: ID } })
+    const folder = await screen.findByRole('textbox', { name: 'Folder on Mac mini' })
+    await waitFor(() => expect((folder as HTMLInputElement).value).toBe('/home/me/api'))
+  }
+  const effortGroup = () => screen.queryByRole('radiogroup', { name: 'Effort' })
+  const checked = () => within(effortGroup()!).getAllByRole('radio').find((r) => r.getAttribute('aria-checked') === 'true')?.getAttribute('data-effort')
+  const marked = () => within(effortGroup()!).getAllByRole('radio').filter((r) => r.hasAttribute('data-default')).map((r) => r.getAttribute('data-effort'))
+
+  it('offers Claude Code the local list of models, and its default effort for the model chosen', async () => {
+    setup()
+    await open()
+    const model = await screen.findByRole('combobox', { name: 'Model' }) as HTMLSelectElement
+    await waitFor(() => expect(model.value).toBe('claude-opus-5-5'))
+    expect([...model.options].map((o) => o.value)).toEqual(['claude-fable-5-2', 'claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5'])
+    await waitFor(() => expect(checked()).toBe('high'))
+    expect(marked()).toEqual(['high'])
+    // The default moves with the model.
+    fireEvent.change(model, { target: { value: 'claude-sonnet-5-5' } })
+    expect(checked()).toBe('medium')
+    expect(marked()).toEqual(['medium'])
+  })
+
+  it('passes nothing for the default, and the level picked otherwise', async () => {
+    const s = setup()
+    await open()
+    await waitFor(() => expect(checked()).toBe('high'))
+    fireEvent.click(screen.getByRole('button', { name: /Start/ }))
+    await waitFor(() => expect(s.sent().cwd).toBe('/home/me/api'))
+    expect(s.sent()).toMatchObject({ model: 'claude-opus-5-5' })
+    expect('effort' in s.sent()).toBe(false)
+  })
+
+  it('sends a different pick, and keeps it for the next start of that agent', async () => {
+    const s = setup()
+    await open()
+    await waitFor(() => expect(checked()).toBe('high'))
+    fireEvent.click(within(effortGroup()!).getByRole('radio', { name: 'max' }))
+    expect(checked()).toBe('max')
+    fireEvent.click(screen.getByRole('button', { name: /Start/ }))
+    await waitFor(() => expect(s.sent().effort).toBe('max'))
+    expect(JSON.parse(localStorage.getItem('caprock.spawn.effort') ?? '{}')).toEqual({ claude: 'max' })
+  })
+
+  it('uses the effort the agent sets for every model, and hides Effort for an agent with none', async () => {
+    setup()
+    await open()
+    const agent = screen.getByRole('combobox', { name: 'Agent' }) as HTMLSelectElement
+    await waitFor(() => expect(agent.options.length).toBe(3))
+    fireEvent.change(agent, { target: { value: 'codex' } })
+    await waitFor(() => expect(checked()).toBe('xhigh'))
+    expect(within(effortGroup()!).getAllByRole('radio').map((r) => r.getAttribute('data-effort'))).toEqual(['low', 'medium', 'high', 'xhigh'])
+    expect([...(screen.getByRole('combobox', { name: 'Model' }) as HTMLSelectElement).options].map((o) => o.value)).toEqual(['', 'gpt-6-sol'])
+    fireEvent.change(agent, { target: { value: 'gemini' } })
+    expect(effortGroup()).toBeNull()
+    expect((screen.getByRole('combobox', { name: 'Model' }) as HTMLSelectElement).value).toBe('gemini-3.5-flash-lite')
+  })
+})

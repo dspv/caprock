@@ -65,6 +65,21 @@ type Entry struct {
 	// CLI's are the page's own checked lists (SpawnDialog.tsx) and are empty
 	// here.
 	Models []Model `json:"models"`
+	// Efforts are the reasoning efforts it takes at launch, lowest first
+	// (agents.EffortLevels: Claude Code's --effort, Codex's
+	// model_reasoning_effort); absent for an agent that takes none. The
+	// pickers draw an Effort control only where this is set, so a computer
+	// running an older Caprock, which would drop the field, never shows one.
+	Efforts []string `json:"efforts,omitempty"`
+	// EffortDefault is the effort every session of it starts at when none is
+	// passed, as its own settings on this machine say (Claude Code's
+	// CLAUDE_CODE_EFFORT_LEVEL, Codex's model_reasoning_effort); "" when
+	// that depends on the model or is not known.
+	EffortDefault string `json:"effort_default,omitempty"`
+	// ModelEfforts is that default per model id, where it depends on the
+	// model: a level saved for it, else the model's own documented or listed
+	// default. A model not named here has no default Caprock can state.
+	ModelEfforts map[string]string `json:"model_efforts,omitempty"`
 	// TypedModel is true when a model may be typed rather than picked
 	// (OpenCode's provider/model).
 	TypedModel bool `json:"typed_model,omitempty"`
@@ -111,7 +126,7 @@ func (e Env) get(key string) string {
 func Builtins(env Env, installed func(agent string) bool) []Entry {
 	win := env.GOOS == "windows"
 	out := []Entry{
-		claudeEntry(installed("claude"), win),
+		claudeEntry(env, installed("claude"), win),
 		codexEntry(installed("codex")),
 		opencodeEntry(env, installed("opencode"), win),
 		geminiEntry(installed("gemini")),
@@ -126,8 +141,11 @@ func notInstalled(name, command, docs string) *Setup {
 	return &Setup{Reason: "not_installed", Text: name + " is not installed on this machine.", Command: command, Docs: docs}
 }
 
-func claudeEntry(ok, win bool) Entry {
+func claudeEntry(env Env, ok, win bool) Entry {
 	e := Entry{ID: "claude", Label: "Claude Code", Installed: ok, Ready: ok, Observed: true, Prompt: true, Models: []Model{}}
+	if ok {
+		claudeEfforts(env, &e)
+	}
 	if !ok {
 		// code.claude.com/docs/en/setup, read 2026-10-10.
 		cmd := "curl -fsSL https://claude.ai/install.sh | bash"
@@ -146,10 +164,15 @@ func codexEntry(ok bool) Entry {
 		e.Setup = notInstalled("Codex", "npm install -g @openai/codex", "https://github.com/openai/codex")
 		return e
 	}
+	defaults := map[string]string{}
 	for _, m := range codex.ListedModels() {
 		e.Models = append(e.Models, Model{ID: m.ID, Label: m.Label, Refused: m.Refused})
+		if m.DefaultEffort != "" {
+			defaults[m.ID] = m.DefaultEffort
+		}
 	}
 	e.Default = codex.DefaultModel()
+	codexEfforts(&e, codex.ConfiguredEffort(), defaults)
 	// Not checked for a sign-in: Codex can keep its credentials in the OS
 	// keyring instead of auth.json, so a missing file proves nothing, and it
 	// asks on its first start anyway.

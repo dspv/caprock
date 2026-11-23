@@ -52,6 +52,8 @@ import { AgentPicker, isCustomAgent, startable, useAgentCatalog, useAgentChoice 
 import { AgentObservedNote, AgentSetupNote } from './AgentSetup'
 import { DEFAULT_MODE, DEFAULT_MODELS, ModelField } from './SpawnDialog'
 import { PermissionPicker } from './PermissionPicker'
+import { EffortPicker } from './EffortPicker'
+import { useEffortChoice } from '@/lib/effort'
 import { useInitialMode } from '@/lib/permissionMode'
 import type { SpawnAgent } from './AgentPicker'
 import { projectsApi, type BranchInfo, type Project } from '@/lib/projects'
@@ -223,6 +225,7 @@ function LocalAgentSheet({
   const [attempts, setAttempts] = useState(1)
   const several = where === NEW_WORKTREE && attempts > 1
   const [models, setModels] = useState<Record<SpawnAgent, string>>(DEFAULT_MODELS)
+  const effort = useEffortChoice(agent, entry, models[agent] ?? '')
   const [mode, setMode, rememberMode] = useInitialMode(DEFAULT_MODE)
   const [prompt, setPrompt] = useState(initialPrompt)
   const [busy, setBusy] = useState(false)
@@ -285,6 +288,7 @@ function LocalAgentSheet({
       // A custom agent's flags are its own; Caprock maps no mode onto them.
       if (mode && !custom) req.permission_mode = mode
       if (agent === 'claude' && subModel) req.subagent_model = subModel
+      if (effort.send) req.effort = effort.send
       if (where === NEW_WORKTREE) {
         req.worktree = worktreeName
         if (fromPR) req.worktree_pr = fromPR
@@ -294,6 +298,7 @@ function LocalAgentSheet({
       if (several) req.attempts = attempts
       const res = await api.spawn(req)
       rememberMode()
+      effort.remember()
       const title = prompt.trim().slice(0, 60) || 'new session'
       if (several && res.session_ids && onAttempts) onAttempts(res.session_ids, project.id, title, res.error)
       else onStarted(res.session_id, project.id, title)
@@ -468,6 +473,13 @@ function LocalAgentSheet({
             {/* Under Agent, on a row of its own: a third column cut both
               * selects' text off at the sheet's width. */}
             {canStart && <SubscriptionPicker list={subList} value={subId} onChange={chooseSub} onAdd={addingSub ? undefined : () => setAddingSub(true)} />}
+            {/* Under Model, in its column: the agent's own default marked,
+              * kept as nothing passed (lib/effort.ts). */}
+            {canStart && effort.levels.length > 0 && (
+              <div className="col-span-2 min-w-0 sm:col-span-1 sm:col-start-2">
+                <EffortPicker levels={effort.levels} value={effort.shown} def={effort.def} onChange={effort.choose} />
+              </div>
+            )}
           </div>
           {canStart && addingSub && (
             <Suspense fallback={null}>
