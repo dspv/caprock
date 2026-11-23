@@ -515,6 +515,8 @@ func TestMigration0080IsTheFence(t *testing.T) {
 	}
 	for _, q := range []string{ // 0091, whose triggers name the column
 		`DROP TRIGGER events_gen_update`, `DROP TRIGGER events_gen_delete`, `ALTER TABLE session_gen DROP COLUMN calls_gen`,
+		// 0092
+		`DROP INDEX idx_brain_runs_reader`, `ALTER TABLE brain_runs DROP COLUMN reader`, `ALTER TABLE brain_runs DROP COLUMN no_usage`,
 	} {
 		if _, err := st.DB().Exec(q); err != nil {
 			t.Fatal(err)

@@ -70,6 +70,10 @@ type Result struct {
 	TokensIn  int64 // input, cache read and cache write
 	TokensOut int64
 	CostUSD   float64
+	// UsageReported is set when the agent reported the call's tokens. A
+	// reader that reports none (Cursor) leaves it false and the tokens 0:
+	// nothing is estimated (ADR-103).
+	UsageReported bool
 }
 
 // Runner makes the call. ClaudeRunner runs the user's claude; tests use a
@@ -254,6 +258,8 @@ func parseEnvelope(b []byte) (claudeJSON, Result, error) {
 		TokensIn:  c.Usage.InputTokens + c.Usage.CacheReadInputTokens + c.Usage.CacheCreationInputTokens,
 		TokensOut: c.Usage.OutputTokens,
 		CostUSD:   c.TotalCostUSD,
+		// claude's result always carries usage (2.1.299, ADR-063).
+		UsageReported: true,
 	}
 	for m := range c.ModelUsage {
 		res.Model = m

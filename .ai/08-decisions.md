@@ -8107,3 +8107,113 @@ terminal.
 
 **Revisit if** Windows or Linux gain an on-device recogniser worth binding,
 or Apple retires `SFSpeechRecognizer`'s on-device mode.
+
+
+## ADR-103 — 2nd Brain reads with whichever coding agent the user has: Claude Code, Codex, Cursor or Gemini CLI
+
+**Date:** 2026-11-23 · **Status:** accepted (owner, 2026-11-23: "2nd Brain
+must work through whatever agent the user has and is signed in to").
+Extends [ADR-063](#adr-063--second-brain-the-sessions-decisions-and-findings-kept-as-a-graph-on-this-machine-free),
+which read through `claude` only.
+
+**Context.** A user who moved from Claude Code to Cursor kept getting his
+Cursor sessions recorded, but 2nd Brain had stopped ten days earlier: it
+asked `claude`, which no longer worked on his machine, and the screen went
+on saying when it last built. The reads failed per session and were given
+up, and nothing said why.
+
+**Decision.**
+
+- **Four readers behind one interface.** `brain.Runner` gains
+  `CodexRunner`, `CursorRunner` and `GeminiRunner` beside `ClaudeRunner`.
+  Each finds its CLI as the launcher does (`Manager.AgentBinary`, the
+  login-shell PATH and the installers' folders), runs with the user's
+  login-shell environment, from an empty folder of its own created for the
+  call and removed after it, bounded to three minutes, with the prompt on
+  stdin. For all but claude the instructions and the answer's JSON shape
+  go into the prompt too (as for claude through a Windows `.cmd` shim),
+  and the memories are read from the first JSON object of the answer's
+  text: no CLI is given JSON on its command line. The flags, each from the
+  CLI's own documentation (read 2026-11-23) and, for Codex and Gemini CLI,
+  the set Mail's assistant already passes (read from codex-cli 0.161.0's
+  and Gemini CLI 0.62.0's `--help` on 2026-10-15, `internal/mail/ai/cli.go`):
+  - **Codex** (developers.openai.com/codex, *Non-interactive mode*):
+    `codex exec --json --ephemeral --skip-git-repo-check
+    --ignore-user-config --ignore-rules --sandbox read-only --color never
+    -c web_search=disabled --disable <each tool feature> [-m model] -o
+    <file> -`. `--sandbox read-only` and every tool feature off leave
+    nothing that can run, write or fetch; `--ephemeral` writes no session
+    file, so Caprock's ingest never sees the call; the user's config.toml
+    and rules are not loaded, the login is. `--json` makes stdout JSON
+    Lines whose `turn.completed` carries `usage`; `-o` writes the final
+    message. `--output-schema` is not used: Codex holds a schema to
+    OpenAI's strict rules, which the memories' schema does not follow.
+  - **Cursor** (cursor.com/docs/cli: *Parameters*, *Output format*,
+    *Headless*, *Overview*): `cursor-agent -p --output-format json --mode
+    ask --trust --workspace <the call's folder> [--model model]`. *Ask* is
+    the documented "Read-only exploration without making changes"; never
+    `--force`, so anything needing approval — a command, an MCP tool, a
+    web fetch — is rejected. Print mode reads the prompt from stdin when
+    stdin is not a terminal (cursor-agent 2025.09.12's bundle). That CLI
+    has no `--mode`, `--trust` or `--workspace` and refuses them as
+    unknown options; the runner then makes the call again without them and
+    remembers, still in the call's own empty folder.
+  - **Gemini CLI** (google-gemini/gemini-cli `docs/cli/cli-reference.md`
+    and `headless.md`): `gemini -p "Answer as instructed above." -o json
+    --approval-mode plan --skip-trust -e none --allowed-mcp-server-names
+    caprock-none [-m model]`, with a system settings file
+    (`GEMINI_CLI_SYSTEM_SETTINGS_PATH`) that turns hooks, skills and every
+    built-in tool off. `-p` is appended to stdin, where the prompt is;
+    `plan` is its read-only mode.
+- **Read with.** A setting, `brain.reader`: *Auto* (the default) or one
+  agent; only installed agents are offered. Auto takes, among the
+  installed agents, the one with the most sessions active in the last 30
+  days (`sessions.agent`), Claude Code first on a tie (then Codex, Cursor,
+  Gemini CLI). A model per agent is optional: Claude Code keeps `model`
+  (haiku or sonnet); the others take `models.<agent>`, empty for the CLI's
+  own default, since their accounts decide what models exist.
+- **What is reported, and the cap.** claude reports tokens and a cost;
+  Codex and Gemini CLI tokens and no cost; Cursor neither — its JSON
+  result has "no token usage or cost fields". What a reader reports is
+  recorded as before; what it does not is recorded as 0 with
+  `brain_runs.no_usage = 1` (migration 0092), never estimated (rule 6).
+  The daily cap must still hold, so it has two limits, either of which
+  stops the reads until the day rolls over: the reported tokens against
+  `daily_tokens`, as before, and the calls with no reported usage against
+  `daily_reads` (default 40, 4–400). A failed call of a reader that
+  reports no tokens counts as such a call too. This is the safe option:
+  counting calls bounds a reader whose spend is unknown without inventing
+  a figure for it, and a reader that reports tokens is not held to a read
+  count it does not need. 40 is a limit Caprock chose, not a claim about
+  tokens or cost.
+- **Honest status.** With no agent to read with — none installed, or the
+  chosen one missing — a wake tries nothing, so no session is failed and
+  given up for want of an agent, and the stage is `no_reader`. A reader
+  whose last three calls all failed (the newest within six hours) is
+  `failing`: a wake then makes one call, not four, and Auto passes it over
+  for another installed agent that is not. Either way the status carries
+  one sentence naming what is needed (`reader_problem`), which the
+  screen, the start banner and Settings show in place of the last build's
+  date; the screen and Settings name the reader (*Read with Cursor*), and
+  the disclosure under the switch names where that agent sends what it
+  reads (rule 4: OpenAI for Codex, Cursor for Cursor, Google for Gemini
+  CLI, Anthropic for Claude Code).
+
+**Rejected.**
+
+- *Detecting a sign-in by reading each CLI's credential files.* Their
+  places and formats are the vendors' and change without notice; the
+  call's own failure says it reliably, and its words are what the status
+  repeats.
+- *Estimating Cursor's tokens from the prompt's length.* Rule 6; and a
+  figure shown beside reported ones would be read as measured.
+- *Falling back to another agent inside one read.* A read that goes to a
+  second vendor the user did not choose sends the session somewhere the
+  disclosure did not name; Auto changes reader between wakes, visibly.
+- *`--output-schema` for Codex, `--json-schema`-like flags elsewhere.*
+  Not every CLI has one, and Codex's strict mode rejects the schema; one
+  path (the shape in the prompt) for all three is simpler to test.
+
+**Revisit if** Cursor's output starts reporting usage (then it joins the
+token cap), a CLI gains a no-tools flag stronger than its read-only mode,
+or the reads limit proves too tight or too loose in practice.

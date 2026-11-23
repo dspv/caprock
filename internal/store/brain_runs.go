@@ -63,6 +63,13 @@ type BrainRun struct {
 	// unread so it is read with what comes next (migration 0068).
 	GapID int64 `json:"gap_id,omitempty"`
 	Held  bool  `json:"-"`
+	// Reader is the agent the read went through (migration 0092, ADR-103):
+	// claude, codex, cursor or gemini; "" on a read from before it, which
+	// was claude's. NoUsage marks a read whose agent reported no tokens —
+	// its tokens are 0, not an estimate — counted against the daily reads
+	// limit instead.
+	Reader  string `json:"reader,omitempty"`
+	NoUsage bool   `json:"no_usage,omitempty"`
 	// Project, Title and Agent are the session's, joined in when listed;
 	// Title is its own name or, without one, its first stored prompt.
 	Project string `json:"project,omitempty"`
@@ -73,10 +80,10 @@ type BrainRun struct {
 // InsertBrainRun records a read and returns its id.
 func InsertBrainRun(ctx context.Context, q Querier, r BrainRun) (int64, error) {
 	res, err := q.ExecContext(ctx, `INSERT INTO brain_runs
-		(session_id, from_event_id, through_event_id, status, model, tokens_in, tokens_out, cost_usd, nodes, error, started_at, finished_at, gap_id, held)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		(session_id, from_event_id, through_event_id, status, model, tokens_in, tokens_out, cost_usd, nodes, error, started_at, finished_at, gap_id, held, reader, no_usage)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		r.SessionID, r.FromEventID, r.ThroughEventID, r.Status, r.Model, r.TokensIn, r.TokensOut, r.CostUSD, r.Nodes, r.Error, r.StartedAt, r.FinishedAt,
-		nullID(r.GapID), r.Held)
+		nullID(r.GapID), r.Held, r.Reader, r.NoUsage)
 	if err != nil {
 		return 0, err
 	}
@@ -266,13 +273,71 @@ func BrainTokensSince(ctx context.Context, q Querier, since int64) (int64, error
 	return n, err
 }
 
+// BrainNoUsageReadsSince counts the calls since a moment whose agent
+// reported no tokens (no_usage, migration 0092): what the daily reads limit
+// counts (ADR-103). A skipped run made no call and is not counted.
+func BrainNoUsageReadsSince(ctx context.Context, q Querier, since int64) (int, error) {
+	var n int
+	err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM brain_runs WHERE finished_at >= ? AND no_usage = 1 AND status != 'skipped'`, since).Scan(&n)
+	return n, err
+}
+
+// BrainReaderStreak is a reader's newest calls that failed in a row (up to
+// `most`), with when the newest of them finished and its error; 0 when its
+// newest call did not fail or it made none. Reader "claude" also counts the
+// reads from before migration 0092 (an empty reader), which were claude's.
+func BrainReaderStreak(ctx context.Context, q Querier, reader string, most int) (failed int, lastAt int64, lastErr string, err error) {
+	// The second half is the reads from before migration 0092 (reader ''),
+	// which were claude's: for any other reader it is empty.
+	rows, err := q.QueryContext(ctx, `
+		SELECT status, finished_at, error FROM (
+			SELECT * FROM (SELECT id, status, finished_at, error FROM brain_runs WHERE reader = ? AND status != 'skipped' ORDER BY id DESC LIMIT ?)
+			UNION ALL
+			SELECT * FROM (SELECT id, status, finished_at, error FROM brain_runs WHERE reader = '' AND ? = 'claude' AND status != 'skipped' ORDER BY id DESC LIMIT ?)
+		) ORDER BY id DESC LIMIT ?`, reader, most, reader, most, most)
+	if err != nil {
+		return 0, 0, "", err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var status, e string
+		var at int64
+		if err := rows.Scan(&status, &at, &e); err != nil {
+			return 0, 0, "", err
+		}
+		if status != BrainRunFailed {
+			break
+		}
+		if failed == 0 {
+			lastAt, lastErr = at, e
+		}
+		failed++
+	}
+	return failed, lastAt, lastErr, rows.Err()
+}
+
+// AgentSessionsSince counts each agent's sessions active since a moment
+// (sessions.agent, idx_sessions_agent): which agents the user works in, so
+// 2nd Brain's Auto reader picks the one used most (ADR-103).
+func AgentSessionsSince(ctx context.Context, q Querier, agents []string, since int64) (map[string]int, error) {
+	out := make(map[string]int, len(agents))
+	for _, a := range agents {
+		var n int
+		if err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM sessions WHERE agent = ? AND last_event_at >= ?`, a, since).Scan(&n); err != nil {
+			return nil, err
+		}
+		out[a] = n
+	}
+	return out, nil
+}
+
 // LastBrainRuns returns the newest reads of sessions that did something
 // (not skipped, not a re-tag batch), newest first.
 func LastBrainRuns(ctx context.Context, q Querier, limit int) ([]BrainRun, error) {
 	rows, err := q.QueryContext(ctx, `
 		SELECT r.id, r.session_id, r.from_event_id, r.through_event_id, r.status, r.model, r.tokens_in, r.tokens_out,
 		       r.cost_usd, r.nodes, r.error, r.started_at, r.finished_at, COALESCE(s.project, ''),
-		       COALESCE(NULLIF(s.title, ''), s.prompt, ''), COALESCE(s.agent, ''), COALESCE(r.gap_id, 0)
+		       COALESCE(NULLIF(s.title, ''), s.prompt, ''), COALESCE(s.agent, ''), COALESCE(r.gap_id, 0), r.reader, r.no_usage
 		FROM brain_runs r LEFT JOIN sessions s ON s.session_id = r.session_id
 		WHERE r.status != 'skipped' AND `+brainNotRetag+` ORDER BY r.id DESC LIMIT ?`, limit)
 	if err != nil {
@@ -283,7 +348,7 @@ func LastBrainRuns(ctx context.Context, q Querier, limit int) ([]BrainRun, error
 	for rows.Next() {
 		var r BrainRun
 		if err := rows.Scan(&r.ID, &r.SessionID, &r.FromEventID, &r.ThroughEventID, &r.Status, &r.Model, &r.TokensIn, &r.TokensOut,
-			&r.CostUSD, &r.Nodes, &r.Error, &r.StartedAt, &r.FinishedAt, &r.Project, &r.Title, &r.Agent, &r.GapID); err != nil {
+			&r.CostUSD, &r.Nodes, &r.Error, &r.StartedAt, &r.FinishedAt, &r.Project, &r.Title, &r.Agent, &r.GapID, &r.Reader, &r.NoUsage); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
@@ -295,7 +360,7 @@ func LastBrainRuns(ctx context.Context, q Querier, limit int) ([]BrainRun, error
 func BrainRunsOf(ctx context.Context, q Querier, sessionID string) ([]BrainRun, error) {
 	rows, err := q.QueryContext(ctx, `
 		SELECT id, session_id, from_event_id, through_event_id, status, model, tokens_in, tokens_out,
-		       cost_usd, nodes, error, started_at, finished_at, COALESCE(gap_id, 0), held
+		       cost_usd, nodes, error, started_at, finished_at, COALESCE(gap_id, 0), held, reader, no_usage
 		FROM brain_runs WHERE session_id = ? ORDER BY id`, sessionID)
 	if err != nil {
 		return nil, err
@@ -305,7 +370,7 @@ func BrainRunsOf(ctx context.Context, q Querier, sessionID string) ([]BrainRun, 
 	for rows.Next() {
 		var r BrainRun
 		if err := rows.Scan(&r.ID, &r.SessionID, &r.FromEventID, &r.ThroughEventID, &r.Status, &r.Model, &r.TokensIn, &r.TokensOut,
-			&r.CostUSD, &r.Nodes, &r.Error, &r.StartedAt, &r.FinishedAt, &r.GapID, &r.Held); err != nil {
+			&r.CostUSD, &r.Nodes, &r.Error, &r.StartedAt, &r.FinishedAt, &r.GapID, &r.Held, &r.Reader, &r.NoUsage); err != nil {
 			return nil, err
 		}
 		out = append(out, r)

@@ -18,12 +18,15 @@
  */
 import { useState } from 'react'
 import { errText, type BrainAutoStatus } from '@/lib/api'
-import { startBuilding, startLine, tokensShort } from '@/lib/brain'
+import { readerFound, readerName, readerProblem, startBuilding, startLine, tokensShort } from '@/lib/brain'
 import { keys } from '@/lib/appkeys'
 import { isAppMode } from '@/lib/appmode'
 import { agentsLine, BrainHero, FreePill, useAgentsUsed } from '@/components/BrainAgents'
 
 export const START_HEADLINE = 'Give your agents a memory'
+
+/** Where each reader sends what it reads (rule 4). */
+const VENDOR: Record<string, string> = { claude: 'Anthropic', codex: 'OpenAI', cursor: 'Cursor', gemini: 'Google' }
 
 export function BrainStart({ auto, owner, onStarted, onAddNote }: {
   auto?: BrainAutoStatus
@@ -42,7 +45,7 @@ export function BrainStart({ auto, owner, onStarted, onAddNote }: {
       (e: unknown) => { setBusy(false); setErr(errText(e)); onStarted() },
     )
   }
-  const canStart = owner && !!auto?.claude_found
+  const canStart = owner && readerFound(auto)
   return (
     <section className="mx-auto grid w-full max-w-[600px] justify-items-center gap-3 pb-10 pt-4 text-center" data-brain-start>
       <BrainHero agents={agents} className="h-auto w-[540px] max-w-full" />
@@ -54,9 +57,9 @@ export function BrainStart({ auto, owner, onStarted, onAddNote }: {
         <p className="mt-2 text-[14px] text-fg">Start it on the computer Caprock runs on.</p>
       ) : !auto ? (
         <p className="mt-2 text-[14px] text-fg">Building it automatically is not available in this build.</p>
-      ) : !auto.claude_found ? (
+      ) : !readerFound(auto) ? (
         <div className="mt-2 grid justify-items-center gap-2" data-brain-no-claude>
-          <p className="text-[14px] text-fg">Claude Code was not found on this computer. Install it, then:</p>
+          <p className="max-w-[480px] text-[14px] text-fg">{readerProblem(auto)}</p>
           <button type="button" onClick={onStarted} className="rounded-[8px] border border-border-strong px-4 py-2 text-[14px] text-fg hover:border-accent hover:text-accent">
             Check again
           </button>
@@ -78,8 +81,8 @@ export function BrainStart({ auto, owner, onStarted, onAddNote }: {
           <details className="w-full max-w-[420px] text-left text-[13.5px] leading-relaxed text-fg" data-brain-start-details>
             <summary className="cursor-pointer select-none text-center text-[12.5px] text-fg-muted hover:text-fg">Details</summary>
             <ul className="mt-2 grid list-disc gap-1 pl-5">
-              <li>Your own <span className="mono">claude</span> ({auto.model}) reads each session’s prompts and answers</li>
-              <li>They go to Anthropic under your login, as the session did</li>
+              <li data-brain-read-with>Read with {readerName(auto)}{auto.model ? ` (${auto.model})` : ''}: your own agent reads each session’s prompts and answers</li>
+              <li>They go to {VENDOR[auto.reader ?? 'claude'] ?? 'its provider'} under your login, as your sessions do</li>
               <li>Up to {tokensShort(auto.daily_tokens)} tokens a day · off any time in Settings</li>
             </ul>
           </details>

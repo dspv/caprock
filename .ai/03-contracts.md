@@ -2999,7 +2999,7 @@ GET    /v1/brain/nodes/{id}          → {node, links}
 PATCH  /v1/brain/nodes/{id}          {kind?, title?, summary?, pinned?} → {node}
 DELETE /v1/brain/nodes/{id}          → 204; its edges go with it
 POST   /v1/brain/links               {from, to, kind?} → 204; DELETE with {from, to} → 204
-PUT    /v1/brain/settings            {auto?, daily_tokens?, model?, exclude?} → BrainAutoStatus; no licence needed
+PUT    /v1/brain/settings            {auto?, daily_tokens?, model?, exclude?, reader?, models?, daily_reads?} → BrainAutoStatus; no licence needed
 POST   /v1/brain/backfill            {days?, dry_run?} → BrainEstimate; 409 while off (dry run: never)
 GET    /v1/terminals                 → {terminals: [{id, name}], preferred}; terminal apps installed here, most preferred first
 GET    /v1/editors                   → {editors: [{id, name}], preferred}; editors installed here (F18), this machine only
@@ -5164,7 +5164,8 @@ GET    /v1/inbox/{id}/files/{n}     → the n-th file's bytes, images only (thum
 What the sessions decided, found and left open, kept as a graph
 ([ADR-063](08-decisions.md)). Code: `internal/api/brain.go`,
 `internal/store/brain.go`, `internal/store/brainsearch.go`; DDL in § 2nd
-Brain DDL (migrations 0055, 0056).
+Brain DDL (migrations 0055, 0056) and § 2nd Brain reader DDL (migration
+0092).
 
 ```
 GET    /v1/brain                ?q=&project=&since=&until=&limit=&summaries=1 → {nodes: [BrainNode], edges: [BrainEdge], total, terms?, close?}
@@ -5178,7 +5179,7 @@ PATCH  /v1/brain/nodes/{id}     {kind?, title?, summary?, pinned?} → {node}
 DELETE /v1/brain/nodes/{id}     → 204
 POST   /v1/brain/links          {from, to, kind?} → 204
 DELETE /v1/brain/links          {from, to, kind?} → 204
-PUT    /v1/brain/settings       {auto?, daily_tokens?, model?, exclude?} → BrainAutoStatus
+PUT    /v1/brain/settings       {auto?, daily_tokens?, model?, exclude?, reader?, models?, daily_reads?} → BrainAutoStatus
 POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
 ```
 
@@ -5373,8 +5374,10 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   daemon publishes `{op: "handoff", session, project, memories}`; a session
   held back by the holdout, or handed none, gets no frame.
 - **The automatic extraction** (`internal/brain`, free). `auto` in the
-  status is `BrainAutoStatus` — `{chosen, on, enabled, claude_found, model,
-  daily_tokens, spent, spent_usd, stage, last_read?, new_today, topics,
+  status is `BrainAutoStatus` — `{chosen, on, enabled, claude_found, reader,
+  reader_setting, reader_found, reader_problem?, readers, model,
+  daily_tokens, daily_reads, no_usage_reads, usage_reported, spent,
+  spent_usd, stage, last_read?, new_today, topics,
   links, handoff, running, pending, since?, backfill_since?, last_wake?,
   next_wake?, last_error?, recent: [BrainRun], reading?, build?,
   catch_up, retag?, agents_24h, exclude, automation_24h}`: `chosen` once
@@ -5392,10 +5395,14 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   entities and `links` the rows of `brain_edges` that join one memory to
   another (a link to a topic, person or project is not counted). `stage` is where the
   build is: `off` (not on), `extracting` or `linking` (a read is asking
-  claude, or storing what it returned), `no_claude`, `limit` (sessions
-  wait and `spent` has reached `daily_tokens`), `waiting` (sessions wait
-  for the next wake), `up_to_date` (none waits) — in that order of
-  precedence. `handoff` is how memories reach agents: `{on, sessions_24h,
+  the reader, or storing what it returned), `no_reader` (no agent to read
+  with: none installed, or the chosen one missing), `failing` (the
+  reader's last three calls all failed), `limit` (sessions wait and
+  `spent` has reached `daily_tokens`, or `no_usage_reads` has reached
+  `daily_reads`), `waiting` (sessions wait for the next wake),
+  `up_to_date` (none waits) — in that order of precedence. A daemon from
+  before ADR-103 said `no_claude` for `no_reader`; the dashboard reads
+  both. `handoff` is how memories reach agents: `{on, sessions_24h,
   memories_24h, sessions, memories}` — `on` whether Memory between sessions
   is on (without it no session is handed anything), then the sessions
   started in the last 24 hours, and in all, that were handed 2nd Brain
@@ -5407,13 +5414,61 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   of those reads finished (unix ms), most sessions first; `[]` when none.
   `exclude` is the folders never read (*What is never read* below), `[]`
   when none; `automation_24h` the sessions started with `automation: true`
-  in the last 24 hours, skipped unread.
+  in the last 24 hours, skipped unread. The reader fields are *Read with*
+  below.
   `BrainRun` is `{id, session_id, from_event_id,
   through_event_id, status: ok | failed | skipped, model?, tokens_in,
   tokens_out, cost_usd, nodes, error?, started_at, finished_at, project?,
-  title?, agent?, gap_id?}`; `title` is the session's own name, else its first
+  title?, agent?, gap_id?, reader?, no_usage?}`; `title` is the session's own name, else its first
   stored prompt, and `agent` its agent, joined in; `gap_id` the catch-up
-  gap a read went through, absent on a regular read.
+  gap a read went through, absent on a regular read; `reader` the agent
+  the read went through (absent on a read from before migration 0092,
+  which was claude's); `no_usage` set when that agent reported no tokens
+  for it — its `tokens_in`, `tokens_out` and `cost_usd` are then 0, not an
+  estimate.
+- **Read with** (ADR-103). A read goes through one of the user's own
+  coding agents, headless, each run read-only from an empty folder of
+  Caprock's that is removed after the call, with the user's login-shell
+  environment and a three-minute timeout: `claude` (flags in ADR-063),
+  `codex exec`, `cursor-agent -p` or `gemini -p` (flags in ADR-103). The
+  prompt always goes on stdin; for every agent but claude the
+  instructions and the answer's shape go there too, and the memories are
+  read from the first JSON object in the answer's text. `reader_setting`
+  is `auto` or the chosen agent; `reader` the agent the reads go through
+  now (`""` when none can). Auto takes, among the installed agents (found
+  as the launcher finds them), the one with the most sessions active in
+  the last 30 days (`sessions.agent`), Claude Code first on a tie, then
+  Codex, Cursor, Gemini CLI; it passes over one that is failing while
+  another is not. A reader is **failing** while its last three calls all
+  failed and the newest within six hours (`brain_runs.reader`; reads from
+  before migration 0092 count as claude's): a wake then makes one call
+  instead of four. With no agent to read with, a wake tries nothing — no
+  session is recorded as failed for want of an agent — and
+  `last_error` is the problem. `reader_found` is whether there is one;
+  `reader_problem` says in one sentence what reads need while they cannot
+  work — *No coding agent was found on this computer to read with, so
+  nothing is read: install Claude Code, Codex, Cursor or Gemini CLI and
+  sign in to it.*, *Codex was not found on this computer, so nothing is
+  read: install it and sign in, or choose another agent under Read
+  with.*, *Reading with Codex has stopped working (Codex is not signed
+  in): sign in to Codex, or choose another agent under Read with.* —
+  absent while they can. `readers` is every agent in that order: `{id,
+  label, installed, sessions_30d, model, reports_tokens, reports_cost,
+  failing?}`. `model` is what the reader is asked for: claude's `model`
+  setting (Haiku by default), another's from `models`, `""` for its CLI's
+  own default. `claude_found` stays whether claude is installed.
+- **What each reader reports** (ADR-103). claude reports tokens and a
+  cost; Codex tokens (`turn.completed.usage`: `input_tokens`, cached
+  included, and `output_tokens`); Gemini CLI tokens (`stats.models.*.tokens`:
+  `prompt`, and `candidates` plus `thoughts`); Cursor neither. What is
+  reported is recorded as before; what is not is 0 with `no_usage`, never
+  estimated, and `spent_usd` counts only what was reported. The daily cap
+  holds either way: `spent` (reported tokens) against `daily_tokens`, and
+  `no_usage_reads` — the calls in the last 24 hours with `no_usage`, a
+  failed one of a reader that reports no tokens included — against
+  `daily_reads` (default 40); either one reached stops the reads until
+  the day rolls over. `usage_reported` is whether the reader in use
+  reports its tokens.
 - **What it reads now, and how far it is.** `reading` is present while a
   read is asking `claude` about a session: `{session_id, title?, agent?,
   project?, last_event_at?, started_at, phase, passages}` — `phase`
@@ -5453,13 +5508,19 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   reads one session after another within the daily limit; a second `true` while on does not wake it
   again, and a wake never runs beside another; `false` stops it. Neither needs a licence. `daily_tokens`
   is 20,000–5,000,000 (the screen offers 100k, 300k and 1M; the default is
-  300,000) and `model` is `""`, `haiku` (the default) or `sonnet`; anything
-  else is `400`. `exclude` replaces the list of folders never read
+  300,000) and `model` is `""`, `haiku` (the default) or `sonnet` — Claude
+  Code's; anything else is `400`. `reader` is `auto`, `claude`, `codex`,
+  `cursor` or `gemini` (`auto` is kept as absent); `models` sets the model
+  of `codex`, `cursor` or `gemini` — one word of letters, digits and `. _
+  : / -`, at most 80 characters, since it goes on the CLI's command line
+  — merged into what is kept, `""` going back to that CLI's default;
+  `daily_reads` is 4–400. Anything else is `400`. `exclude` replaces the list of folders never read
   (`[]` clears it): each an absolute folder, trimmed, in the store's path
   form, without repeats, at most 64 of at most 1,024 bytes on one line;
   the root, the home and the temp folder are refused, as is anything else
   (`400`, `brain.CleanExclude`). Kept in `config.json` as `brain: {auto?,
-  since?, backfill_since?, daily_tokens?, model?, exclude?}`; `auto` absent
+  since?, backfill_since?, daily_tokens?, model?, exclude?, reader?,
+  models?, daily_reads?}`; `auto` absent
   means the user has not answered, and nothing runs.
 - **What is never read** (2026-10-24; owner, translated: "accumulate only
   important and necessary data, not everything including junk"). Two
@@ -5517,7 +5578,8 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   existing topic titles and — for a session with a project — that
   project's 30 newest current decisions (`#id title`) and its 40 newest
   memories besides them (`#id kind: title`, *do not repeat these*), on
-  stdin to the user's `claude` (flags in ADR-063). A "user" turn that starts with a machine tag — one of a
+  stdin to the reader (*Read with* above; claude's flags in ADR-063, the
+  others' in ADR-103). A "user" turn that starts with a machine tag — one of a
   known list (`task-notification`, `system-reminder`, `command-name`,
   `cross-session-message`, …) or any kebab-case tag — is left out; a
   prompt is clipped at 2,000 characters, an answer at 2,500. One read
@@ -8641,6 +8703,22 @@ CREATE TABLE IF NOT EXISTS brain_vault_edges (
 CREATE INDEX IF NOT EXISTS idx_brain_vault_edges_edge ON brain_vault_edges(src, dst, kind);
 CREATE INDEX IF NOT EXISTS idx_brain_vault_edges_dst ON brain_vault_edges(dst);
 ```
+
+### 2nd Brain reader DDL (migration 0092)
+
+```sql
+ALTER TABLE brain_runs ADD COLUMN reader TEXT NOT NULL DEFAULT '';
+ALTER TABLE brain_runs ADD COLUMN no_usage INTEGER NOT NULL DEFAULT 0;
+CREATE INDEX IF NOT EXISTS idx_brain_runs_reader ON brain_runs(reader, id);
+```
+
+`reader` is the agent a read or re-tag batch went through (ADR-103):
+`claude`, `codex`, `cursor` or `gemini`; `''` on a row from before the
+migration, all of which were claude's. `no_usage = 1` marks a call whose
+agent reported no tokens: its tokens and cost are 0, not an estimate, and
+it counts against the daily reads limit (§ 2nd Brain, *What each reader
+reports*). The index serves a reader's newest calls (whether it is
+failing). No existing row changes.
 
 ### 2nd Brain find and decisions DDL (migration 0069)
 

@@ -110,8 +110,8 @@ func (e *Engine) retagStatus(ctx context.Context) *Retag {
 func (e *Engine) retag(ctx context.Context, calls int) (int, error) {
 	made := 0
 	for made < calls && ctx.Err() == nil && e.Enabled() {
-		if e.spent(ctx) >= e.dailyCap() {
-			e.setError("today's token limit is reached; reading resumes as the day rolls over")
+		if msg := e.capReached(ctx); msg != "" {
+			e.setError(msg)
 			return made, nil
 		}
 		did, more, err := e.retagBatch(ctx)
@@ -141,8 +141,8 @@ func (e *Engine) retagBatch(ctx context.Context) (did, more bool, err error) {
 		return false, false, err
 	}
 	started := e.now().UnixMilli()
-	run := store.BrainRun{SessionID: store.BrainRetagSession, FromEventID: mems[0].ID, ThroughEventID: mems[len(mems)-1].ID,
-		StartedAt: started, Model: e.model()}
+	run := e.newRun(ctx, store.BrainRun{SessionID: store.BrainRetagSession, FromEventID: mems[0].ID, ThroughEventID: mems[len(mems)-1].ID,
+		StartedAt: started})
 	n, last, err := store.BrainFailures(ctx, db, store.BrainRetagSession)
 	if err != nil {
 		return false, false, err
@@ -155,12 +155,8 @@ func (e *Engine) retagBatch(ctx context.Context) (did, more bool, err error) {
 	if n > 0 && started < last+(retryAfter<<(n-1)).Milliseconds() {
 		return false, false, nil
 	}
-	res, callErr := e.Runner.Run(ctx, Request{System: RetagSystem, Prompt: RetagPrompt(mems), Model: e.model(), Schema: RetagSchema})
+	res, callErr := e.call(ctx, Request{System: RetagSystem, Prompt: RetagPrompt(mems), Schema: RetagSchema}, &run)
 	run.FinishedAt = e.now().UnixMilli()
-	run.TokensIn, run.TokensOut, run.CostUSD = res.TokensIn, res.TokensOut, res.CostUSD
-	if res.Model != "" {
-		run.Model = res.Model
-	}
 	var tags map[int64][]string
 	if callErr == nil {
 		tags, callErr = ParseRetag(res.JSON, mems)

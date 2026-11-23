@@ -16,6 +16,13 @@ describe('brainFailureReason', () => {
     // Claude Code's JSON result names "usage" and token counts: neither is a limit.
     ['claude: exit status 1: {"usage":{"input_tokens":401,"output_tokens":0}}', 'Claude Code stopped with an error'],
     ['sql: no rows', 'something went wrong'],
+    // The other readers (ADR-103) name themselves.
+    ['codex: Not logged in. Run codex login.', 'Codex is not signed in'],
+    ['cursor-agent: exit status 1: Authentication required to use Cursor Agent.', 'Cursor is not signed in'],
+    ['gemini: Please set an Auth method in your settings.json', 'Gemini CLI is not signed in'],
+    ['codex did not answer within 3m0s', 'Codex took too long to answer'],
+    ['cursor-agent: exit status 2: something odd', 'Cursor stopped with an error'],
+    ['today\'s reads limit is reached (the agent reports no tokens, so reads are counted); reading resumes as the day rolls over', 'today’s reads limit is used'],
   ])('%s', (raw, want) => expect(brainFailureReason(raw)).toBe(want))
 
   it('says what each read of the list came to', () => {

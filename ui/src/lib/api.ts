@@ -1921,9 +1921,27 @@ export interface BrainAutoStatus {
   on: boolean
   /** On, so it reads; no licence is needed (Second Brain is free). */
   enabled: boolean
+  /** Claude Code is installed (one reader of several, ADR-103). */
   claude_found: boolean
+  /** The agent the reads go through: claude, codex, cursor or gemini; `''`
+   *  when none can. Absent from a daemon before ADR-103 (claude). */
+  reader?: BrainReaderId | ''
+  /** Read with: `auto` or the chosen agent. */
+  reader_setting?: 'auto' | BrainReaderId
+  /** There is an agent to read with. */
+  reader_found?: boolean
+  /** One sentence naming what reads need while they cannot work; absent while they do. */
+  reader_problem?: string
+  /** Every agent Read with offers, installed or not. */
+  readers?: BrainReaderOption[]
+  /** The model the reader is asked for; `''` is its CLI's own default. */
   model: string
   daily_tokens: number
+  /** The most calls a rolling day whose agent reports no tokens (Cursor), and those made in the last 24 hours. */
+  daily_reads?: number
+  no_usage_reads?: number
+  /** Whether the reader in use reports its tokens. */
+  usage_reported?: boolean
   /** Tokens the reads used in the last 24 hours. */
   spent: number
   running: boolean
@@ -2015,8 +2033,28 @@ export interface BrainSpend {
 /** One agent whose sessions Second Brain read: distinct sessions, and when the newest read finished (unix ms). */
 export interface BrainAgentRead { agent: string; sessions: number; last_at: number }
 
-/** Where a build is (03-contracts.md § Second Brain). */
-export type BrainStage = 'off' | 'no_claude' | 'limit' | 'extracting' | 'linking' | 'waiting' | 'up_to_date'
+/** Where a build is (03-contracts.md § Second Brain). `no_reader`: no agent
+ *  to read with; `failing`: the reader's last calls all failed;
+ *  `no_claude` is an older daemon's `no_reader`. */
+export type BrainStage = 'off' | 'no_reader' | 'no_claude' | 'failing' | 'limit' | 'extracting' | 'linking' | 'waiting' | 'up_to_date'
+
+/** The agents 2nd Brain can read with (ADR-103). */
+export type BrainReaderId = 'claude' | 'codex' | 'cursor' | 'gemini'
+
+/** One agent as Read with lists it. */
+export interface BrainReaderOption {
+  id: BrainReaderId
+  label: string
+  installed: boolean
+  /** Its sessions in the last 30 days, which Auto ranks by. */
+  sessions_30d: number
+  /** The model the reads ask it for; `''` is its CLI's default. */
+  model: string
+  reports_tokens: boolean
+  reports_cost: boolean
+  /** Its last calls all failed. */
+  failing?: boolean
+}
 
 /** New sessions handed Second Brain memories with their handoff, last 24 hours and in all. */
 export interface BrainHandoff {
@@ -2074,6 +2112,10 @@ export interface BrainRun {
   /** The session's own name (or first stored prompt) and agent. */
   title?: string
   agent?: string
+  /** The agent the read went through; absent on a read from before ADR-103 (claude). */
+  reader?: string
+  /** The agent reported no tokens for it: 0, not an estimate. */
+  no_usage?: boolean
 }
 
 /** What a backfill would read: an estimate, from the transcript's length. */
@@ -2091,6 +2133,12 @@ export interface BrainSettings {
   model?: string
   /** Replaces the folders never read; `[]` clears the list. */
   exclude?: string[]
+  /** Read with: `auto` or an agent (ADR-103). */
+  reader?: 'auto' | BrainReaderId
+  /** A model per agent other than Claude Code; `''` goes back to its CLI's default. */
+  models?: Partial<Record<Exclude<BrainReaderId, 'claude'>, string>>
+  /** The daily limit of reads whose agent reports no tokens. */
+  daily_reads?: number
 }
 
 /** What POST /v1/brain/nodes takes: text (or a title), or an assistant note by its event id. */

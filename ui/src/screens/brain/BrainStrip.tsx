@@ -27,7 +27,7 @@
  */
 import { useState, type ReactNode } from 'react'
 import { api, errText, type BrainAutoStatus } from '@/lib/api'
-import { BRAIN_STEPS, brainFailureText, brainRunOutcome, brainState, buildFigures, clockOrDay, isBuilding, tokensShort } from '@/lib/brain'
+import { BRAIN_STEPS, brainFailureText, brainRunOutcome, brainState, buildFigures, clockOrDay, isBuilding, readerFound, readerProblem, readsLimitReached, tokensShort } from '@/lib/brain'
 import { fmtAgo, fmtUSD } from '@/lib/format'
 import { useNow } from '@/lib/useNow'
 import { agentName } from '@/components/Characters'
@@ -75,9 +75,15 @@ function Problem({ auto, onChanged }: { auto: BrainAutoStatus; onChanged: () => 
   let text = ''
   let raw = ''
   let action: ReactNode = null
-  if (!auto.claude_found) {
-    text = 'Claude Code was not found on this computer, so nothing can be read. Install it, then check again.'
+  if (!readerFound(auto) || (auto.on && auto.stage === 'failing')) {
+    // One sentence naming what reads need (ADR-103): no agent, the chosen
+    // one missing, or its reads all failing — never an old "updated N days
+    // ago" while nothing can be read.
+    text = readerProblem(auto)
+    raw = auto.stage === 'failing' ? auto.last_error ?? '' : ''
     action = <button type="button" onClick={onChanged} className="brain-live-fix">Check again</button>
+  } else if (auto.on && readsLimitReached(auto)) {
+    text = `Today’s ${auto.daily_reads} reads are made: ${auto.reader ? `${auto.readers?.find((r) => r.id === auto.reader)?.label ?? auto.reader} reports no token usage, so reads are counted instead` : 'the agent reports no token usage'}. Reading goes on as the day rolls over.`
   } else if (auto.on && auto.spent >= auto.daily_tokens) {
     text = `Today’s ${tokensShort(auto.daily_tokens)} tokens are used. Reading goes on as the day rolls over.`
     if (auto.daily_tokens < ONE_MILLION) action = <button type="button" onClick={raise} className="brain-live-fix">Raise to 1M a day</button>

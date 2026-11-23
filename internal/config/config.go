@@ -777,6 +777,15 @@ type BrainConfig struct {
 	DailyTokens int `json:"daily_tokens,omitempty"`
 	// Model is passed to claude --model; "" is brain.DefaultModel.
 	Model string `json:"model,omitempty"`
+	// Reader is the agent the reads go through (ADR-103): "" or "auto" picks
+	// one by itself, else claude, codex, cursor or gemini.
+	Reader string `json:"reader,omitempty"`
+	// Models is the model per reader other than claude (whose is Model);
+	// a reader missing here uses its CLI's own default.
+	Models map[string]string `json:"models,omitempty"`
+	// DailyReads caps the calls in a rolling day whose agent reports no
+	// tokens (Cursor). 0 is the default (brain.DefaultDailyReads).
+	DailyReads int `json:"daily_reads,omitempty"`
 	// Exclude is the folders whose sessions Second Brain never reads
 	// (absolute, in the store's path form): a session whose working
 	// directory or repository root is one of them or under it is skipped,

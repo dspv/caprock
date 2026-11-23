@@ -119,7 +119,49 @@ const BUILD_POLL_MS = 4000
 
 /** Whether the extraction is working through sessions: on, and reading or with some waiting. */
 export function isBuilding(auto: BrainAutoStatus | undefined): boolean {
-  return !!auto?.on && auto.claude_found && (auto.running || !!auto.reading || auto.pending > 0)
+  return !!auto?.on && readerFound(auto) && (auto.running || !!auto.reading || auto.pending > 0)
+}
+
+/** The agents 2nd Brain reads with, by id, as a person names them (ADR-103). */
+export const READER_LABELS: Record<string, string> = { claude: 'Claude Code', codex: 'Codex', cursor: 'Cursor', gemini: 'Gemini CLI' }
+
+/** Whether there is an agent to read with; an older daemon knew only claude. */
+export function readerFound(auto: BrainAutoStatus | undefined): boolean {
+  if (!auto) return false
+  return auto.reader_found ?? auto.claude_found
+}
+
+/** The agent the reads go through, named ("Cursor"); Claude Code from an older daemon. */
+export function readerName(auto: BrainAutoStatus | undefined): string {
+  const id = auto?.reader === undefined ? 'claude' : auto.reader
+  return READER_LABELS[id] ?? ''
+}
+
+/** What reads need while they cannot work, one sentence; '' while they can. */
+export function readerProblem(auto: BrainAutoStatus | undefined): string {
+  if (!auto) return ''
+  if (auto.reader_problem) return auto.reader_problem
+  if (!readerFound(auto)) return 'Claude Code was not found on this computer, so nothing can be read. Install it, then check again.'
+  return ''
+}
+
+/** Where a reader sends what it reads, for the line under the switch (rule 4). */
+const READER_VENDOR: Record<string, string> = {
+  claude: 'your own claude, which sends them to Anthropic under your login',
+  codex: 'your own codex, which sends them to OpenAI under your login',
+  cursor: 'your own cursor-agent, which sends them to Cursor under your login, and Cursor to the model’s provider',
+  gemini: 'your own gemini, which sends them to Google under your login',
+}
+
+/** Whether today's reads limit — for an agent that reports no tokens — is what stops reading. */
+export function readsLimitReached(auto: BrainAutoStatus | undefined): boolean {
+  return !!auto && (auto.daily_reads ?? 0) > 0 && (auto.no_usage_reads ?? 0) >= (auto.daily_reads ?? 0) && auto.spent < auto.daily_tokens
+}
+
+/** The line that says what turning it on sends, and where, for the agent that reads. */
+export function brainDisclosure(reader = 'claude'): string {
+  const to = READER_VENDOR[reader] ?? READER_VENDOR.claude
+  return `A finished session’s prompts and answers go to ${to}. Nothing is sent to Caprock.`
 }
 
 /**
@@ -246,7 +288,8 @@ export function brainMode(status: BrainStatus | null, today = 0): { mode: string
   }
   if (!auto) return { mode: n > 0 ? 'Kept by hand' : 'Not started', metric, active: false }
   if (!auto.on) return { mode: auto.chosen ? 'Paused' : 'Not started', metric, active: false }
-  if (!auto.claude_found) return { mode: 'Needs Claude Code', metric, active: false }
+  if (!readerFound(auto)) return { mode: auto.reader_found === undefined ? 'Needs Claude Code' : 'Needs an agent', metric, active: false }
+  if (auto.stage === 'failing') return { mode: `${readerName(auto)} failing`, metric, active: false }
   if (auto.reading) {
     const verb = auto.reading.phase === 'linking' ? 'Linking' : 'Reading'
     return { mode: auto.reading.project ? `${verb} ${auto.reading.project}` : `${verb} a session`, metric: n > 0 ? String(n) : '', active: true }
@@ -263,7 +306,7 @@ export function brainStage(auto: BrainAutoStatus | undefined): BrainStage {
   if (!auto || !auto.on) return 'off'
   if (auto.stage) return auto.stage
   if (auto.reading) return auto.reading.phase === 'linking' ? 'linking' : 'extracting'
-  if (!auto.claude_found) return 'no_claude'
+  if (!readerFound(auto)) return 'no_reader'
   if (auto.pending > 0 && auto.spent >= auto.daily_tokens) return 'limit'
   return auto.pending > 0 ? 'waiting' : 'up_to_date'
 }
@@ -283,15 +326,21 @@ export function clockOrDay(ms: number, now = Date.now()): string {
  */
 export function brainFailureReason(raw: string): string {
   const e = raw.toLowerCase()
+  // The agent that failed, from the runner's prefix (ADR-103); Claude's
+  // own words otherwise, as before there were others.
+  const other = /^codex\b/.test(e) ? 'Codex' : /^gemini\b/.test(e) ? 'Gemini CLI' : /^cursor-agent\b/.test(e) ? 'Cursor' : ''
+  const tool = other || 'Claude Code'
+  const model = other || 'Claude'
   if (e.includes('token limit is reached')) return 'today’s token limit is used'
-  if (/invalid memory|needs a title|storing the answer/.test(e)) return 'Claude’s answer could not be saved'
-  if (/not logged in|please run \/login|invalid api key|oauth token|authentication_error|unauthorized/.test(e)) return 'Claude Code is not signed in'
-  if (/usage limit|rate.?limit|limit reached|overloaded/.test(e)) return 'Claude is at its usage limit'
-  if (/executable file not found|not found in \$path/.test(e)) return 'Claude Code was not found'
-  if (/deadline exceeded|timed out|timeout/.test(e)) return 'Claude took too long to answer'
-  if (/econnrefused|econnreset|enotfound|etimedout|network|dial tcp|no such host|connection (refused|reset)|unable to connect/.test(e)) return 'Claude could not be reached'
+  if (e.includes('reads limit is reached')) return 'today’s reads limit is used'
+  if (/invalid memory|needs a title|storing the answer/.test(e)) return `${model}’s answer could not be saved`
+  if (/not logged in|please run \/login|invalid api key|oauth token|authentication_error|unauthorized|authentication required|auth method/.test(e)) return `${tool} is not signed in`
+  if (/usage limit|rate.?limit|limit reached|overloaded|quota/.test(e)) return `${model} is at its usage limit`
+  if (/executable file not found|not found in \$path|not found on this computer/.test(e)) return `${tool} was not found`
+  if (/deadline exceeded|timed out|timeout|did not answer within/.test(e)) return `${model} took too long to answer`
+  if (/econnrefused|econnreset|enotfound|etimedout|network|dial tcp|no such host|connection (refused|reset)|unable to connect/.test(e)) return `${model} could not be reached`
   if (e.includes('context canceled')) return 'it was stopped before it finished'
-  if (/exit status|^claude:/.test(e)) return 'Claude Code stopped with an error'
+  if (/exit status|^claude:|^codex:|^gemini|^cursor-agent/.test(e)) return `${tool} stopped with an error`
   return 'something went wrong'
 }
 
@@ -339,9 +388,11 @@ export function brainState(auto: BrainAutoStatus | undefined, now = Date.now()):
         ? { stage, word: 'Paused', detail: 'you paused it — nothing new is read until you resume', tone: 'off', share: null, n, m }
         : { stage, word: 'Off', detail: 'not started — nothing is read until you start it', tone: 'off', share: null, n, m }
     case 'no_claude':
-      return { stage, word: 'Stopped', detail: 'Claude Code was not found on this computer, so nothing can be read', tone: 'warn', share: null, n, m }
+    case 'no_reader':
+    case 'failing':
+      return { stage, word: 'Stopped', detail: (readerProblem(auto) || 'No coding agent was found on this computer, so nothing can be read.').replace(/\.$/, ''), tone: 'warn', share: null, n, m }
     case 'limit':
-      return { stage, word: 'Waiting', detail: `today’s ${tokensShort(auto?.daily_tokens ?? 0)} tokens are used; it goes on as the day rolls over${of ? ` · ${read} of ${m} read` : ''}`, tone: 'warn', share, n, m }
+      return { stage, word: 'Waiting', detail: `${readsLimitReached(auto) ? `today’s ${auto?.daily_reads} reads are made` : `today’s ${tokensShort(auto?.daily_tokens ?? 0)} tokens are used`}; it goes on as the day rolls over${of ? ` · ${read} of ${m} read` : ''}`, tone: 'warn', share, n, m }
     case 'extracting':
       return { stage, word: 'Building', detail: of ? `reading session ${of}` : 'reading a session', tone: 'active', share, n, m }
     case 'linking':

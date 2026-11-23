@@ -257,7 +257,9 @@ func TestBrainAutomaticNeedsOnlyAYes(t *testing.T) {
 	if f.on || len(f.set) != 0 {
 		t.Fatalf("an estimate turned nothing on: %+v", f)
 	}
-	for _, bad := range []map[string]any{{"daily_tokens": 5}, {"daily_tokens": 900_000_000}, {"model": "opus"}} {
+	for _, bad := range []map[string]any{{"daily_tokens": 5}, {"daily_tokens": 900_000_000}, {"model": "opus"},
+		{"reader": "grok"}, {"models": map[string]string{"claude": "opus"}}, {"models": map[string]string{"codex": "gpt 5; rm -rf"}},
+		{"models": map[string]string{"cursor": `"quoted"`}}, {"daily_reads": 0}, {"daily_reads": 1000}} {
 		if code, _ := brainDo(t, e, "PUT", "/v1/brain/settings", bad); code != http.StatusBadRequest {
 			t.Errorf("%v: %d", bad, code)
 		}
@@ -270,6 +272,16 @@ func TestBrainAutomaticNeedsOnlyAYes(t *testing.T) {
 	}
 	if last := f.set[len(f.set)-1]; *last.DailyTokens != 100_000 || *last.Model != "haiku" {
 		t.Errorf("settings passed: %+v", last)
+	}
+	// Read with: an agent or auto, a model per agent, the reads limit (ADR-103).
+	if code, _ := brainDo(t, e, "PUT", "/v1/brain/settings", map[string]any{"reader": "cursor", "models": map[string]string{"cursor": "sonnet-4", "codex": ""}, "daily_reads": 40}); code != 200 {
+		t.Fatalf("reader: %d", code)
+	}
+	if last := f.set[len(f.set)-1]; *last.Reader != "cursor" || (*last.Models)["cursor"] != "sonnet-4" || *last.DailyReads != 40 {
+		t.Errorf("reader settings passed: %+v", last)
+	}
+	if code, _ := brainDo(t, e, "PUT", "/v1/brain/settings", map[string]any{"reader": "auto"}); code != 200 {
+		t.Errorf("auto: %d", code)
 	}
 	if code, _ := brainDo(t, e, "POST", "/v1/brain/backfill", map[string]any{"days": 91}); code != http.StatusBadRequest {
 		t.Errorf("91 days: %d", code)

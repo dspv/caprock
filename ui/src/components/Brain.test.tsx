@@ -161,6 +161,43 @@ describe('2nd Brain', () => {
     await screen.findByText(/Started/)
   })
 
+  it('Settings reads with the agent you use: Auto names it, only installed ones are offered, a model per agent, reads counted for Cursor', async () => {
+    const readers = [
+  { id: 'claude', label: 'Claude Code', installed: false, sessions_30d: 0, model: 'haiku', reports_tokens: true, reports_cost: true },
+  { id: 'codex', label: 'Codex', installed: true, sessions_30d: 2, model: '', reports_tokens: true, reports_cost: false },
+  { id: 'cursor', label: 'Cursor', installed: true, sessions_30d: 40, model: '', reports_tokens: false, reports_cost: false },
+  { id: 'gemini', label: 'Gemini CLI', installed: false, sessions_30d: 0, model: '', reports_tokens: true, reports_cost: false },
+] as BrainAutoStatus['readers']
+    m.status.mockResolvedValue(status({ auto: auto({ claude_found: false, reader: 'cursor', reader_setting: 'auto', reader_found: true, readers, model: '', daily_reads: 40, no_usage_reads: 3, usage_reported: false }) }))
+    m.settings.mockResolvedValue(auto())
+    render(<BrainAutoSetting />)
+    const group = await screen.findByRole('radiogroup', { name: 'Read with' })
+    expect(group.textContent).toBe('Read withAuto (Cursor)CodexCursor')
+    expect(screen.getByText(/Not installed here: Claude Code, Gemini CLI\./)).toBeTruthy()
+    expect(screen.getByText(/Cursor reports no token usage, so its reads are counted instead: up to 40 a day\./)).toBeTruthy()
+    expect(document.querySelector('[data-brain-disclosure]')!.textContent).toMatch(/your own cursor-agent, which sends them to Cursor under your login/)
+    expect(document.querySelector('[data-brain-reads]')!.textContent).toMatch(/3 of 40/)
+    expect(document.querySelector('[data-brain-disclosure]')!.textContent).not.toMatch(/Anthropic/)
+    fireEvent.click(screen.getByRole('radio', { name: 'Codex' }))
+    await waitFor(() => expect(m.settings).toHaveBeenLastCalledWith({ reader: 'codex' }))
+    const model = screen.getByRole('textbox', { name: 'Model for Cursor' })
+    fireEvent.change(model, { target: { value: ' sonnet-4 ' } })
+    fireEvent.keyDown(model, { key: 'Enter' })
+    await waitFor(() => expect(m.settings).toHaveBeenLastCalledWith({ models: { cursor: 'sonnet-4' } }))
+  })
+
+  it('says in one sentence what reads need when no agent can read, instead of an old date', async () => {
+    const problem = 'No coding agent was found on this computer to read with, so nothing is read: install Claude Code, Codex, Cursor or Gemini CLI and sign in to it.'
+    m.status.mockResolvedValue(status({ auto: auto({ claude_found: false, reader: '', reader_found: false, reader_problem: problem, stage: 'no_reader', last_read: Date.now() - 10 * 86_400_000 }) }))
+    render(<BrainAutoSetting />)
+    await screen.findByText(problem)
+    cleanup()
+    m.status.mockResolvedValue(status({ memories: 4, auto: auto({ reader: 'codex', reader_found: true, reader_problem: 'Reading with Codex has stopped working (Codex is not signed in): sign in to Codex, or choose another agent under Read with.', stage: 'failing', last_error: 'codex: Not logged in', last_read: Date.now() - 10 * 86_400_000 }) }))
+    render(<BrainScreen />)
+    await screen.findAllByText(/Reading with Codex has stopped working \(Codex is not signed in\)/)
+    expect(screen.queryByText(/last built/)).toBeNull()
+  })
+
   it('Settings lists the folders never read, adds one, removes one, and counts the automation sessions skipped', async () => {
     m.status.mockResolvedValue(status({ auto: auto({ exclude: ['/Users/u/dev/jobs'], automation_24h: 3 }) }))
     m.settings.mockResolvedValue(auto())
@@ -365,6 +402,8 @@ describe('2nd Brain', () => {
     expect(brainMode({ ...st({ on: false, chosen: false }, 0), notes: 2 })).toEqual({ mode: 'Obsidian', metric: '2 notes', active: false })
     expect(brainMode(st({ on: false, chosen: false }), 0).mode).toBe('Not started')
     expect(brainMode(st({ claude_found: false })).mode).toBe('Needs Claude Code')
+    expect(brainMode(st({ claude_found: false, reader_found: false, reader: '' })).mode).toBe('Needs an agent')
+    expect(brainMode(st({ reader: 'codex', reader_found: true, stage: 'failing' })).mode).toBe('Codex failing')
     expect(brainMode(st({ pending: 3 })).mode).toBe('3 sessions to read')
     expect(brainMode(st({ pending: 3, spent: 300_000 })).mode).toBe('Limit reached')
     expect(brainMode(st({ reading: { session_id: 's', project: 'web', started_at: 1, phase: 'linking' } })).mode).toBe('Linking web')
