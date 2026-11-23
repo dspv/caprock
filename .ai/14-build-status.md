@@ -532,6 +532,25 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-11-23 — 0.192.0: 2nd Brain reads through any agent, effort at start
+
+A minor release, #1045. 2nd Brain no longer needs Claude Code: it reads
+sessions through whichever agent is installed and signed in — Claude Code,
+Codex, Cursor or Gemini CLI — picked automatically or under Settings → 2nd
+Brain → Read with, and when it has nothing to read with it says so in one
+sentence instead of showing an old date. Starting an agent now offers its
+reasoning effort on the Model row, with the agent's own default already
+picked; another computer gets the same model picker as this one. Codex lists
+only models your sign-in can run, remembers one the server refused, and an
+agent that exits at once over it says to pick another model.
+
+The cockpit's CI block no longer disappears when GitHub refuses a read: with
+nothing in flight it says so and names the last merge, and Fix CI shows on
+any open pull request whose checks failed, not only the session's own. A
+released version's stepper shows its release PR as done. A subagent cut off
+by a restart reads "stopped" instead of working forever, and the per-OS
+check tiles show the system's own mark instead of M, W and L.
+
 ### 2026-11-23 — 0.191.0: a dash says why, and the release panel tells the truth
 
 A minor release, #1040. Wherever an agent does not save a figure — a Cursor CLI
