@@ -309,6 +309,16 @@ test('the unfolded Release section keeps its stepper on one row and inside the e
           const t = row.querySelector('[data-release-title]') as HTMLElement
           if (t.offsetWidth === 0) out.push(`a hint row lost its title: ${row.textContent}`)
         }
+        // Owner, 2026-11-24: the kinds' headings one row each, a chevron
+        // first, every count at the same x whatever the word's length.
+        const heads = [...sec.querySelectorAll<HTMLElement>('[data-release-kind] > button')]
+        if (heads.length !== 2) out.push(`expected 2 kind headings, saw ${heads.length}`)
+        for (const h of heads) {
+          if (h.getBoundingClientRect().height > 24) out.push(`a kind heading wraps: ${h.textContent}`)
+          if (!h.firstElementChild || h.firstElementChild.tagName.toLowerCase() !== 'svg') out.push(`a kind heading has no chevron first: ${h.textContent}`)
+        }
+        const xs = new Set(heads.map((h) => Math.round(h.querySelector('[data-release-kind-count]')!.getBoundingClientRect().left)))
+        if (xs.size !== 1) out.push(`the kinds' counts are not aligned: ${[...xs].join(', ')}`)
         return out
       })
       expect(over, `${k.name} at ${w}px`).toEqual([])

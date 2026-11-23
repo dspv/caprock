@@ -44,7 +44,7 @@ import { CI_IDLE_MS, CI_RUNNING_MS, usePoll } from '@/lib/usePoll'
 import { changesRelease, useWork } from '@/lib/useWork'
 import { useNow } from '@/lib/useNow'
 import { pipelineHref, STEPS, titleIsNumber } from '@/lib/work'
-import { SectionLabel, useFolded } from './Cockpit'
+import { Chevron, SectionLabel, useFolded } from './Cockpit'
 import { asOfText, KEPT_CLASS, useDeckAnswer, useKeptCopy } from './CockpitCI'
 import { workRepoKey, writeDeck } from '@/lib/deckCache'
 import { Panel, usePanelFold } from './ui'
@@ -883,10 +883,16 @@ function NotesHead({ head: h }: { head: NotesHeading }) {
  * on its heading (remembered per viewer), each entry one line behind a dot,
  * whole on hover. Owner, 2026-11-20 (translated): "a lot of text … I'd like
  * to see how many fixes there are, and bullets beside them".
+ *
+ * One grid shared by every kind's heading (subgrid): the cockpit's chevron,
+ * the word, then the count in a column of its own, so *ADDED*, *CHANGED* and
+ * *FIXED* put their counts at one x. Owner, 2026-11-24 (translated): the
+ * faint ▸ after the count did not read as a toggle, and the counts sat
+ * wherever each word ended.
  */
 function ReleaseNotes({ entries }: { entries: readonly WorkEntry[] }) {
   return (
-    <div data-release-entries className="grid min-w-0 gap-1.5">
+    <div data-release-entries className="grid min-w-0 grid-cols-[12px_auto_auto_minmax(0,1fr)] gap-x-1.5 gap-y-1.5">
       {groupNotes(entries).map((g) => <NotesKind key={g.kind} kind={g.kind} entries={g.entries} />)}
     </div>
   )
@@ -896,15 +902,15 @@ function NotesKind({ kind, entries }: { kind: string; entries: readonly WorkEntr
   // usePanelFold's key present means folded, so a kind is open until folded.
   const [open, toggle] = usePanelFold(`release-notes-${kind}`)
   return (
-    <div data-release-kind={kind} className="grid min-w-0 gap-0.5">
+    <div data-release-kind={kind} className="col-span-full grid min-w-0 grid-cols-subgrid gap-y-0.5">
       <button type="button" aria-expanded={open} onClick={toggle} title={open ? `Fold ${kind}` : `Show ${kind}`}
-        className="flex min-w-0 cursor-pointer items-center gap-1.5 text-left text-fg-faint hover:text-fg-muted">
-        <h5 className="text-[10px] font-semibold uppercase tracking-[0.08em]">{kind}</h5>
-        <span data-release-kind-count className="num rounded-full border border-[var(--app-hairline,var(--color-border))] px-1.5 text-[10px] leading-[14px]">{entries.length}</span>
-        <span aria-hidden className={`text-[9px] leading-none transition-transform ${open ? 'rotate-90' : ''}`}>▸</span>
+        className="col-span-full grid min-w-0 cursor-pointer grid-cols-subgrid items-center rounded-[6px] px-1 py-0.5 text-left text-fg-faint outline-none hover:bg-[var(--app-row-hover)] hover:text-fg-muted focus-visible:ring-1 focus-visible:ring-[var(--color-accent)]">
+        <Chevron open={open} />
+        <h5 className="whitespace-nowrap text-[10px] font-semibold uppercase tracking-[0.08em]">{kind}</h5>
+        <span data-release-kind-count className="num min-w-[22px] justify-self-start rounded-full border border-[var(--app-hairline,var(--color-border))] px-1.5 text-center text-[10px] leading-[14px]">{entries.length}</span>
       </button>
       {open && (
-        <ul className="grid min-w-0 gap-0.5">
+        <ul className="col-span-full grid min-w-0 gap-0.5 px-1">
           {entries.map((e, i) => (
             <li key={i} data-release-entry={e.source ?? ''} title={`${e.scope ? `${e.scope}: ` : ''}${e.text}${e.source === 'pr' ? '\nOn the batch pull request’s branch, not merged yet.' : ''}`}
               className="flex min-w-0 items-baseline gap-1.5 text-[12px] leading-[1.35] text-fg">

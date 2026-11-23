@@ -398,10 +398,21 @@ describe('where it is drawn', () => {
     expect(kinds[1]!.querySelector('[data-release-kind-count]')).toHaveTextContent('2')
     // Two lines at most (owner, 2026-11-20: one line cut every entry mid-word at 330px).
     expect(kinds[0]!.querySelector('li > span:last-child')).toHaveClass('line-clamp-2')
+    // One grid for every heading (owner, 2026-11-24): the cockpit's chevron
+    // first, then the word, then the count in a column of its own.
+    expect(region.querySelector('[data-release-entries]')).toHaveClass('grid-cols-[12px_auto_auto_minmax(0,1fr)]')
+    const head = kinds[1]!.querySelector('button')!
+    expect(head).toHaveClass('grid-cols-subgrid', 'col-span-full')
+    expect([...head.children].map((c) => c.tagName.toLowerCase())).toEqual(['svg', 'h5', 'span'])
+    expect(head.firstElementChild).toHaveClass('rotate-90')
+    expect(head.textContent).not.toContain('▸')
     // A kind folds on its heading, and opens again.
-    fireEvent.click(kinds[1]!.querySelector('button')!)
+    expect(head).toHaveAttribute('aria-expanded', 'true')
+    fireEvent.click(head)
     expect(kinds[1]!.querySelector('ul')).toBeNull()
-    fireEvent.click(kinds[1]!.querySelector('button')!)
+    expect(head).toHaveAttribute('aria-expanded', 'false')
+    expect(head.firstElementChild).not.toHaveClass('rotate-90')
+    fireEvent.click(head)
     expect(kinds[1]!.querySelectorAll('li')).toHaveLength(2)
     expect(kinds[0]!.querySelector('li')).toHaveAttribute('data-release-entry', 'pr')
     // The batch: one line with its checks and what it waits for; it opens as a row did.
