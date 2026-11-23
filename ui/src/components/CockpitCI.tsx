@@ -463,9 +463,11 @@ export function CockpitCI({ sessionId, repoScope, onOpen, s }: { sessionId: stri
       {view === 'dots' ? (
         <>
           {body}
-          <span className="flex items-center justify-between gap-2 text-[11px]">
+          {/* The link sits in the middle (owner, 2026-11-23: at the right it
+              read as a gap before the next block); Expand keeps the left. */}
+          <span className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-[11px]">
             {listed.length > 4 ? (
-              <button type="button" data-cockpit-ci-tall aria-expanded={tall} onClick={() => setTall(!tall)} className="text-fg-faint hover:text-fg-muted">{tall ? 'Less' : 'Expand'}</button>
+              <button type="button" data-cockpit-ci-tall aria-expanded={tall} onClick={() => setTall(!tall)} className="justify-self-start text-fg-faint hover:text-fg-muted">{tall ? 'Less' : 'Expand'}</button>
             ) : <span />}
             {onOpen && (failingNo
               ? <button type="button" data-cockpit-ci-open={failingNo} onClick={() => onOpen(failingNo)} title={`Open the Pipeline on #${failingNo}: its failed job, its steps and the end of its log, with Investigate`} className="min-w-0 truncate whitespace-nowrap text-accent hover:underline">#{failingNo} log in Pipeline →</button>
