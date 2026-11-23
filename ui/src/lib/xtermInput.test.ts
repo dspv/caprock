@@ -37,9 +37,16 @@ afterEach(() => {
 })
 
 describe('pathInput', () => {
-  it('pastes an image as its own bracketed paste of the quoted path, no trailing space', () => {
-    expect(pathInput(SPACED, true)).toBe(`\x1b[200~"${SPACED}"\x1b[201~`)
-    expect(pathInput('/a/B.JPEG', true)).toBe('\x1b[200~"/a/B.JPEG"\x1b[201~')
+  it('pastes an image as its own bracketed paste of the quoted path, a space before it and none after', () => {
+    expect(pathInput(SPACED, true)).toBe(`\x1b[200~ "${SPACED}"\x1b[201~`)
+    expect(pathInput('/a/B.JPEG', true)).toBe('\x1b[200~ "/a/B.JPEG"\x1b[201~')
+  })
+  it('two images kept as text are never glued together', () => {
+    // What Claude Code inserts when it refuses the read: the paste's text.
+    const asText = (b: string) => b.replace('\x1b[200~', '').replace('\x1b[201~', '')
+    const two = asText(pathInput('/p/a.png', true)) + asText(pathInput('/p/b.png', true))
+    expect(two).toBe(' "/p/a.png" "/p/b.png"')
+    expect(two).not.toContain('""')
   })
   it('types anything else quoted with a space, as before', () => {
     expect(pathInput('/a/notes.md', true)).toBe('"/a/notes.md" ')
@@ -59,7 +66,7 @@ describe('attachTerminalInput', () => {
     const { sent, input } = setup(true)
     h.paths = [SPACED, '/d/paste/x/notes.md']
     await input.sendFiles([file('image.png', 'image/png'), file('notes.md', '')])
-    expect(sent).toEqual([`\x1b[200~"${SPACED}"\x1b[201~`, '"/d/paste/x/notes.md" '])
+    expect(sent).toEqual([`\x1b[200~ "${SPACED}"\x1b[201~`, '"/d/paste/x/notes.md" '])
   })
 
   it('the phone photo path (sendFiles) and a shell without bracketed paste type the path', async () => {
@@ -76,9 +83,9 @@ describe('attachTerminalInput', () => {
     }))
     await input.sendFiles([])  // waits for the queue the drop joined
     expect(sent).toEqual([
-      '\x1b[200~"/p/a b.png"\x1b[201~',
+      '\x1b[200~ "/p/a b.png"\x1b[201~',
       '"/p/doc.pdf" ',
-      '\x1b[200~"/p/c.webp"\x1b[201~',
+      '\x1b[200~ "/p/c.webp"\x1b[201~',
     ])
   })
 })
