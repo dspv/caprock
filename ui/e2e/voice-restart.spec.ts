@@ -78,3 +78,57 @@ test('Restart here resumes the same conversation in the same tab', async ({ app,
     await stopAgent(stand.daemonURL, id)
   }
 })
+
+/**
+ * The failure where Claude Code really shows it — in its footer under the
+ * input box, drawn by its renderer, and left there with nothing written after
+ * (the fake claude's `voice-footer`) — on a page that reloads with the tab
+ * open: the app updating, as the owner's did on 2026-11-23. The terminal
+ * replays the screen before the sessions list has answered, so the pane does
+ * not yet know its session is one Caprock started; Claude Code then writes
+ * nothing more. The strip has to come once the session is known, from the
+ * screen as it stands.
+ */
+test('the footer failure on screen when the page reloads gets the strip', async ({ app, page, stand }) => {
+  const cwd = stand.sessions[0]!.cwd
+  const post = (p: string, body: unknown) => fetch(`${stand.daemonURL}${p}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  })
+  const r = await post('/v1/agents', { cwd })
+  const { session_id: id } = await r.json() as { session_id: string }
+  expect(r.ok).toBe(true)
+  const name = 'e2e voice footer'
+  await fetch(`${stand.daemonURL}/v1/sessions/${id}/name`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) })
+  await page.route(/\/v1\/status$/, async (route) => {
+    const res = await route.fetch()
+    const body = await res.json() as Record<string, unknown>
+    await route.fulfill({ response: res, json: { ...body, platform: 'darwin/arm64' } })
+  })
+  try {
+    await app.open()
+    await app.row(name).first().click()
+    await expect(app.tabs.getByRole('tab', { name: new RegExp(`^${name}`), selected: true })).toBeVisible()
+    await app.waitTerm(id, 'fake-claude ready')
+    const strip = page.locator('[data-voice-restart]')
+    expect((await post(`/v1/agents/${id}/input`, { data: 'voice-footer e2e-footer\r' })).status).toBe(204)
+    await app.waitTerm(id, '✔ Update installed')
+    await expect(strip).toBeVisible()
+
+    // The reload: the sessions list held back until the terminal has
+    // replayed the screen, footer and all.
+    let release = () => {}
+    const held = new Promise<void>((done) => { release = done })
+    await page.route(/\/v1\/sessions(\?|$)/, async (route) => { await held; await route.continue() })
+    await page.reload()
+    await expect(app.tabs.getByRole('tab', { name: new RegExp(`^${name}`) })).toBeVisible()
+    await app.waitTerm(id, '✔ Update installed')
+    await page.waitForTimeout(800)
+    await expect(strip).toHaveCount(0)
+    release()
+    await expect(strip).toBeVisible()
+    await expect(strip).toContainText('Voice works after restarting this session.')
+  } finally {
+    await page.close()
+    await stopAgent(stand.daemonURL, id)
+  }
+})

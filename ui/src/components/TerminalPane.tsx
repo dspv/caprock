@@ -124,7 +124,7 @@ import { blinkWhileVisible, pageHidden, suspendWhileHidden } from '@/lib/visible
 import { attachInputBoxBand, type InputBoxBand } from '@/lib/terminputbox'
 import { attachUpdateWatch, dismissNotice, requestShellBeside, type UpdateNotice } from '@/lib/termupdate'
 import { UpdateNoticeBar } from './UpdateNoticeBar'
-import { attachVoiceWatch, daemonPlatform, hideVoice, isVoiceHidden, macDaemon } from '@/lib/termvoice'
+import { attachVoiceWatch, daemonPlatform, hideVoice, isVoiceHidden, macDaemon, PLATFORM_RETRY_MS } from '@/lib/termvoice'
 import { VoiceRestartStrip } from './VoiceRestartStrip'
 import { EarlyExit } from './EarlyExit'
 import { newShellCloseKey, newShellHintText, onlyPrompt } from '@/lib/newshellhint'
@@ -357,6 +357,9 @@ export function TerminalPane({
   const [voice, setVoice] = useState(false)
   const voiceRef = useRef(voiceRestart)
   voiceRef.current = voiceRestart
+  // The daemon runs on macOS: asked once the pane is on; nothing is scanned before.
+  const macRef = useRef(false)
+  const voicesRef = useRef<{ rescan: () => void } | null>(null)
   useEffect(() => { setVoice(false) }, [sessionId])
   // The new shell's hint, where it sits (lib/newshellhint); null when not shown.
   const [shellLine, setShellLine] = useState<{ top: number; left: number } | null>(null)
@@ -404,9 +407,8 @@ export function TerminalPane({
     band.setLook({ shown: prefs.highlightInput, strength: prefs.highlightStrength })
     band.setEnabled(inputBoxRef.current)
     const updates = attachUpdateWatch(term, setUpdate)
-    const voices = attachVoiceWatch(term, () => voiceRef.current && !isVoiceHidden(sessionId), () => {
-      void daemonPlatform().then((p) => { if (macDaemon(p) && voiceRef.current && !isVoiceHidden(sessionId)) setVoice(true) })
-    })
+    const voices = attachVoiceWatch(term, () => voiceRef.current && macRef.current && !isVoiceHidden(sessionId), () => setVoice(true))
+    voicesRef.current = voices
     // A local dev server's address gets *Preview on phone* beside it, where a
     // page can show (the desktop app); seen anywhere, ⌘K lists it (lib/devservers).
     const devServers = attachDevServerWatch(term, {
@@ -1076,12 +1078,35 @@ export function TerminalPane({
       bandRef.current = null
       updates.dispose()
       voices.dispose()
+      voicesRef.current = null
       devServers.dispose()
       term.dispose()
     }
     // `run`: Try again under the same id (an ended session continued as
     // itself) is a new process on the same id, so the terminal starts over.
   }, [sessionId, run])
+
+  // The voice watch on: the daemon's platform asked (once per page), then
+  // the screen scanned as it stands. Claude Code draws its voice failure in
+  // the footer and writes nothing after it, so a pane that turned on after
+  // the line was drawn — the page loaded with this tab open, its terminal
+  // replayed before the sessions list answered — would otherwise wait for a
+  // write that never comes. A failed ask is asked again.
+  useEffect(() => {
+    if (!voiceRestart) return
+    let alive = true
+    let retry = 0
+    const ask = () => {
+      void daemonPlatform().then((p) => {
+        if (!alive) return
+        if (!p) { retry = window.setTimeout(ask, PLATFORM_RETRY_MS); return }
+        macRef.current = macDaemon(p)
+        voicesRef.current?.rescan()
+      })
+    }
+    ask()
+    return () => { alive = false; window.clearTimeout(retry) }
+  }, [voiceRestart, sessionId, run])
 
   // A layout effect: the tab's panel is un-hidden in the same commit, and the
   // terminal must have its renderer and its frame before the browser paints
