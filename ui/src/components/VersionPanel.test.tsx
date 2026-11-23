@@ -150,7 +150,68 @@ describe('the version panel between a release and its app update', () => {
     app.info = on({ phase: 'checking' })
     render(<VersionPanel shown="0.189.0" title="" onStatus={() => {}} status={out} />)
     fireEvent.click(screen.getByText('0.189.0'))
-    expect(document.querySelector('[data-app-checking]')?.textContent).toMatch(/Looking for the app update/)
+    expect(document.querySelector('[data-app-update-state="checking"]')?.textContent).toBe('Checking for the app update…')
     expect(screen.queryByRole('button', { name: /Update to/ })).toBeNull()
+  })
+})
+
+// Owner, 2026-11-23: "v0.190.1 is out · Run in a terminal: brew update &&
+// brew upgrade --cask caprock-app" while the app was downloading it itself.
+describe('the version panel while the app updates itself', () => {
+  const out: UpdateStatus = { ...base, current: 'v0.189.1', latest: 'v0.190.1', update_available: true, checked_at: Date.now() - 6000, app_command: 'brew update && brew upgrade --cask caprock-app' }
+  const on = (over: Partial<AppUpdateInfo>) => ({ version: '0.189.1', supported: true, asked: true, phase: 'idle', ...over } as AppUpdateInfo)
+  const openPanel = (info: AppUpdateInfo | undefined, st: UpdateStatus = out) => {
+    app.info = info
+    render(<VersionPanel shown="0.189.1" title="" onStatus={() => {}} status={st} />)
+    fireEvent.click(screen.getByText('0.189.1'))
+    return screen.getByRole('dialog', { name: 'Caprock version' })
+  }
+  afterEach(() => { resetAppUpdate(); vi.restoreAllMocks() })
+
+  it('checking: says so, no commands', () => {
+    vi.spyOn(appUpdate, 'check').mockResolvedValue(undefined)
+    const dlg = openPanel(on({ phase: 'checking' }))
+    expect(dlg.querySelector('[data-app-update-state="checking"]')?.textContent).toBe('Checking for the app update…')
+    expect(dlg.textContent).not.toMatch(/terminal|brew/)
+  })
+
+  it('downloading: the version, the percentage and a bar, no commands', () => {
+    const dlg = openPanel(on({ phase: 'downloading', next: '0.190.1', downloaded: 42, total: 100 }))
+    const st = dlg.querySelector('[data-app-update-state="progress"]')!
+    expect(st.textContent).toBe('Downloading v0.190.1… 42%')
+    expect((st.querySelector('[style]') as HTMLElement).style.width).toBe('42%')
+    expect(dlg.textContent).not.toMatch(/terminal|brew/)
+  })
+
+  it('downloading with no size known: no number', () => {
+    const dlg = openPanel(on({ phase: 'downloading', next: '0.190.1', downloaded: 42, total: null }))
+    expect(dlg.querySelector('[data-app-update-state="progress"]')?.textContent).toBe('Downloading v0.190.1…')
+  })
+
+  it('installing: the app restarts, sessions keep running; no commands', () => {
+    const dlg = openPanel(on({ phase: 'installing', next: '0.190.1' }))
+    expect(dlg.querySelector('[data-app-update-state="installing"]')?.textContent).toBe('Installing v0.190.1 — the app restarts, sessions keep running')
+    expect(dlg.textContent).not.toMatch(/terminal|brew/)
+  })
+
+  it('being prepared: no commands either', () => {
+    vi.spyOn(appUpdate, 'recheck').mockResolvedValue(undefined)
+    const dlg = openPanel(on({ phase: 'available', next: '0.189.2' }))
+    expect(dlg.querySelector('[data-preparing]')).not.toBeNull()
+    expect(dlg.textContent).not.toMatch(/terminal|brew/)
+  })
+
+  it('failed: the error, Try again, and the terminal as the other way', () => {
+    const dlg = openPanel(on({ phase: 'failed', error: 'Could not reach GitHub: timed out' }))
+    expect(dlg.querySelector('[data-update-failed]')?.textContent).toMatch(/did not install.*Could not reach GitHub: timed out/)
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy()
+    const cmds = dlg.querySelector('[data-update-commands="fallback"]')!
+    expect(cmds.textContent).toMatch(/^Or update from a terminal:/)
+    expect(cmds.textContent).toMatch(/brew upgrade --cask caprock-app/)
+  })
+
+  it('an install that cannot replace itself: Run in a terminal', () => {
+    const dlg = openPanel(on({ supported: false, blocked: 'Installed from the .deb package: …' }))
+    expect(dlg.querySelector('[data-update-commands="primary"]')?.textContent).toMatch(/^Run in a terminal:.*brew upgrade/)
   })
 })

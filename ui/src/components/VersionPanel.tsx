@@ -20,7 +20,7 @@ import { checkByHand } from '@/lib/checkbanner'
 import { fmtAgo } from '@/lib/format'
 import { useNow } from '@/lib/useNow'
 import { upgradeCommands } from './AppUpdateNotice'
-import { Copyable } from './ui'
+import { AppUpdateProgress, UpdateCommands } from './AppUpdateState'
 import { CloseIcon } from './AppIcons'
 import { extProps } from '@/lib/externalLinks'
 
@@ -154,8 +154,18 @@ export function VersionPanel({ shown, title, status, onStatus }: {
                 : <><span className="mono">{offer.latest}</span>’s app update isn’t ready yet. Check now to look again.</>}
             </p>
           )}
-          {available && offer.kind === 'checking' && (
-            <p data-app-checking role="status" className="text-fg-muted">Looking for the app update…</p>
+          {/* The app checking, downloading or installing by itself: say
+            * that, never the terminal commands (owner, 2026-11-23). */}
+          {(offer.kind === 'checking' ? available : true) && <AppUpdateProgress offer={offer} />}
+          {offer.kind === 'failed' && (
+            <div data-update-failed className="grid gap-1">
+              <p><span className="font-medium text-warn">The update did not install.</span> Caprock <span className="mono">{shown}</span> keeps running.</p>
+              <p className="break-words text-[12.5px] text-fg-muted">{offer.error}</p>
+              <button type="button" onClick={() => { setOpen(false); void appUpdate.install(knownLatest(st)) }}
+                className="justify-self-start rounded-[7px] border border-accent/50 bg-accent/10 px-3 py-1 text-[13px] text-accent hover:bg-accent/20">
+                Try again
+              </button>
+            </div>
           )}
           {available && offer.kind === 'install' && (
             <div className="grid gap-1">
@@ -166,12 +176,10 @@ export function VersionPanel({ shown, title, status, onStatus }: {
               <p className="text-center text-[12px] text-fg-muted">Restarts the app · sessions keep running</p>
             </div>
           )}
-          {available && offer.kind !== 'install' && offer.kind !== 'preparing' && offer.kind !== 'checking' && commands.length > 0 && (
-            <div className="grid gap-1.5">
-              <p className="text-fg-muted">Run in a terminal:</p>
-              {commands.map((c) => <Copyable key={c.command} command={c.command} className="break-all" />)}
-            </div>
-          )}
+          {/* Only where this install cannot replace itself, and as the other
+            * way under a failed update. */}
+          {available && offer.kind === 'commands' && <UpdateCommands commands={commands} />}
+          {offer.kind === 'failed' && <UpdateCommands commands={commands} fallback />}
           {error && <p className="break-words text-warn">{error}</p>}
           {/* One button, the useful one (owner, 2026-10-16): an update to
             * install has its own above; otherwise, check (again). */}

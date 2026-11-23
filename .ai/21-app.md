@@ -2894,6 +2894,16 @@ the user guide [docs/app.md § Updates](../docs/app.md#updates).
     installs a bundle older than it, but leaves that offer standing and
     returns. Update automatically waits the same way and downloads the
     release once it is offered.
+- **No terminal commands while the app updates itself** (owner 2026-11-23:
+  the version panel showed *Run in a terminal: brew update && brew upgrade
+  --cask caprock-app* while the app was downloading the update on its own).
+  The version panel and the strip's update panel show *Run in a terminal:*
+  only for an install that cannot replace itself (offer `commands`), and
+  *Or update from a terminal:* under a failed update, beside the error and
+  **Try again**. Checking, downloading and installing say so instead
+  (`ui/src/components/AppUpdateState.tsx`): *Checking for the app update…*,
+  *Downloading vX… 42%* with a thin bar, *Installing vX — the app restarts,
+  sessions keep running*; the gap above shows no commands either.
 - **Checking by hand.** **Check for Updates…** in the macOS app menu and the
   tray menu, and *Check for updates* in the palette, fetch `latest.json`
   once, with or without the release check on: *Checking for updates…*, then

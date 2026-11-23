@@ -24,7 +24,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, isPairedDevice, type UpdateStatus } from '@/lib/api'
 import { appUpdate, inBackground, knownLatest, offerFor, useAppUpdate, v, type Offer } from '@/lib/appupdate'
-import { Copyable } from './ui'
+import { UpdateCommands } from './AppUpdateState'
 import { everyWhileVisible } from '@/lib/visible'
 import { askSoon, onWindowFront } from '@/lib/updatesoon'
 import { checkByHand, checkingByHand, reportCheck, useCheckResult } from '@/lib/checkbanner'
@@ -266,19 +266,13 @@ export function AppUpdateNotice() {
             </p>
           )}
           {offer.kind === 'commands' && info?.blocked && <p className="text-fg-muted">{info.blocked}</p>}
-          {offer.kind !== 'install' && (commands.length > 0 ? (
-            <div className="grid gap-1.5">
-              <p className="text-fg-muted">Run in a terminal:</p>
-              {commands.map((c) => (
-                <div key={c.command} className="grid gap-0.5">
-                  {commands.length > 1 && <span className="text-[11px] text-fg-faint">{c.label}</span>}
-                  <Copyable command={c.command} className="break-all" />
-                </div>
-              ))}
-            </div>
-          ) : (
-            !info?.blocked && offer.kind === 'commands' && <p className="text-fg-muted">Download it from the release page.</p>
-          ))}
+          {/* The commands where this install cannot replace itself, and as
+            * the other way under a failed update; never over the app's own
+            * check, download or install (lib/AppUpdateState, owner 2026-11-23). */}
+          {offer.kind === 'commands' && (commands.length > 0
+            ? <UpdateCommands commands={commands} />
+            : !info?.blocked && <p className="text-fg-muted">Download it from the release page.</p>)}
+          {offer.kind === 'failed' && <UpdateCommands commands={commands} fallback />}
           <div className="flex items-center gap-2">
             <a className="link text-[12px]" href={st?.url ?? 'https://github.com/dspv/caprock/releases/latest'} target="_blank" title={extTitle()} rel="noreferrer">
               {offer.kind === 'failed' ? 'release page' : 'what’s new'}
