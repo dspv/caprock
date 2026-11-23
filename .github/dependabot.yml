@@ -16,6 +16,11 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 3
+    ignore:
+      # modernc.org/libc moves with modernc.org/sqlite, which names the libc
+      # it was built against; bumped alone (#1012, libc 1.82.2 under sqlite
+      # 1.62.0) the Windows store tests ran twice as long and once timed out.
+      - dependency-name: modernc.org/libc
     groups:
       go-dependencies:
         patterns:
