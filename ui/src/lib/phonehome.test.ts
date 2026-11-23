@@ -159,7 +159,16 @@ describe('folded lines', () => {
     expect(continueCounts([
       s('a', 'waiting-on-you', NOW), s('b', 'working', NOW), s('c', 'looping', NOW), s('d', 'idle', NOW),
       s('e', 'idle', NOW, { status: 'ended' }),
-    ])).toEqual({ waiting: 1, working: 2, done: 0, idle: 1 })
+    ], NOW)).toEqual({ waiting: 1, working: 2, stalled: 0, done: 0, idle: 1 })
+  })
+  it('counts a stalled row as no reply, as its row reads, never idle or working (lib/stalled.ts)', () => {
+    const old = NOW - 2 * 3_600_000
+    expect(continueCounts([
+      s('a', 'idle', old, { turn_open: true }), s('b', 'working', old, { turn_open: true }),
+      // Under STALL_MS, waiting on you, or ended: not stalled.
+      s('c', 'idle', NOW - 60_000, { turn_open: true }), s('d', 'waiting-on-you', old, { turn_open: true }),
+      s('e', 'idle', old, { turn_open: true, status: 'ended' }), s('f', 'idle', old),
+    ], NOW)).toEqual({ waiting: 1, working: 0, stalled: 2, done: 0, idle: 2 })
   })
   it('says how many were saved and the newest, cut short', () => {
     const items = [

@@ -46,6 +46,7 @@ import { useContext, useEffect, useState } from 'react'
 import { WorkHomeCard } from '@/components/WorkHomeCard'
 import { PipelineHostContext } from '@/lib/pipelineHost'
 import { useNow, useNowFor } from '@/lib/useNow'
+import { STALLED_TIP, stalledAge, stalledWord } from '@/lib/stalled'
 import { startChat } from '@/lib/chats'
 import { rememberedQuickChoice } from '@/components/QuickChat'
 import { LivePace, NOW_LIVE_MS, SLOW_LIVE_MS } from '@/lib/refresh'
@@ -672,6 +673,8 @@ function PhoneSessions({ sessions, now, canControl }: { sessions: SessionSummary
           // Go's zero time is what a session with no event yet reports.
           const at = [s.activity.at, s.last_event_at, s.started_at].find((t) => t && !String(t).startsWith('0001-'))
           const title = labels.get(s.session_id) || s.project || 'unknown project'
+          // A turn with no reply for STALL_MS: the amber dot and *no reply 2h* where the badge was (lib/stalled.ts).
+          const stall = stalledAge(s, now)
           return (
             <EndableRow key={s.session_id} s={s} title={title} canControl={canControl}
               onEnded={() => { ended.mark(s.session_id); setKept((k) => [...k.filter((x) => x.session_id !== s.session_id), s]) }}>
@@ -691,7 +694,12 @@ function PhoneSessions({ sessions, now, canControl }: { sessions: SessionSummary
                     {at && <span className="ml-2 text-[11px] text-fg-faint num">{fmtAgo(at, now)}</span>}
                   </span>
                 </span>
-                <Badge health={sessionHealth(s)} />
+                {stall !== null ? (
+                  <span data-stalled title={STALLED_TIP} className="inline-flex shrink-0 items-center gap-1.5 text-[12px] text-warn">
+                    <span data-stalled-dot aria-hidden="true" className="h-2 w-2 rounded-full bg-warn" />
+                    {stalledWord(stall)}
+                  </span>
+                ) : <Badge health={sessionHealth(s)} />}
                 {/* A live row has its ⋯ (End) where the chevron was. */}
                 {s.status === 'ended' && <span aria-hidden className="text-[18px] text-fg-faint">›</span>}
               </a>
