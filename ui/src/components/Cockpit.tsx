@@ -1101,7 +1101,7 @@ function SpendNumbers({ pick, hero, slots, figures, label }: { pick: SpendPick; 
 }
 
 /** A disclosure's mark: pointing right when closed, down when open. */
-function Chevron({ open }: { open: boolean }) {
+export function Chevron({ open }: { open: boolean }) {
   return (
     <svg aria-hidden width="12" height="12" viewBox="0 0 12 12" className={`shrink-0 text-fg-muted transition-transform duration-150 motion-reduce:transition-none ${open ? 'rotate-90' : ''}`}>
       <path d="M4.5 2.5L8 6l-3.5 3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
