@@ -1102,11 +1102,14 @@ SELECT DISTINCT sid FROM events NOT INDEXED WHERE id > ?
     SEARCH events USING INTEGER PRIMARY KEY (rowid>?)
     USE TEMP B-TREE FOR DISTINCT
 
-## store.EventsMark.MovedSince
-SELECT sid FROM sessions WHERE session_id IN (SELECT value FROM json_each(?))
-    SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
-    LIST SUBQUERY 1
-        SCAN json_each VIRTUAL TABLE INDEX 1:
+## store.EventsMark.partsMovedSince
+SELECT sid, MIN(ts) FROM events NOT INDEXED WHERE id > ? GROUP BY sid
+    SEARCH events USING INTEGER PRIMARY KEY (rowid>?)
+    USE TEMP B-TREE FOR GROUP BY
+
+## store.EventsMark.partsMovedSince
+SELECT sid, event_id, msg_id FROM parts_links WHERE seq > ? ORDER BY seq
+    SEARCH parts_links USING INTEGER PRIMARY KEY (rowid>?)
 
 ## store.EventsVersion
 SELECT COALESCE(MAX(id), 0) + COALESCE((SELECT CAST(v AS INTEGER) FROM meta WHERE k = 'events_moved'), 0) FROM events
@@ -1926,15 +1929,19 @@ SELECT COALESCE((SELECT gen FROM session_gen WHERE session_id = ?1), 0), COALESC
             SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
 
 ## store.ReadEventsMark
-SELECT COALESCE((SELECT MAX(id) FROM events), 0), COALESCE((SELECT CAST(v AS INTEGER) FROM meta WHERE k = 'events_moved'), 0)
+SELECT COALESCE((SELECT MAX(id) FROM events), 0), COALESCE((SELECT CAST(v AS INTEGER) FROM meta WHERE k = 'events_moved'), 0), COALESCE((SELECT MAX(seq) FROM parts_links), 0), COALESCE((SELECT MIN(seq) FROM parts_links), 0)
     SCAN CONSTANT ROW
     SCALAR SUBQUERY 1
         SEARCH events
     SCALAR SUBQUERY 2
         SEARCH meta USING INDEX sqlite_autoindex_meta_1 (k=?)
+    SCALAR SUBQUERY 3
+        SEARCH parts_links
+    SCALAR SUBQUERY 4
+        SEARCH parts_links
 
 ## store.ReadEventsMark
-SELECT session_id, gen FROM session_gen
+SELECT session_id, gen, parts FROM session_gen
     SCAN session_gen
 
 ## store.RecentCompactionStats
@@ -3067,6 +3074,10 @@ SELECT kind FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id =
     SCALAR SUBQUERY 1
         SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
 
+## store.foldParts
+SELECT id, sid, kind, internal, COALESCE(model,''), COALESCE(msg_id,''), COALESCE(touch_dir,''), COALESCE(inner_tool, tool, ''), COALESCE(tool,''), COALESCE(tool_bytes,0), tokens_in, tokens_out, cache_read, cache_write, cost_usd, ts FROM events INDEXED BY idx_events_attr_work WHERE sid = ? AND ts >= ? AND id > ? ORDER BY ts, id
+    SEARCH events USING COVERING INDEX idx_events_attr_work (sid=? AND ts>?)
+
 ## store.learnMatch
 WITH a(i, at) AS MATERIALIZED ( SELECT CAST(key AS INTEGER), CAST(value AS INTEGER) FROM json_each(?)) SELECT a.i, s.session_id, MIN(e.ts) FROM a CROSS JOIN events p INDEXED BY idx_events_tool_dist JOIN sessions s ON s.sid = p.sid AND s.repo_root = ? JOIN events e ON e.sid = p.sid AND e.key = 'post:' || substr(p.key, 5) WHERE p.kind = 'tool.pre' AND p.ts >= a.at - ? AND p.ts < a.at + 1000 AND p.tool = 'Bash' AND p.internal = 0 AND p.key LIKE 'pre:%' AND e.ts >= a.at GROUP BY a.i, p.sid
     MATERIALIZE a
@@ -3330,20 +3341,20 @@ SELECT payload FROM events WHERE id = ? AND kind IN ('tool.pre', 'tool.post') AN
     SEARCH events USING INTEGER PRIMARY KEY (rowid=?)
 
 ## store.scanEventParts
-SELECT sid, kind, internal, COALESCE(model,''), COALESCE(msg_id,''), COALESCE(touch_dir,''), COALESCE(inner_tool, tool, ''), COALESCE(tool,''), COALESCE(tool_bytes,0), tokens_in, tokens_out, cache_read, cache_write, cost_usd, ts FROM events INDEXED BY idx_events_attr_work WHERE sid IN (SELECT DISTINCT sid FROM events INDEXED BY idx_events_ts_cover WHERE ts >= ?) AND ts >= ? ORDER BY sid, ts, id
+SELECT id, sid, kind, internal, COALESCE(model,''), COALESCE(msg_id,''), COALESCE(touch_dir,''), COALESCE(inner_tool, tool, ''), COALESCE(tool,''), COALESCE(tool_bytes,0), tokens_in, tokens_out, cache_read, cache_write, cost_usd, ts FROM events INDEXED BY idx_events_attr_work WHERE sid IN (SELECT DISTINCT sid FROM events INDEXED BY idx_events_ts_cover WHERE ts >= ?) AND ts >= ? ORDER BY sid, ts, id
     SEARCH events USING COVERING INDEX idx_events_attr_work (sid=? AND ts>?)
     LIST SUBQUERY 1
         SEARCH events USING COVERING INDEX idx_events_ts_cover (ts>?)
         USE TEMP B-TREE FOR DISTINCT
 
 ## store.scanEventParts
-SELECT sid, kind, internal, COALESCE(model,''), COALESCE(msg_id,''), COALESCE(touch_dir,''), COALESCE(inner_tool, tool, ''), COALESCE(tool,''), COALESCE(tool_bytes,0), tokens_in, tokens_out, cache_read, cache_write, cost_usd, ts FROM events INDEXED BY idx_events_attr_work WHERE sid IN (SELECT value FROM json_each(?)) AND ts >= ? ORDER BY sid, ts, id
+SELECT id, sid, kind, internal, COALESCE(model,''), COALESCE(msg_id,''), COALESCE(touch_dir,''), COALESCE(inner_tool, tool, ''), COALESCE(tool,''), COALESCE(tool_bytes,0), tokens_in, tokens_out, cache_read, cache_write, cost_usd, ts FROM events INDEXED BY idx_events_attr_work WHERE sid IN (SELECT value FROM json_each(?)) AND ts >= ? ORDER BY sid, ts, id
     SEARCH events USING COVERING INDEX idx_events_attr_work (sid=? AND ts>?)
     LIST SUBQUERY 1
         SCAN json_each VIRTUAL TABLE INDEX 1:
 
 ## store.scanEventParts
-SELECT sid, kind, internal, COALESCE(model,''), COALESCE(msg_id,''), COALESCE(touch_dir,''), COALESCE(inner_tool, tool, ''), COALESCE(tool,''), COALESCE(tool_bytes,0), tokens_in, tokens_out, cache_read, cache_write, cost_usd, ts FROM events INDEXED BY idx_events_attr_work WHERE sid IS NOT NULL AND ts >= ? ORDER BY sid, ts, id
+SELECT id, sid, kind, internal, COALESCE(model,''), COALESCE(msg_id,''), COALESCE(touch_dir,''), COALESCE(inner_tool, tool, ''), COALESCE(tool,''), COALESCE(tool_bytes,0), tokens_in, tokens_out, cache_read, cache_write, cost_usd, ts FROM events INDEXED BY idx_events_attr_work WHERE sid IS NOT NULL AND ts >= ? ORDER BY sid, ts, id
     SCAN events USING COVERING INDEX idx_events_attr_work
 
 ## store.scanLoopSeries
@@ -3430,6 +3441,12 @@ SELECT session_id, COALESCE(agent,'') FROM sessions WHERE repo_root IN (?)
 ## store.sessionKinds
 SELECT session_id, COALESCE(agent,'') FROM sessions WHERE repo_root IN (?,?)
     SEARCH sessions USING INDEX idx_sessions_repo_branch (repo_root=?)
+
+## store.sidsOf
+SELECT session_id, sid FROM sessions WHERE session_id IN (SELECT value FROM json_each(?))
+    SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
+    LIST SUBQUERY 1
+        SCAN json_each VIRTUAL TABLE INDEX 1:
 
 ## store.sliceSums
 WITH a(i, sid, lo, hi) AS MATERIALIZED ( SELECT CAST(key AS INTEGER), (SELECT s.sid FROM sessions s WHERE s.session_id = json_extract(value, '$[0]')), json_extract(value, '$[1]'), json_extract(value, '$[2]') FROM json_each(?)) SELECT a.i, (SELECT COALESCE(SUM(e.cost_usd),0) FROM events e INDEXED BY idx_events_attr_work WHERE e.sid = a.sid AND e.ts > a.lo AND e.ts <= a.hi AND e.internal = 0), (SELECT json_array(COALESCE(SUM(e.tokens_in),0), COALESCE(SUM(e.tokens_out),0), COALESCE(SUM(e.cache_read),0), COALESCE(SUM(e.cache_write),0)) FROM events e INDEXED BY idx_events_attr_work WHERE e.sid = a.sid AND e.ts > a.lo AND e.ts <= a.hi AND e.internal = 0) FROM a

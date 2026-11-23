@@ -81,11 +81,12 @@ func TestEventsGenMovesOnEveryChange(t *testing.T) {
 
 // TestEventsGenTriggersExist guards the triggers against a future migration
 // that rebuilds the events table: dropping a table drops its triggers, and the
-// sessions list would then serve stale summaries without any test of its own
-// noticing.
+// sessions list would then serve stale summaries, and the kept summary parts
+// stale figures (migration 0091), without any test of their own noticing.
 func TestEventsGenTriggersExist(t *testing.T) {
 	s := openTest(t)
-	for _, name := range []string{"events_gen_update", "events_gen_delete"} {
+	for _, name := range []string{"events_gen_update", "events_gen_delete",
+		"events_parts_update", "events_parts_link", "events_parts_delete"} {
 		var tbl string
 		err := s.DB().QueryRowContext(context.Background(),
 			`SELECT tbl_name FROM sqlite_master WHERE type = 'trigger' AND name = ?`, name).Scan(&tbl)

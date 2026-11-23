@@ -1,9 +1,11 @@
 package store
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"encoding/json"
+	"maps"
 	"slices"
 	"sort"
 	"sync"
@@ -36,8 +38,16 @@ import (
 // known without reading events: a new row takes an id above the newest one
 // seen, and every update or delete of a session's events moves its
 // session_gen (migration 0063). The answer is then built from the parts in
-// Go: the summary of a range nobody worked in reads nothing, and one with two
-// live agents reads their rows in range.
+// Go: the summary of a range nobody worked in reads nothing.
+//
+// A session agents are working in moves on nearly every ask, and reading its
+// whole range each time was most of what was left. So a session read on its
+// own keeps its scan (sessionScan), and when it has only added rows since —
+// above the newest id read, at or after the last ts, and no column a part
+// sums changed (session_gen.parts, migration 0091) — those rows alone are
+// read and added to it (foldParts): one seek to the end of the session. A
+// tool call linked to its message after it was read (parts_links) is applied
+// to the scan that counted it unlinked.
 //
 // The parts are the same whether kept or counted afresh, so a cached summary
 // is the uncached one (SummarizeSparkFor builds from parts too); only the
@@ -171,7 +181,10 @@ func (sc partsScope) clause(col string) (string, []any) {
 // anyway and the seeks cost more than the scan they skip (on a copy of the
 // owner's database, 2026-10-14: 7 days 114 ms scanned and 139 ms sought, 30
 // days 225 ms and 325 ms, today 79 ms scanned and 52 ms sought).
-func readParts(ctx context.Context, q Querier, from, base, width int64, sc partsScope) (rangeParts, error) {
+//
+// keep, when not nil, receives each session's scan as it stands after its
+// last row (sessionScan), so rows the session adds later can be added to it.
+func readParts(ctx context.Context, q Querier, from, base, width int64, sc partsScope, keep map[int64]*sessionScan) (rangeParts, error) {
 	if width <= 0 {
 		width = 3600000
 	}
@@ -180,7 +193,7 @@ func readParts(ctx context.Context, q Querier, from, base, width int64, sc parts
 	if sc.all && nowMs()-from <= seekSessionsWithin.Milliseconds() {
 		where, args = `sid IN (SELECT DISTINCT sid FROM events INDEXED BY idx_events_ts_cover WHERE ts >= ?)`, []any{from}
 	}
-	if err := scanEventParts(ctx, q, from, where, args, &out); err != nil {
+	if err := scanEventParts(ctx, q, from, where, args, &out, keep); err != nil {
 		return out, err
 	}
 	if err := readAgentParts(ctx, q, from, sc, &out); err != nil {
@@ -204,11 +217,9 @@ func readParts(ctx context.Context, q Querier, from, base, width int64, sc parts
 // and those calls come after the turn's row, so the kinds are applied once
 // the session's rows are all read (partAcc.finish). A tool call with no
 // message id is counted, not guessed at (work_unlinked_calls).
-func scanEventParts(ctx context.Context, q Querier, from int64, where string, args []any, out *rangeParts) error {
+func scanEventParts(ctx context.Context, q Querier, from int64, where string, args []any, out *rangeParts, keep map[int64]*sessionScan) error {
 	rows, err := q.QueryContext(ctx, `
-		SELECT sid, kind, internal, COALESCE(model,''), COALESCE(msg_id,''), COALESCE(touch_dir,''),
-		       COALESCE(inner_tool, tool, ''), COALESCE(tool,''), COALESCE(tool_bytes,0),
-		       tokens_in, tokens_out, cache_read, cache_write, cost_usd, ts
+		SELECT `+scanCols+`
 		FROM events INDEXED BY idx_events_attr_work
 		WHERE `+where+` AND ts >= ?
 		ORDER BY sid, ts, id`, append(args, from)...)
@@ -217,83 +228,260 @@ func scanEventParts(ctx context.Context, q Querier, from int64, where string, ar
 	}
 	defer rows.Close()
 	var (
-		cur      *sessionPart
-		curSid   int64
-		acc      partAcc
-		carryDir string
-		carried  bool
+		cur    *sessionScan
+		curSid int64
+		reused sessionScan
+		r      scanRow
 	)
 	flush := func() {
 		if cur == nil {
 			return
 		}
-		acc.finish(cur)
-		if !cur.empty() {
-			out.sids[curSid] = cur
+		if p := cur.part(keep != nil); !p.empty() {
+			out.sids[curSid] = p
+			if keep != nil {
+				keep[curSid] = cur
+			}
 		}
 	}
 	for rows.Next() {
-		var sid int64
-		var kind, model, msg, dir, workTool, tool string
-		var internal int
-		var bytes int64
-		var tin, tout, cr, cw sql.NullInt64
-		var cost sql.NullFloat64
-		var ts int64
-		if err := rows.Scan(&sid, &kind, &internal, &model, &msg, &dir, &workTool, &tool, &bytes,
-			&tin, &tout, &cr, &cw, &cost, &ts); err != nil {
+		if err := r.scan(rows); err != nil {
 			return err
 		}
-		if cur == nil || sid != curSid {
+		if cur == nil || r.sid != curSid {
 			flush()
-			cur, curSid = &sessionPart{}, sid
-			acc.reset()
-			carryDir, carried = "", false
-		}
-		tokens := tin.Int64 + tout.Int64 + cr.Int64 + cw.Int64
-		if internal != 0 {
-			// Internal model work counts only as background.
-			if kind == string(event.KindTurnAssistant) {
-				acc.background(model, tokens)
-			}
-			continue
-		}
-		acc.kind(kind, tin.Int64, tout.Int64, cr.Int64, cw.Int64, cost)
-		isTool := kind == string(event.KindToolPre) || kind == string(event.KindToolPost)
-		if isTool && tool != "" {
-			acc.tool(tool, kind == string(event.KindToolPre), bytes)
-		}
-		switch kind {
-		case string(event.KindTurnAssistant):
-			acc.model(model, tokens, cost, tout.Int64, cr.Int64)
-			if !cost.Valid && tokens > 0 {
-				acc.unpricedTurn(model, tokens)
-			}
-			b, hr := int64(-1), int64(-1)
-			if ts >= out.base {
-				b, hr = (ts-out.base)/out.width, (ts-out.base)/3600000
-			}
-			acc.hour(b, hr, tokens, tin.Int64+cr.Int64+cw.Int64, cost)
-			acc.turn(turnSpend{tokens: tokens, cost: cost.Float64,
-				touched: TouchDirs{Dir: carryDir, HasDir: carried}, msgKey: msg, hasMsg: msg != ""})
-		case string(event.KindToolPre):
-			if msg == "" {
-				cur.unlinked++
+			if keep != nil {
+				cur = newSessionScan()
 			} else {
-				acc.workOf(msg, workKindOf(workTool))
+				cur = &reused
+				cur.reset()
 			}
-			// Only a tool that named a file moves the carry; a pathless one
-			// (Bash, Grep) is part of the same stretch of work.
-			if dir != "" {
-				carryDir, carried = dir, true
-			}
+			curSid = r.sid
 		}
+		cur.add(&r, out.base, out.width)
 	}
 	if err := rows.Err(); err != nil {
 		return err
 	}
 	flush()
 	return nil
+}
+
+// scanCols are the columns scanEventParts and foldParts read, all in
+// idx_events_attr_work (scanRow.scan).
+const scanCols = `id, sid, kind, internal, COALESCE(model,''), COALESCE(msg_id,''), COALESCE(touch_dir,''),
+		       COALESCE(inner_tool, tool, ''), COALESCE(tool,''), COALESCE(tool_bytes,0),
+		       tokens_in, tokens_out, cache_read, cache_write, cost_usd, ts`
+
+// scanRow is one event as the parts read it.
+type scanRow struct {
+	id, sid                               int64
+	kind, model, msg, dir, workTool, tool string
+	internal                              int
+	bytes                                 int64
+	tin, tout, cr, cw                     sql.NullInt64
+	cost                                  sql.NullFloat64
+	ts                                    int64
+}
+
+func (r *scanRow) scan(rows *sql.Rows) error {
+	return rows.Scan(&r.id, &r.sid, &r.kind, &r.internal, &r.model, &r.msg, &r.dir, &r.workTool, &r.tool, &r.bytes,
+		&r.tin, &r.tout, &r.cr, &r.cw, &r.cost, &r.ts)
+}
+
+// sessionScan is one session's scan as it stands after the last row read:
+// its sums, the carried directory, and where it stopped. The rows a session
+// adds after that point, in (ts, id) order, can be added to it as if the
+// whole session had been read in one go (foldParts): every figure is the
+// same, down to the order its floating-point sums were added in.
+type sessionScan struct {
+	acc      partAcc
+	unlinked int64
+	// pending are the counted tool calls with no message id, by event id,
+	// with the work kind each would give its turn: a link (parts_links) to
+	// one of them is applied as a fresh scan would see it. Kept scans only.
+	pending  map[int64]WorkKind
+	carryDir string
+	carried  bool
+	// lastTs and maxID are the last row's ts and the highest id read: a row
+	// not read yet has an id above maxID, and one at or after lastTs comes
+	// after every row read.
+	lastTs, maxID int64
+	// used is the refresh that last read this session (keptParts.tick).
+	used uint64
+	// settled is the scan as it stood before its newest partsSettle of rows,
+	// and recent those rows, in order. A row read late — older than the last
+	// row read, but not than settled's — is put in order among recent and
+	// the scan replayed from settled: with hooks on, a call the hook stored
+	// is often read before its turn's transcript line, which is older.
+	settled *sessionScan
+	recent  []scanRow
+}
+
+// partsSettle is how far behind its newest row a kept scan's checkpoint
+// (sessionScan.settled) stays: a row read later than that, older than
+// everything after the checkpoint, has the session read whole.
+const partsSettle = 2 * time.Minute
+
+// clone copies the scan's sums and position; not its checkpoint.
+func (s *sessionScan) clone() *sessionScan {
+	c := &sessionScan{unlinked: s.unlinked, pending: maps.Clone(s.pending), carryDir: s.carryDir, carried: s.carried,
+		lastTs: s.lastTs, maxID: s.maxID, used: s.used}
+	a := &s.acc
+	c.acc = partAcc{kinds: slices.Clone(a.kinds), models: slices.Clone(a.models), unpriced: slices.Clone(a.unpriced),
+		bg: slices.Clone(a.bg), tools: slices.Clone(a.tools), hourKeys: slices.Clone(a.hourKeys), turns: slices.Clone(a.turns),
+		works: maps.Clone(a.works), hours: make(map[[2]int64]*hourPart, len(a.hours))}
+	if c.acc.works == nil {
+		c.acc.works = map[string]WorkKind{}
+	}
+	for k, h := range a.hours {
+		hh := *h
+		c.acc.hours[k] = &hh
+	}
+	return c
+}
+
+// foldFrom is the oldest ts a row read late may have and still be folded
+// in, and the ts the read of new rows starts at.
+func (s *sessionScan) foldFrom() int64 {
+	if s.settled != nil {
+		return min(s.settled.lastTs, s.lastTs)
+	}
+	return s.lastTs
+}
+
+// fold adds the session's links and new rows (above maxID, at or after
+// foldFrom, in (ts, id) order) as a fresh scan of the whole session would
+// read them.
+func (s *sessionScan) fold(rows []scanRow, links []partsLink, base, width int64) {
+	if s.settled == nil {
+		s.settled = s.clone()
+	}
+	for _, l := range links {
+		if !s.settled.link(l.id, l.msg) {
+			for i := range s.recent {
+				if r := &s.recent[i]; r.id == l.id && r.msg == "" && r.kind == string(event.KindToolPre) {
+					r.msg = l.msg
+				}
+			}
+		}
+		s.link(l.id, l.msg)
+	}
+	if len(rows) > 0 && rows[0].ts < s.lastTs {
+		// Read late: in order among the recent rows, replayed from the
+		// checkpoint.
+		s.recent = append(s.recent, rows...)
+		slices.SortStableFunc(s.recent, func(a, b scanRow) int {
+			if c := cmp.Compare(a.ts, b.ts); c != 0 {
+				return c
+			}
+			return cmp.Compare(a.id, b.id)
+		})
+		head := s.settled.clone()
+		for i := range s.recent {
+			head.add(&s.recent[i], base, width)
+		}
+		head.settled, head.recent, head.used = s.settled, s.recent, s.used
+		*s = *head
+	} else {
+		for i := range rows {
+			s.add(&rows[i], base, width)
+		}
+		s.recent = append(s.recent, rows...)
+	}
+	cut, n := s.lastTs-partsSettle.Milliseconds(), 0
+	for n < len(s.recent) && s.recent[n].ts < cut {
+		s.settled.add(&s.recent[n], base, width)
+		n++
+	}
+	if n > 0 {
+		s.recent = slices.Clone(s.recent[n:])
+	}
+}
+
+func newSessionScan() *sessionScan {
+	s := &sessionScan{pending: map[int64]WorkKind{}}
+	s.acc.reset()
+	return s
+}
+
+func (s *sessionScan) reset() {
+	s.acc.reset()
+	s.unlinked, s.carryDir, s.carried, s.lastTs, s.maxID = 0, "", false, 0, 0
+}
+
+// add reads one row, in (ts, id) order within the session.
+func (s *sessionScan) add(r *scanRow, base, width int64) {
+	s.lastTs = r.ts
+	s.maxID = max(s.maxID, r.id)
+	acc := &s.acc
+	tokens := r.tin.Int64 + r.tout.Int64 + r.cr.Int64 + r.cw.Int64
+	if r.internal != 0 {
+		// Internal model work counts only as background.
+		if r.kind == string(event.KindTurnAssistant) {
+			acc.background(r.model, tokens)
+		}
+		return
+	}
+	acc.kind(r.kind, r.tin.Int64, r.tout.Int64, r.cr.Int64, r.cw.Int64, r.cost)
+	isTool := r.kind == string(event.KindToolPre) || r.kind == string(event.KindToolPost)
+	if isTool && r.tool != "" {
+		acc.tool(r.tool, r.kind == string(event.KindToolPre), r.bytes)
+	}
+	switch r.kind {
+	case string(event.KindTurnAssistant):
+		acc.model(r.model, tokens, r.cost, r.tout.Int64, r.cr.Int64)
+		if !r.cost.Valid && tokens > 0 {
+			acc.unpricedTurn(r.model, tokens)
+		}
+		b, hr := int64(-1), int64(-1)
+		if r.ts >= base {
+			b, hr = (r.ts-base)/width, (r.ts-base)/3600000
+		}
+		acc.hour(b, hr, tokens, r.tin.Int64+r.cr.Int64+r.cw.Int64, r.cost)
+		acc.turn(turnSpend{tokens: tokens, cost: r.cost.Float64,
+			touched: TouchDirs{Dir: s.carryDir, HasDir: s.carried}, msgKey: r.msg, hasMsg: r.msg != ""})
+	case string(event.KindToolPre):
+		if r.msg == "" {
+			s.unlinked++
+			if s.pending != nil {
+				s.pending[r.id] = workKindOf(r.workTool)
+			}
+		} else {
+			acc.workOf(r.msg, workKindOf(r.workTool))
+		}
+		// Only a tool that named a file moves the carry; a pathless one
+		// (Bash, Grep) is part of the same stretch of work.
+		if r.dir != "" {
+			s.carryDir, s.carried = r.dir, true
+		}
+	}
+}
+
+// link applies a tool call given its message id after it was read, as a
+// fresh scan would read it; false when the call was not counted here as
+// unlinked (out of range, internal, or read already linked).
+func (s *sessionScan) link(id int64, msg string) bool {
+	k, ok := s.pending[id]
+	if !ok {
+		return false
+	}
+	delete(s.pending, id)
+	s.unlinked--
+	s.acc.workOf(msg, k)
+	return true
+}
+
+// part is the session's part as the scan stands. A kept scan goes on
+// summing into its own slices, so its part gets copies.
+func (s *sessionScan) part(kept bool) *sessionPart {
+	p := &sessionPart{unlinked: s.unlinked}
+	s.acc.finish(p)
+	if kept {
+		p.kinds, p.models, p.tools = slices.Clone(p.kinds), slices.Clone(p.models), slices.Clone(p.tools)
+		p.unpriced, p.background = slices.Clone(p.unpriced), slices.Clone(p.background)
+	}
+	return p
 }
 
 // partAcc gathers one session's part while its rows are scanned.
@@ -1102,6 +1290,11 @@ type PartsCache struct {
 // the scan they save.
 const partsMaxChanged = 256
 
+// partsMaxScans is how many sessions' scans a range keeps to add new rows
+// to. A scan holds one small record per turn of its session in range, and
+// only sessions that keep moving gain from it: the ones agents work in.
+const partsMaxScans = 32
+
 // partsIdle is how long a range's parts are kept unasked: yesterday's 7d is
 // not asked again once the day turns.
 const partsIdle = 15 * time.Minute
@@ -1151,8 +1344,17 @@ type keptParts struct {
 	// count they were read at.
 	read  time.Time
 	hurry uint64
-	// reads counts the reads made (for tests): full scans and partial ones.
+	// scans are the sessions read one by one since the last whole-range
+	// read, each as its scan stopped, so the rows it adds next are all that
+	// is read of it (foldParts); at most partsMaxScans, the least recently
+	// moved dropped first. tick counts the refreshes that read events.
+	scans map[int64]*sessionScan
+	tick  uint64
+	// reads counts the reads made (for tests): full scans and partial ones,
+	// and within the partial ones the sessions read whole and those whose
+	// new rows alone were read.
 	full, partial int
+	whole, folded int
 }
 
 // NewPartsCache returns an empty cache.
@@ -1256,12 +1458,20 @@ func (c *PartsCache) with(ctx context.Context, q Querier, from int64, fn func(ra
 }
 
 // refresh reads what moved since the parts were read (EventsMark): the
-// sessions with a new row or a new generation, one seek each; the whole range
-// on the first read, when too many moved, or when the mark cannot say which.
+// sessions with a new row or a new generation; the whole range on the first
+// read, when too many moved, or when the mark cannot say which.
+//
+// A session that only added rows, all after what was read of it, has just
+// those rows read and added to its kept scan (foldParts); one whose summed
+// columns changed or lost a row, or with no kept scan, is read whole, one
+// seek on idx_events_attr_work; one whose rows changed only in columns the
+// parts do not sum has only its payload figures read again (readAgentParts).
+// A tool call linked to its message since is applied to the kept scan that
+// counted it unlinked (partsLink).
 //
 // The mark is read before the events, so what is read is never older than
-// it: a write landing in between is read now and again next time, never
-// missed.
+// it: a write landing in between is read now and seen again next time,
+// when a kept scan skips it by id (sessionScan.maxID).
 //
 // Within throttle of the last read (partsThrottle) what moved waits: the
 // parts are handed back as they are and behind is true. The kept mark stays
@@ -1281,38 +1491,193 @@ func (kp *keptParts) refresh(ctx context.Context, q Querier, from int64, now tim
 		return true, nil
 	}
 	full := !kp.ok || stale
-	var changed []int64
+	var mv partsMoves
 	if !full {
-		changed, full, err = mark.MovedSince(ctx, q, kp.mark)
+		mv, full, err = mark.partsMovedSince(ctx, q, kp.mark)
 		if err != nil {
 			return false, err
 		}
-		full = full || len(changed) > partsMaxChanged
+		full = full || mv.count() > partsMaxChanged
 	}
 	if full {
-		rp, err := readParts(ctx, q, from, from, 0, partsScope{all: true})
+		rp, err := readParts(ctx, q, from, from, 0, partsScope{all: true}, nil)
 		if err != nil {
 			return false, err
 		}
 		kp.parts, kp.mark, kp.ok, kp.built, kp.read, kp.hurry = rp, mark, true, now, now, hurry
+		kp.scans = nil
 		kp.full++
 		return false, nil
 	}
-	if len(changed) > 0 {
-		rp, err := readParts(ctx, q, from, from, 0, partsScope{sids: changed})
-		if err != nil {
+	if mv.count() > 0 {
+		if err := kp.readMoved(ctx, q, from, mv); err != nil {
 			return false, err
-		}
-		for _, sid := range changed {
-			if p, ok := rp.sids[sid]; ok {
-				kp.parts.sids[sid] = p
-			} else {
-				delete(kp.parts.sids, sid)
-			}
 		}
 		kp.read = now
 	}
 	kp.mark, kp.hurry = mark, hurry
 	kp.partial++
 	return false, nil
+}
+
+// readMoved brings the moved sessions' parts up to date. Every read is made
+// before anything kept is changed, so a failed read leaves the parts and
+// scans as they were at the kept mark.
+func (kp *keptParts) readMoved(ctx context.Context, q Querier, from int64, mv partsMoves) error {
+	if kp.scans == nil {
+		kp.scans = map[int64]*sessionScan{}
+	}
+	whole := map[int64]bool{}
+	for _, sid := range mv.rewritten {
+		whole[sid] = true
+	}
+	fold := map[int64]bool{}
+	for sid, oldest := range mv.added {
+		if sc := kp.scans[sid]; sc != nil && !whole[sid] && oldest >= sc.foldFrom() {
+			fold[sid] = true
+		} else {
+			// No scan to add to, or a row read late that belongs before
+			// the scan's checkpoint (foldFrom): the carry-forward and the
+			// order of first appearance need the session read in order again.
+			whole[sid] = true
+		}
+	}
+	links := map[int64][]partsLink{}
+	for _, l := range mv.links {
+		switch {
+		case whole[l.sid]:
+		case kp.scans[l.sid] != nil:
+			fold[l.sid] = true
+			links[l.sid] = append(links[l.sid], l)
+		default:
+			// A session with no part in range counted no call unlinked.
+			if _, ok := kp.parts.sids[l.sid]; ok {
+				whole[l.sid] = true
+			}
+		}
+	}
+	var payloadOnly []int64
+	for _, sid := range mv.touched {
+		if !whole[sid] && !fold[sid] {
+			payloadOnly = append(payloadOnly, sid)
+		}
+	}
+
+	var wholeRP rangeParts
+	newScans := map[int64]*sessionScan{}
+	if len(whole) > 0 {
+		var err error
+		if wholeRP, err = readParts(ctx, q, from, from, 0, partsScope{sids: sortedSids(whole)}, newScans); err != nil {
+			return err
+		}
+	}
+	foldSids := sortedSids(fold)
+	added, err := foldParts(ctx, q, kp.scans, foldSids, mv.added)
+	if err != nil {
+		return err
+	}
+	agent := rangeParts{sids: map[int64]*sessionPart{}}
+	if again := append(slices.Clone(foldSids), payloadOnly...); len(again) > 0 {
+		slices.Sort(again)
+		if err := readAgentParts(ctx, q, from, partsScope{sids: again}, &agent); err != nil {
+			return err
+		}
+	}
+
+	kp.tick++
+	set := func(sid int64, p *sessionPart) {
+		if p == nil || p.empty() {
+			delete(kp.parts.sids, sid)
+			delete(kp.scans, sid)
+			return
+		}
+		kp.parts.sids[sid] = p
+	}
+	withAgent := func(p *sessionPart, sid int64) *sessionPart {
+		p.usage, p.hermes, p.cursor = nil, nil, nil
+		if a := agent.sids[sid]; a != nil {
+			p.usage, p.hermes, p.cursor = a.usage, a.hermes, a.cursor
+		}
+		return p
+	}
+	for sid := range whole {
+		delete(kp.scans, sid)
+		if sc := newScans[sid]; sc != nil {
+			sc.used = kp.tick
+			kp.scans[sid] = sc
+		}
+		set(sid, wholeRP.sids[sid])
+	}
+	for _, sid := range foldSids {
+		sc := kp.scans[sid]
+		sc.fold(added[sid], links[sid], kp.parts.base, kp.parts.width)
+		sc.used = kp.tick
+		set(sid, withAgent(sc.part(true), sid))
+	}
+	for _, sid := range payloadOnly {
+		p := &sessionPart{}
+		if old := kp.parts.sids[sid]; old != nil {
+			*p = *old
+		}
+		set(sid, withAgent(p, sid))
+	}
+	kp.whole += len(whole)
+	kp.folded += len(fold)
+	if len(kp.scans) > partsMaxScans {
+		byUse := make([]int64, 0, len(kp.scans))
+		for sid := range kp.scans {
+			byUse = append(byUse, sid)
+		}
+		slices.SortFunc(byUse, func(a, b int64) int { return cmp.Compare(kp.scans[a].used, kp.scans[b].used) })
+		for _, sid := range byUse[:len(byUse)-partsMaxScans] {
+			delete(kp.scans, sid)
+		}
+	}
+	return nil
+}
+
+// foldParts reads the rows each session added after its kept scan stopped:
+// at or after its checkpoint's last ts (foldFrom) and above its highest id,
+// a seek to the end of the session on idx_events_attr_work. A session is only
+// folded when the oldest of its new rows is no older than that (added), so
+// these are all of them, in the order a fresh scan reads them.
+func foldParts(ctx context.Context, q Querier, scans map[int64]*sessionScan, sids []int64, added map[int64]int64) (map[int64][]scanRow, error) {
+	out := map[int64][]scanRow{}
+	for _, sid := range sids {
+		if _, ok := added[sid]; !ok {
+			continue // only a link moved it
+		}
+		sc := scans[sid]
+		rows, err := q.QueryContext(ctx, `
+			SELECT `+scanCols+`
+			FROM events INDEXED BY idx_events_attr_work
+			WHERE sid = ? AND ts >= ? AND id > ?
+			ORDER BY ts, id`, sid, sc.foldFrom(), sc.maxID)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			var r scanRow
+			if err := r.scan(rows); err != nil {
+				_ = rows.Close()
+				return nil, err
+			}
+			out[sid] = append(out[sid], r)
+		}
+		if err := rows.Err(); err != nil {
+			_ = rows.Close()
+			return nil, err
+		}
+		_ = rows.Close()
+	}
+	return out, nil
+}
+
+func sortedSids(set map[int64]bool) []int64 {
+	out := make([]int64, 0, len(set))
+	for sid := range set {
+		out = append(out, sid)
+	}
+	slices.Sort(out)
+	return out
 }

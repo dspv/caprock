@@ -513,6 +513,12 @@ func TestMigration0080IsTheFence(t *testing.T) {
 	if _, err := st.DB().Exec(`ALTER TABLE session_exits DROP COLUMN unexpected`); err != nil { // 0086
 		t.Fatal(err)
 	}
+	for _, q := range []string{`DROP TRIGGER events_parts_update`, `DROP TRIGGER events_parts_delete`,
+		`ALTER TABLE session_gen DROP COLUMN parts`} { // 0091
+		if _, err := st.DB().Exec(q); err != nil {
+			t.Fatal(err)
+		}
+	}
 	_ = st.Close()
 	setRawSchema(t, path, 79, "")
 

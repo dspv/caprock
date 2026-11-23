@@ -2532,7 +2532,7 @@ func SummarizeSparkFor(ctx context.Context, q Querier, fromMs int64, spark Spark
 	if spark.Buckets > 0 && spark.WidthMs > 0 {
 		base = spark.FromMs
 	}
-	rp, err := readParts(ctx, q, fromMs, base, spark.WidthMs, partsScope{all: true})
+	rp, err := readParts(ctx, q, fromMs, base, spark.WidthMs, partsScope{all: true}, nil)
 	if err != nil {
 		return Summary{FromMs: fromMs}, err
 	}
