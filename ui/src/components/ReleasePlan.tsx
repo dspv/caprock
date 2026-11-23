@@ -29,6 +29,7 @@
  * title over the full width, two lines at most, and under it one muted line,
  * *state · extra · age* (CompactRows).
  */
+import { OSGlyph } from './OSGlyph'
 import { useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { ReleaseCI, SessionCIStats, SessionRepoCI, Work, WorkEntry, WorkRepo } from '@/lib/api'
 import { asBoard, type ShipsBy } from '@/lib/prboard'
@@ -1018,12 +1019,14 @@ const KIND_TONE: Record<string, string> = {
   feat: 'bg-[color-mix(in_srgb,var(--color-progress)_16%,transparent)] text-progress',
   fix: 'bg-[color-mix(in_srgb,var(--color-warn)_16%,transparent)] text-warn',
 }
+// The tile is neutral, only its OS glyph carries the state's colour
+// (owner, 2026-11-23, variant A1: "quieter").
 const SQUARE_TONE: Record<OSSquare['tone'], string> = {
-  pass: 'bg-[color-mix(in_srgb,var(--color-ok)_18%,transparent)] text-ok',
-  running: 'bg-[color-mix(in_srgb,var(--color-warn)_20%,transparent)] text-warn',
-  fail: 'bg-[color-mix(in_srgb,var(--color-danger)_28%,transparent)] text-danger',
-  no_runner: 'bg-[color-mix(in_srgb,var(--color-norunner)_20%,transparent)] text-norunner',
-  wait: 'bg-panel-2 text-fg-faint',
+  pass: 'text-ok',
+  running: 'text-warn',
+  fail: 'text-danger',
+  no_runner: 'text-norunner',
+  wait: 'text-fg-faint',
 }
 
 /**
@@ -1061,7 +1064,7 @@ function PRLine({ row: r, root, waited = false }: { row: PlanRow; root: string; 
         <span data-release-os role="img" aria-label={`CI: ${ci}`} className="flex shrink-0 items-center gap-[3px]">
           {sq.map((s) => (
             <span key={s.os} data-os={s.os} data-os-state={s.tone} title={s.title}
-              className={`inline-flex size-[15px] items-center justify-center rounded-[3px] text-[9.5px] font-semibold leading-none ${SQUARE_TONE[s.tone]}`}>{s.letter}</span>
+              className={`inline-flex size-[15px] items-center justify-center rounded-[3px] border border-[var(--app-hairline)] leading-none ${SQUARE_TONE[s.tone]}`}><OSGlyph os={s.os} /></span>
           ))}
         </span>
       )}

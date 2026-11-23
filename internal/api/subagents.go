@@ -61,6 +61,12 @@ type SubagentDone struct {
 	// SubagentStop (unix ms).
 	StartedAt int64 `json:"started_at"`
 	StoppedAt int64 `json:"stopped_at"`
+	// EndedBy, for one that never sent its SubagentStop, is why it is read
+	// as stopped (store.SubagentBounds): "restart" — its parent's process
+	// started again; "ended" — the session ended; "quiet" — silent past
+	// store.SubagentQuietMax behind an idle parent. StoppedAt is then the
+	// restart, else its newest event. Absent for a SubagentStop.
+	EndedBy string `json:"ended_by,omitempty"`
 	SubagentModel
 }
 
@@ -167,7 +173,7 @@ func (s *Server) handleSessionSubagents(w http.ResponseWriter, r *http.Request) 
 	for _, a := range done {
 		resp.Recent = append(resp.Recent, SubagentDone{
 			AgentID: a.AgentID, AgentType: a.AgentType, Description: oneLine(a.Description, 120),
-			ToolCalls: a.ToolCalls, StartedAt: a.StartedAt, StoppedAt: a.StoppedAt, SubagentModel: model(a.AgentID),
+			ToolCalls: a.ToolCalls, StartedAt: a.StartedAt, StoppedAt: a.StoppedAt, EndedBy: a.Lost, SubagentModel: model(a.AgentID),
 		})
 	}
 	for _, a := range list {
@@ -368,8 +374,12 @@ type SubagentDetail struct {
 	Background      bool   `json:"background,omitempty"`
 	// State is "working", "finished" (its newest event is its
 	// SubagentStop) or "quiet" (neither, and nothing heard for longer than
-	// the live window).
-	State     string `json:"state"`
+	// the live window, or read as stopped without its SubagentStop: EndedBy).
+	State string `json:"state"`
+	// EndedBy, with state quiet, is why it is read as stopped though heard
+	// from within the window (store.SubagentBounds): "restart", "ended" or
+	// "quiet", as SubagentDone says it.
+	EndedBy   string `json:"ended_by,omitempty"`
 	Asking    bool   `json:"asking"`
 	StartedAt int64  `json:"started_at"`
 	LastAt    int64  `json:"last_at"`
@@ -430,6 +440,18 @@ func (s *Server) handleSubagentDetail(w http.ResponseWriter, r *http.Request) {
 		d.State = "finished"
 	case tr.LastAt >= s.d.Now().Add(-liveSubagentWindow).UnixMilli():
 		d.State = "working"
+		// One whose parent's process started again since, whose session
+		// ended, or that went quiet behind an idle parent will never send
+		// its SubagentStop: the list reads it stopped, and so does this.
+		b, err := store.SubagentBoundsOf(r.Context(), s.d.Store.DB(), r.PathValue("id"), s.d.Now().Add(-liveSubagentWindow).UnixMilli(), s.d.Now().UnixMilli())
+		if err != nil {
+			s.fail(w, err)
+			return
+		}
+		pending := len(tr.Calls) > 0 && tr.Calls[len(tr.Calls)-1].EndedAt == 0
+		if lost := b.Lost(tr.LastAt, pending); lost != "" {
+			d.State, d.EndedBy = "quiet", lost
+		}
 	default:
 		d.State = "quiet"
 	}

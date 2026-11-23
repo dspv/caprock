@@ -6,7 +6,7 @@
  * runner rate table, worded in lib/runnercost.ts — never a multiplier made
  * up here (rule 6).
  */
-import type { CIBaseline, CIJob, CIRun, CIState, CIStep, ReleaseCI, SessionPRLive } from './api'
+import type { CIBaseline, CIJob, CIRun, CIState, CIStep, ReleaseCI, SessionCIStats, SessionPRLive } from './api'
 import type { AutoRerun, PRCheck } from './github'
 
 /** norunner: a job GitHub never gave a machine (no step, no runner) — not tested, not failed; a re-run is the fix. */
@@ -717,3 +717,13 @@ export function osRollup(nodes: readonly PipeNode[]): OSStatus[] {
   }
   return out.sort((a, b) => (OS_ORDER[a.os] ?? 9) - (OS_ORDER[b.os] ?? 9) || a.os.localeCompare(b.os))
 }
+
+/**
+ * A refused read with nothing in it (a daemon just started, GitHub down or
+ * over its budget) never replaces a list that had pull requests: it stays,
+ * said to be not refreshed. Every reader of the shared `stats:<repository>`
+ * copy passes it — the cockpit's CI block once did not, and one refused read
+ * wiped the copy the CI and Release sections both draw (2026-11-23: the CI
+ * block vanished and the release stepper lost its release pull request).
+ */
+export const keepStats = (prev: SessionCIStats, next: SessionCIStats) => !!next.error && (next.prs?.length ?? 0) === 0 && (prev.prs?.length ?? 0) > 0

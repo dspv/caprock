@@ -52,7 +52,17 @@
  * Pipeline on that PR, its failed job's log and Investigate), else
  * *Pipeline →*; the per-row *Log in Pipeline →* went (owner, 2026-11-20:
  * two links, "the difference is unclear"). The session's pull requests (`prs:<session>`) are asked here, folded
- * too; the Pipeline page asks the same route under the same key.
+ * too; the Pipeline page asks the same route under the same key. A listed
+ * open PR the session did not record whose board card says its checks
+ * failed has its checks read too (`RowChecksRead`, three at most) and then
+ * offers Fix CI the same way (owner, 2026-11-23: #1042, opened from a
+ * subagent's branch, had no Fix CI anywhere); folded, such a PR leads the
+ * line over the session's own open one while that one is not failing.
+ *
+ * With GitHub connected and a repository, the block is never left out:
+ * nothing in flight is one quiet line, folded with the newest merge (*Nothing
+ * in flight · last: #1041 merged 2h ago*), and a refused read with nothing
+ * in it never replaces the kept list (lib/ci keepStats).
  *
  * Folded, the block is two lines (owner, 2026-11-18): the PR it summarizes
  * — number and title, cut with an ellipsis — and the age; under them its
@@ -92,11 +102,11 @@
 import { useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { api, isPairedDevice, type SessionCI, type SessionCIStats, type SessionPRLive, type SessionPRs, type SessionSummary, type WorkRepo } from '@/lib/api'
 import { githubApi, githubErrorText, useGitHubStatus, type AutoRerun, type PRCheck, type PullRequest } from '@/lib/github'
-import { AUTO_RERUN_HINT, NO_RUNNER_TITLE, autoRerunWords, checkCounts, ciActive, type CheckCounts, type ChecksSummary, foreignRepo, orderPRs, osName, osRollup, prChecks, readCockpitCIView, repoShort, runVsMedian, saveCockpitCIView, fmtRun, type CockpitCIView } from '@/lib/ci'
+import { AUTO_RERUN_HINT, NO_RUNNER_TITLE, autoRerunWords, checkCounts, ciActive, type CheckCounts, type ChecksSummary, foreignRepo, keepStats, orderPRs, osName, osRollup, prChecks, readCockpitCIView, repoShort, runVsMedian, saveCockpitCIView, fmtRun, type CockpitCIView } from '@/lib/ci'
 import { freshText, isReading, keptAt, KEPT_FAINT_MS, onDeckAnswer, readDeck, workRepoKey } from '@/lib/deckCache'
 import { asBoard } from '@/lib/prboard'
 import { tabRows, spanText } from '@/lib/prstats'
-import { flightLead, inFlight, mergedLine, openFlightLead, journey, pipelineRows, releaseNote, shipsOf, stageOf, type Flight, type PipelineRow, type ShipsContext } from '@/lib/journey'
+import { failingFlightLead, failsCI, flightLead, inFlight, mergedLine, openFlightLead, journey, pipelineRows, releaseNote, shipsOf, stageOf, type Flight, type PipelineRow, type ShipsContext } from '@/lib/journey'
 import { landingOf, nextVersion, onMaster } from '@/lib/releaseplan'
 import { CheckSummary, StateMark, type CheckFit } from './CheckSummary'
 import { FitSummary } from './FitSummary'
@@ -122,6 +132,24 @@ type LeadPR = { number: number; live: PullRequest }
 function prNoText(p: LeadPR, own: string | undefined): string {
   const other = foreignRepo(p.live, own)
   return other ? `${repoShort(other)} #${p.number}` : `#${p.number}`
+}
+
+/** The most listed PRs, not the session's own, whose checks the list reads so their row offers Fix CI. */
+const ROW_READS = 3
+
+/** Redraws when an answer kept under a key starting with prefix changes; '' listens to none. */
+function useDeckTick(prefix: string) {
+  const [, bump] = useState(0)
+  useEffect(() => {
+    if (!prefix) return
+    return onDeckAnswer((k) => { if (k.startsWith(prefix)) bump((x) => x + 1) })
+  }, [prefix])
+}
+
+/** Reads one listed PR's checks while drawn, kept under cacheKey (lib/deckCache): nothing on screen of its own. */
+function RowChecksRead({ sessionId, num, cacheKey }: { sessionId: string; num: number; cacheKey: string }) {
+  usePoll<SessionCI>(true, `cockpit-ci-row:${sessionId}:${num}`, () => api.sessionCI(sessionId, num), (d) => ciActive(d.ci), CI_RUNNING_MS, cacheKey)
+  return null
 }
 
 /** The most pull requests the PRs view lists (it scrolls). */
@@ -213,7 +241,11 @@ export function CockpitCI({ sessionId, repoScope, onOpen, s }: { sessionId: stri
   // answer and the reads it draws on (the pull request list 2 minutes, the
   // runs 30), and the pace is the idle one either way, so folding costs
   // GitHub nothing more than unfolded does.
-  const [stats, statsAt, statsMeta] = usePoll<SessionCIStats>(!!onOpen, `cockpit:${sessionId}`, () => api.sessionCIStats(sessionId), () => false, CI_IDLE_MS, `stats:${repoScope || sessionId}`)
+  // A refused read with nothing in it never replaces the kept list (lib/ci
+  // keepStats, as the Pipeline page reads it): without it one refused read
+  // wiped the copy, and the block hid and the Release section lost its
+  // release pull request (2026-11-23).
+  const [stats, statsAt, statsMeta] = usePoll<SessionCIStats>(!!onOpen, `cockpit:${sessionId}`, () => api.sessionCIStats(sessionId), () => false, CI_IDLE_MS, `stats:${repoScope || sessionId}`, keepStats)
   const board = useMemo(() => asBoard(stats?.board), [stats?.board])
   const allRows = useMemo(() => pipelineRows(tabRows('repo', [], stats?.prs ?? []), board, stats?.prs ?? []), [stats?.prs, board])
   const flight = useMemo(() => {
@@ -228,6 +260,9 @@ export function CockpitCI({ sessionId, repoScope, onOpen, s }: { sessionId: stri
   const next = useMemo(() => board?.ships_by === 'release' ? nextVersion(keptRepo.d?.tags?.last?.name ?? board.releases?.[0]?.tag, onMaster(keptRepo.d?.unreleased))?.version : undefined, [board, keptRepo.d])
   const ships = useMemo(() => shipsOf(board, next), [board, next])
   const hasStats = !!stats?.connected && (stats.prs?.length ?? 0) > 0
+  // The repository was read (or refused) at all: the block stays drawn, one
+  // quiet line when nothing is in flight, never gone (owner, 2026-11-23).
+  const hasRepo = hasStats || (!!stats?.connected && !!stats.repo)
   // The session's own pull requests with what GitHub says of each (`prs:`,
   // the key the Pipeline page shares): their state, checks and merge state
   // say which action a row offers. Asked folded too: folded, the newest of
@@ -270,7 +305,14 @@ export function CockpitCI({ sessionId, repoScope, onOpen, s }: { sessionId: stri
   const young = (at: number | undefined) => !!at && Date.now() - at < KEPT_FOLD_MS
   // When the session's own newest PR is not open, the repository's open PR
   // in flight is the one the block summarizes — folded and unfolded alike.
-  const repoPick = !ownOpen && (statsMeta.confirmed || young(statsAt)) ? openFlightLead(flight) : undefined
+  // A failing open PR of the repository leads over the session's own open
+  // one while that one is not failing (owner, 2026-11-23: #1042 failed, opened
+  // from a subagent's branch, and Fix CI was nowhere): the line is where the
+  // one action the state calls for is.
+  const statsReady = statsMeta.confirmed || young(statsAt)
+  const ownFails = ownOpen && ownLead?.live?.checks.state === 'fail'
+  const failPick = statsReady && !ownFails ? failingFlightLead(flight, ownOpen ? ownLead?.number : undefined) : undefined
+  const repoPick = failPick ?? (!ownOpen && statsReady ? openFlightLead(flight) : undefined)
   const ciNo = repoPick?.number ?? leadNo
   // A PR's checks are kept per repository when the block knows it, so a tab
   // of another session on the same repository draws them at once; the
@@ -294,10 +336,26 @@ export function CockpitCI({ sessionId, repoScope, onOpen, s }: { sessionId: stri
   // (its row and the folded line draw them), else only for Ring and By OS
   // shown unfolded when the session has no PR of its own with checks.
   const askCI = !!onOpen && ciNo > 0 && (repoPick ? true : view !== 'dots' && !folded && !ownLead)
+  // The listed open PRs whose checks failed that the session did not record
+  // (one a subagent's branch opened, one past the session's newest four):
+  // their checks are read while the list is shown, so their row offers Fix
+  // CI with the failed job and its log (owner, 2026-11-23: #1042 was red
+  // and no Fix CI showed). At most ROW_READS, the newest first.
+  const rowReads = !!onOpen && !!s && !folded && view === 'dots'
+    ? flight.rows.filter((r) => failsCI(r) && !mine.get(r.number)?.live && !(askCI && r.number === ciNo)).slice(0, ROW_READS).map((r) => r.number)
+    : []
+  useDeckTick(rowReads.length > 0 ? 'ci:' : '')
+  // A listed PR's state as its own checks' read says, when read.
+  const readLive = (num: number) => {
+    const a = readDeck<SessionCI>(ciKeyOf(num)), b = readDeck<SessionCI>(`ci:${sessionId}:${num}`)
+    const c = ((b?.at ?? 0) > (a?.at ?? 0) ? b : a)?.d
+    return c?.pr?.number === num ? c.pr.live : undefined
+  }
   const [, ciAt, ciMeta] = usePoll<SessionCI>(askCI, `cockpit-ci:${sessionId}:${ciNo}`, () => api.sessionCI(sessionId, ciNo), (d) => ciActive(d.ci), CI_RUNNING_MS, ciNo ? ciKeyOf(ciNo) : undefined)
   const ownL: LeadPR | undefined = ownLead?.live ? { number: ownLead.number, live: ownLead.live } : undefined
   const repoLive = repoPick && ci.d?.pr?.number === repoPick.number ? ci.d.pr.live : undefined
-  const repoLead: LeadPR | undefined = repoPick && repoLive?.state === 'open' && repoLive.checks.items.length > 0 ? { number: repoPick.number, live: repoLive } : undefined
+  // Over the session's own open PR only while its checks still fail.
+  const repoLead: LeadPR | undefined = repoPick && repoLive?.state === 'open' && repoLive.checks.items.length > 0 && (!ownOpen || repoLive.checks.state === 'fail') ? { number: repoPick.number, live: repoLive } : undefined
   const flownL: LeadPR | undefined = flown && ci.d?.pr?.number === flown.number && ci.d.pr.live ? { number: flown.number, live: ci.d.pr.live } : undefined
   // The one PR the block summarizes, folded and unfolded (owner, 2026-11-18:
   // the folded line and the unfolded views must say the same): the
@@ -305,7 +363,7 @@ export function CockpitCI({ sessionId, repoScope, onOpen, s }: { sessionId: stri
   // flight, else the session's own newest, else the newest in flight. Its
   // counts everywhere come from one function over the same checks
   // (lib/ci prChecks → checkNodes → countNodes).
-  const lead: LeadPR | undefined = ownOpen ? ownL : repoLead ?? ownL ?? flownL
+  const lead: LeadPR | undefined = repoLead ?? ownL ?? flownL
   // A copy kept from before, not read again since the block was drawn, is
   // timed as of when it was read: a check it says runs is not still running
   // now, and its elapsed time does not grow (the read, once it lands, moves it).
@@ -318,12 +376,16 @@ export function CockpitCI({ sessionId, repoScope, onOpen, s }: { sessionId: stri
   // never claims checks are running.
   const foldOwn = folded && ownL && (prsMeta.confirmed || young(prs.at)) ? ownL : undefined
   const foldRepoLead = folded && repoLead && (ciMeta.confirmed || young(ci.at)) ? repoLead : undefined
-  const foldLead = foldOwn && ownOpen ? foldOwn : foldRepoLead ?? foldOwn
+  const foldLead = foldRepoLead ?? foldOwn
   const foldIsRepo = !!foldLead && foldLead === foldRepoLead
   // The line drawn from a kept copy not read again since the block was drawn: muted, timed as of its read.
   const foldKept = !!foldLead && !(foldIsRepo ? ciMeta.confirmed : prsMeta.confirmed)
   const foldElse = foldLead ? foreignRepo(foldLead.live, own) : undefined
-  const foldPR = foldLead ? (foldIsRepo ? mine.get(foldLead.number) : ownLead) ?? { session_id: sessionId, url: foldLead.live.url, number: foldLead.number, last_at: 0, live: foldLead.live } : undefined
+  // The repository's PR acts on what its checks' read says, even when the
+  // session recorded it too (its own row may carry no live read).
+  const foldPR: SessionPRLive | undefined = foldLead
+    ? (foldIsRepo ? undefined : ownLead) ?? { ...(mine.get(foldLead.number) ?? { session_id: sessionId, url: foldLead.live.url, number: foldLead.number, last_at: 0 }), live: foldLead.live }
+    : undefined
   const running = rows.some((p) => p.live?.checks.state === 'pending') || lead?.live.checks.state === 'pending' || foldLead?.live.checks.state === 'pending'
   // A clock only while a check runs and the window is shown: the elapsed time moves.
   const [now, setNow] = useState(() => Date.now())
@@ -333,7 +395,9 @@ export function CockpitCI({ sessionId, repoScope, onOpen, s }: { sessionId: stri
     const t = window.setInterval(() => { if (!document.hidden) setNow(Date.now()) }, 1000)
     return () => window.clearInterval(t)
   }, [running, prs.at, ci.at])
-  if (!hasStats && !ownLead) return null
+  // Hidden only where there is nothing to read: no answer yet, GitHub not
+  // connected, or no GitHub repository here.
+  if (!hasRepo && !ownLead) return null
   const leadAt = lead === ownL && ownL ? prs.at : (ci.at || ciAt)
   const leadNow = fresh || !leadAt ? now : Math.min(now, leadAt)
   const foldAt = foldIsRepo ? (ci.at || ciAt) : foldLead ? prs.at : undefined
@@ -345,7 +409,8 @@ export function CockpitCI({ sessionId, repoScope, onOpen, s }: { sessionId: stri
     : undefined
   // The time beside the line is the time of what it shows.
   const at = folded ? foldAt : view === 'dots' ? (stats?.read_at || stats?.fetched_at || statsAt) : leadAt
-  const quiet = hasStats && flight.rows.length === 0 ? <Quiet f={flight} now={now} /> : null
+  const refused = !hasStats && stats?.error ? stats.error.message : undefined
+  const quiet = hasRepo && flight.rows.length === 0 ? <Quiet f={flight} now={now} refused={refused} /> : null
   const listed = flight.rows.length > 0 ? flight.rows : flight.recent
   // What the view in front draws from a kept copy being read again: the
   // list from the Pipeline answer (and the session's own PRs' checks), Ring
@@ -363,13 +428,18 @@ export function CockpitCI({ sessionId, repoScope, onOpen, s }: { sessionId: stri
   const checksOf = (draw: (p: LeadPR) => ReactNode) =>
     lead ? draw(lead) : quiet ?? (flown ? faint(ci.d?.pr?.number === flown.number ? `#${flown.number}’s checks could not be read.` : `Reading #${flown.number}’s checks…`) : faint('Reading the repository’s pull requests…'))
   const body = view === 'ring' ? checksOf((p) => <Ring p={p} ci={ci.d} now={leadNow} own={own} />) : view === 'grid' ? checksOf((p) => <ByOS p={p} ci={ci.d} now={leadNow} own={own} />) : (
-    !hasStats ? faint('Reading the repository’s pull requests…') : (
+    !hasRepo ? faint('Reading the repository’s pull requests…') : (
       <div data-cockpit-ci-body-kept={listKept ? '' : undefined} title={listKept && at ? `${asOfText(now - at)} — being read again` : undefined} className={`grid gap-1${listKept ? ` ${KEPT_CLASS}` : ''}`}>
       {quiet}
       {listed.length > 0 && <JourneyLegend className="-mr-1.5 pr-1.5" />}
       {listed.length > 0 && <ul data-cockpit-journey className={`app-scroll -mr-1.5 grid content-start gap-1.5 overflow-y-auto pr-1.5 ${tall ? 'max-h-[440px]' : 'max-h-[176px]'}`}>
         {listed.map((r) => {
-          const p = mine.get(r.number)
+          // The session's own, else one of the repository's whose checks were
+          // read: Fix CI acts on any listed PR (the daemon's force routes take
+          // a PR the PRs & CI tab listed).
+          const mp = mine.get(r.number)
+          const rl = !mp?.live && !r.foreign && r.state === 'open' ? readLive(r.number) : undefined
+          const p: SessionPRLive | undefined = rl ? { ...(mp ?? { session_id: sessionId, url: r.url, number: r.number, title: r.title, last_at: 0 }), live: rl } : mp
           const agents = p ? prAgents(p.live?.branch, worktrees) : []
           const acts = !!s && !!p && (quickActions(p).length > 0 || kit.confirm?.pr === p.number || !!kit.standing(p, agents, now))
           // The row's checks: the same PR's, read the same way, as the
@@ -383,6 +453,7 @@ export function CockpitCI({ sessionId, repoScope, onOpen, s }: { sessionId: stri
             auto={rowLive?.state === 'open' ? rowLive.checks.auto_rerun : undefined} />
         })}
       </ul>}
+      {rowReads.map((num) => <RowChecksRead key={num} sessionId={sessionId} num={num} cacheKey={ciKeyOf(num)} />)}
       </div>
     )
   )
@@ -394,9 +465,13 @@ export function CockpitCI({ sessionId, repoScope, onOpen, s }: { sessionId: stri
         // number and title — beside the label, the age at the right; under
         // them its checks at the left and the one action the state calls for
         // at the right. Never a third line.
-        after={foldLead ? (
+        after={folded && !foldLead && hasRepo && flight.rows.length === 0 ? (
+          // Nothing in flight, folded: one quiet line, never a section gone
+          // (owner, 2026-11-23: *Nothing in flight · last: #1041 merged 2h ago*).
+          <span data-fold-only data-cockpit-ci-fold-quiet className="flex min-w-0 flex-1"><Quiet f={flight} now={now} refused={refused} short /></span>
+        ) : foldLead ? (
           <span data-fold-only data-cockpit-ci-fold-pr={foldLead.number} className="flex min-w-0 flex-1 items-baseline gap-1.5 text-[11.5px]"
-            title={`${foldIsRepo ? `#${foldLead.number}: the repository’s open pull request — this session’s own is not open` : foldElse ? `${foldElse} #${foldLead.number}: this session’s pull request in another repository` : `#${foldLead.number}: this session’s newest pull request`}\n${foldLead.live.title}`}>
+            title={`${foldIsRepo ? (ownOpen ? `#${foldLead.number}: the repository’s open pull request whose checks failed — this session’s own did not fail` : `#${foldLead.number}: the repository’s open pull request — this session’s own is not open`) : foldElse ? `${foldElse} #${foldLead.number}: this session’s pull request in another repository` : `#${foldLead.number}: this session’s newest pull request`}\n${foldLead.live.title}`}>
             <span data-cockpit-ci-fold-repo={foldElse} className="num shrink-0 text-fg-muted">{prNoText(foldLead, own)}</span>
             <span className="min-w-0 truncate text-fg">{foldLead.live.title}</span>
           </span>
@@ -643,10 +718,28 @@ function RowAction({ p, kit, worktrees, now }: { p: SessionPRLive; kit: Kit; wor
 /**
  * Nothing in flight, in one quiet line: *Nothing in flight · last release
  * v0.124.0, 2h ago*; where work ships on merge, *Nothing in flight · no
- * releases here: work ships when it merges*.
+ * releases here: work ships when it merges*. Folded (`short`), where the
+ * merges listed under it are not drawn, the newest merge: *Nothing in flight
+ * · last: #1041 merged 2h ago*. GitHub refusing the read with nothing kept
+ * says so: *Pull requests not read · GitHub: …*.
  */
-function Quiet({ f, now }: { f: Flight; now: number }) {
+function Quiet({ f, now, refused, short = false }: { f: Flight; now: number; refused?: string; short?: boolean }) {
   const rel = f.release
+  const last = f.recent[0]
+  if (refused && !last && !rel) {
+    return (
+      <span data-cockpit-ci-quiet="refused" className="truncate text-[11.5px] text-fg-faint" title={`GitHub refused the read of this repository’s pull requests: ${refused}. Asked again in a minute.`}>
+        Pull requests not read · GitHub: {refused}
+      </span>
+    )
+  }
+  if (short && last?.merged_at) {
+    return (
+      <span data-cockpit-ci-quiet="last" className="truncate text-[11.5px] text-fg-faint" title={`${last.title}\nMerged ${new Date(last.merged_at).toLocaleString()}`}>
+        Nothing in flight · last: #{last.number} merged {spanText(Math.max(0, now - last.merged_at))} ago
+      </span>
+    )
+  }
   if (f.ships === 'merge') {
     return (
       <span data-cockpit-ci-quiet="merge" className="truncate text-[11.5px] text-fg-faint" title="No release published and no version tag in the last 180 days: merged is the last step here">

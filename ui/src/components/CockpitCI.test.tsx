@@ -688,4 +688,118 @@ describe('the cockpit’s CI block', () => {
       expect(pr.getAttribute('title')).toMatch(/^c\/web #247: this session’s pull request in another repository/)
     })
   })
+
+  // Owner, 2026-11-23: #1042 failed three Go jobs. The lead session opened it
+  // from a branch a subagent's worktree pushed, so it was not among the
+  // session's own pull requests: its row showed the red bar, the cost and
+  // "claude", and no Fix CI anywhere.
+  describe('Fix CI on a failing PR the session did not record', () => {
+    const json = (b: unknown) => new Response(JSON.stringify(b), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    const FLOW0 = { counts: {}, days: 14, merged: 0, ttm_count: 0, release_lag_count: 0, cost_usd: 0 }
+    const FAILED = { state: 'fail', passed: 1, failed: 3, pending: 0, items: [{ name: 'lint', state: 'pass' }, { name: 'go (ubuntu-latest)', state: 'fail' }, { name: 'go (macos-latest)', state: 'fail' }, { name: 'go (windows-latest)', state: 'fail' }] }
+    const STATS = { connected: true, repo: 'a/b', fetched_at: now, read_at: now, prs: [
+      { number: 1043, url: 'https://github.com/a/b/pull/1043', title: 'fix(codex): models', state: 'open', created_at: now - 600_000 },
+      { number: 1042, url: 'https://github.com/a/b/pull/1042', title: 'feat(spawn): effort at start', state: 'open', created_at: now - 5_340_000 },
+    ], board: { cards: [
+      { number: 1043, stage: 'open', ci: 'running', stage_at: now - 600_000, spend: SPEND },
+      { number: 1042, stage: 'fix', ci: 'fail', why: 'ci', stage_at: now - 5_340_000, spend: { cost_usd: 33.72, sessions: 1, live: 0, agents: ['claude'] } },
+    ], releases: [], flow: FLOW0, ships_by: 'release' } }
+    const s = { session_id: 's1', owned: true, status: 'active', title: 'Lead', cwd: '/w', repo_root: '/w' }
+    const serve = (own: object[], posts: string[], asked: string[] = []) => vi.fn(async (url: string, init?: RequestInit) => {
+      asked.push(url)
+      if (init?.method === 'POST') { posts.push(url); return json({ sent: true }) }
+      if (url.endsWith('/ci/stats')) return json(STATS)
+      if (url.endsWith('/prs')) return json({ connected: true, prs: own })
+      const m = /\/ci\?pr=(\d+)$/.exec(url)
+      if (m) {
+        const n = Number(m[1])
+        return json({ connected: true, fetched_at: now, pr: { number: n, url: `https://github.com/a/b/pull/${n}`, repo: 'a/b', live: live(n, n === 1042 ? FAILED : RUNNING, { title: n === 1042 ? 'feat(spawn): effort at start' : 'fix(codex): models' }) },
+          ci: { runs: [{ id: 7, name: 'ci', status: 'completed', conclusion: 'failure', jobs: [{ id: 71, run_id: 7, name: 'go (windows-latest)', status: 'completed', conclusion: 'failure', labels: [], steps: [] }] }] } })
+      }
+      if (url.includes('/ci/jobs/71/log')) return json({ lines: ['--- FAIL: TestX'] })
+      return new Response('', { status: 404 })
+    })
+
+    it('offers it in the expanded row, reading that PR’s checks, and sends the failed job to the session', async () => {
+      const posts: string[] = [], asked: string[] = []
+      vi.stubGlobal('fetch', serve([], posts, asked))
+      render(<CockpitCI sessionId="s1" s={s as never} repoScope="/w" onOpen={vi.fn()} />)
+      const b = await waitFor(() => {
+        const x = document.querySelector<HTMLButtonElement>('[data-cockpit-ci-pr="1042"] [data-cockpit-ci-action]')
+        if (!x) throw new Error('no action')
+        return x
+      })
+      expect(b).toHaveAttribute('data-cockpit-ci-action', 'ci')
+      expect(b).toHaveTextContent('Fix CI')
+      expect(b).not.toBeDisabled()
+      expect(asked).toContain('/v1/sessions/s1/ci?pr=1042')
+      // Its checks are on the row too, counted as the folded line counts them.
+      expect(document.querySelector('[data-cockpit-ci-row-checks="1042"]')).not.toBeNull()
+      // The running one needs nothing.
+      expect(document.querySelector('[data-cockpit-ci-pr="1043"] [data-cockpit-ci-action]')).toBeNull()
+      fireEvent.click(b)
+      expect(document.querySelector('[data-cockpit-ci-confirm]')).toHaveTextContent(/^Ask to fix #1042 CI\?ConfirmCancel$/)
+      await act(async () => { fireEvent.click(document.querySelector('[data-cockpit-ci-confirm-yes]')!) })
+      await waitFor(() => expect(posts).toEqual(['/v1/agents/s1/queue']))
+    })
+
+    it('folded, leads with the failing PR over the session’s own green one, Fix CI on the line', async () => {
+      const posts: string[] = []
+      vi.stubGlobal('fetch', serve([row(1044, live(1044, PASSED))], posts))
+      render(
+        <FoldCtx.Provider value={{ full: false, toggle: () => {} }}>
+          <CockpitCI sessionId="s1" s={s as never} repoScope="/w" onOpen={() => {}} />
+        </FoldCtx.Provider>,
+      )
+      await waitFor(() => expect(document.querySelector('[data-cockpit-ci-fold]')).toHaveAttribute('data-cockpit-ci-fold', '1042'))
+      expect(document.querySelector('[data-cockpit-ci-fold]')).toHaveAttribute('data-cockpit-ci-fold-of', 'repo')
+      expect(document.querySelector('[data-cockpit-ci-fold-pr="1042"]')!.getAttribute('title')).toMatch(/whose checks failed/)
+      const fix = document.querySelector<HTMLButtonElement>('[data-cockpit-ci-fold-action="ci"]')!
+      expect(fix).toHaveTextContent('Fix CI')
+      expect(fix).not.toBeDisabled()
+    })
+
+    it('folded, keeps the session’s own PR when it is the one failing', async () => {
+      vi.stubGlobal('fetch', serve([row(1044, live(1044, FAILED))], []))
+      render(
+        <FoldCtx.Provider value={{ full: false, toggle: () => {} }}>
+          <CockpitCI sessionId="s1" s={s as never} repoScope="/w" onOpen={() => {}} />
+        </FoldCtx.Provider>,
+      )
+      await waitFor(() => expect(document.querySelector('[data-cockpit-ci-fold]')).toHaveAttribute('data-cockpit-ci-fold', '1044'))
+      expect(document.querySelector('[data-cockpit-ci-fold-action="ci"]')).not.toBeNull()
+    })
+  })
+
+  // Owner, 2026-11-23: the CI block vanished between releases. One refused
+  // read (prs empty, an error) replaced the kept list, and the block hid.
+  describe('never gone while there is a repository', () => {
+    const json = (b: unknown) => new Response(JSON.stringify(b), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    it('keeps the kept list when a read is refused with nothing in it', async () => {
+      const rows = [merged(3, now - 7_200_000)]
+      writeDeck('stats:/w', { connected: true, repo: 'a/b', fetched_at: now - 60_000, prs: rows.map((r) => r.pr), board: { cards: rows.map((r) => r.card), releases: [], flow: FLOW } }, now - 60_000)
+      vi.stubGlobal('fetch', vi.fn(async (url: string) => url.endsWith('/ci/stats') ? json({ connected: true, repo: 'a/b', prs: [], error: { message: 'API rate limit exceeded' } }) : json({ connected: true, prs: [] })))
+      render(<CockpitCI sessionId="s1" repoScope="/w" onOpen={() => {}} />)
+      await act(async () => { await new Promise((r) => setTimeout(r, 30)) })
+      expect(document.querySelector('[data-cockpit-ci-pr="3"]')).not.toBeNull()
+      expect(document.querySelector('section[aria-label="CI"]')).not.toBeNull()
+    })
+    it('says GitHub refused the read in one line rather than hiding, with nothing kept', async () => {
+      vi.stubGlobal('fetch', vi.fn(async (url: string) => url.endsWith('/ci/stats') ? json({ connected: true, repo: 'a/b', prs: [], error: { message: 'API rate limit exceeded' } }) : json({ connected: true, prs: [] })))
+      render(<CockpitCI sessionId="s1" repoScope="/w" onOpen={() => {}} />)
+      await waitFor(() => expect(document.querySelector('[data-cockpit-ci-quiet="refused"]')).toHaveTextContent('Pull requests not read · GitHub: API rate limit exceeded'))
+    })
+    it('folded, says nothing is in flight and the newest merge in one line', async () => {
+      const rows = [merged(1041, now - 7_200_000), merged(1040, now - 9_000_000)]
+      vi.stubGlobal('fetch', vi.fn(async (url: string) => url.endsWith('/ci/stats')
+        ? json({ connected: true, repo: 'a/b', fetched_at: now, prs: rows.map((r) => r.pr), board: { cards: rows.map((r) => r.card), releases: [{ tag: 'v0.191.0', published_at: now - 3_600_000, prs: [], cost_usd: 0, sessions: 0 }], flow: FLOW } })
+        : json({ connected: true, prs: [] })))
+      render(
+        <FoldCtx.Provider value={{ full: false, toggle: () => {} }}>
+          <CockpitCI sessionId="s1" repoScope="/w" onOpen={() => {}} />
+        </FoldCtx.Provider>,
+      )
+      await waitFor(() => expect(document.querySelector('[data-cockpit-ci-fold-quiet]')).toHaveTextContent('Nothing in flight · last: #1041 merged 2h ago'))
+    })
+  })
 })

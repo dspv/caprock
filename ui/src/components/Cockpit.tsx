@@ -1537,7 +1537,7 @@ function AgentEntry({ n, depth, view, fields, permission, now, sessionId, opened
   return (
     <li data-subagent={n.agent_id} data-done={d ? 'true' : undefined} data-waiting={waiting ? 'true' : undefined} data-open={isOpen ? 'true' : undefined} className="grid min-w-0">
       <button type="button" onClick={() => onToggle(n.agent_id)} aria-expanded={isOpen} aria-controls={isOpen ? panel : undefined}
-        title={[type, phrase, a?.tool && `${a.tool}${a.detail ? ` ${a.detail}` : ''}`, d && 'finished', waiting && 'waiting on you'].filter(Boolean).join(' — ')}
+        title={[type, phrase, a?.tool && `${a.tool}${a.detail ? ` ${a.detail}` : ''}`, d && doneWord(d), waiting && 'waiting on you'].filter(Boolean).join(' — ')}
         className={`grid min-w-0 grid-cols-[12px_7px_minmax(0,1fr)_auto] items-center gap-1.5 rounded-[6px] px-1.5 py-[3px] text-left text-[12px] leading-[16px] outline-none hover:bg-[var(--app-row-hover)] focus-visible:ring-1 focus-visible:ring-[var(--color-accent)] ${d ? 'opacity-70' : ''}`}>
         <Chevron open={isOpen} />
         <span aria-hidden data-dot className={`h-[7px] w-[7px] rounded-full ${d ? 'bg-fg-faint' : waiting ? 'bg-accent' : 'bg-ok'}`} />
@@ -1547,11 +1547,32 @@ function AgentEntry({ n, depth, view, fields, permission, now, sessionId, opened
             ? <span className="ml-1.5 text-[10.5px] font-medium text-accent">waiting on you</span>
             : tool && <span className="mono ml-1.5 text-[10.5px] text-fg-faint">{tool}</span>}
         </span>
-        <span className="num shrink-0 text-[11px] text-fg-muted">{d ? <span aria-label="finished" className="mr-1 text-ok">✓</span> : null}{fig}</span>
+        <span className="num shrink-0 text-[11px] text-fg-muted">{d ? <DoneMark d={d} className="mr-1" /> : null}{fig}</span>
       </button>
       {inside}
     </li>
   )
+}
+
+/**
+ * What a finished subagent is said to be: *finished* after its SubagentStop,
+ * or why it is read as stopped without one (owner, 2026-11-23: one stayed
+ * "working" in the Now tree after the lead's process restarted, its
+ * SubagentStop never coming).
+ */
+export function doneWord(d: Pick<SubagentDone, 'ended_by'>): string {
+  switch (d.ended_by) {
+    case 'restart': return 'stopped when the session restarted'
+    case 'ended': return 'stopped when the session ended'
+    case 'quiet': return 'stopped: silent for 15 min while the session waited'
+    default: return 'finished'
+  }
+}
+
+/** A finished subagent's mark: a green ✓, or a grey *stopped* for one read as stopped without its SubagentStop, why on hover. */
+function DoneMark({ d, className = '' }: { d: SubagentDone; className?: string }) {
+  if (d.ended_by) return <span data-ended-by={d.ended_by} aria-label={doneWord(d)} title={doneWord(d)} className={`text-[10.5px] text-fg-faint ${className}`}>stopped</span>
+  return <span aria-label="finished" className={`text-[11px] text-ok ${className}`}>✓</span>
 }
 
 /** One row of the Subagents list: a working subagent (`a`) or a finished one (`d`). */
@@ -1665,12 +1686,12 @@ function SubagentRow({ item, waiting, now, fields, open, panel, onToggle }: {
   return (
     <button type="button" onClick={onToggle} aria-expanded={open} aria-controls={open ? panel : undefined}
       className={`grid gap-0.5 rounded-[8px] px-2 py-1.5 text-left outline-none hover:bg-[var(--app-row-hover)] focus-visible:ring-1 focus-visible:ring-[var(--color-accent)] ${d ? 'opacity-70' : ''}`}
-      title={[type, phrase, a?.description !== phrase ? a?.description : '', a?.tool && `${a.tool}${a.detail ? ` ${a.detail}` : ''}`, d && 'finished'].filter(Boolean).join(' — ')}>
+      title={[type, phrase, a?.description !== phrase ? a?.description : '', a?.tool && `${a.tool}${a.detail ? ` ${a.detail}` : ''}`, d && doneWord(d)].filter(Boolean).join(' — ')}>
       <span className="grid grid-cols-[16px_minmax(0,1fr)_auto] items-start gap-1.5 text-[12px] leading-[16px]">
         <TypeChip type={type} state={d ? 'done' : waiting ? 'waiting' : 'working'} />
         <span data-doing={doing.from || undefined} className={`min-w-0 break-words line-clamp-2 ${d ? 'text-fg-muted' : doing.text ? 'text-fg' : 'text-fg-faint'}`}>{phrase}</span>
         <span className="flex h-[16px] items-center gap-1">
-          {d && <span aria-label="finished" className="text-[11px] text-ok">✓</span>}
+          {d && <DoneMark d={d} />}
           <Chevron open={open} />
         </span>
       </span>

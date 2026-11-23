@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { CIJob, ReleaseCI, WorkRepo } from './api'
 import type { BranchPR } from './branches'
 import type { BoardCard, BoardRelease } from './prboard'
-import { bumpBetween, mainChecks, nextHint, plainVersion, prKind, raiseVersion, releaseFold, releasePRVersion, releaseStatus, stageWords, stripStages, tagUnpublished, type BatchPR, type MainChecks, type ReleaseStatus, type ReleaseStatusInput } from './releasestatus'
+import { bumpBetween, mainChecks, nextHint, plainVersion, prKind, raiseVersion, releaseBranchVersion, releaseFold, releasePRVersion, releaseStatus, releaseVersionOf, stageWords, stripStages, tagUnpublished, type BatchPR, type MainChecks, type ReleaseStatus, type ReleaseStatusInput } from './releasestatus'
 
 const H = 3_600_000
 const T = Date.UTC(2026, 9, 16, 12)
@@ -104,13 +104,40 @@ describe('the release status’s stages', () => {
     expect(s.last?.assets).toBe(14)
   })
 
-  it('counts the run’s jobs when no release is published yet, and leaves an unseen release PR not known', () => {
+  // 2026-11-23: a released 0.191.0 drew its PR step dashed (not known)
+  // because its release pull request was not among those listed. A tag says
+  // it merged: done, without a number.
+  it('counts the run’s jobs when no release is published yet, and draws an unlisted release PR of a tag done, without a number', () => {
     const s = releaseStatus(base({
       lastTag: { name: 'v0.127.0', at: T - H }, unreleased: pending({}, 0), merged: 0,
       run: run('v0.127.0', 'running', [job('completed'), job('completed'), job('queued')]),
     }))
     expect(s.stages.find((x) => x.key === 'builds')?.text).toBe('builds 2/3')
-    expect(states(s)).toMatchObject({ pr: 'unknown', ci: 'unknown', tag: 'done', builds: 'current', published: 'todo' })
+    expect(states(s)).toMatchObject({ pr: 'done', ci: 'done', tag: 'done', builds: 'current', published: 'todo' })
+    expect(s.pr).toBeUndefined()
+    const prStage = s.stages.find((x) => x.key === 'pr')!
+    expect(prStage.text).toBe('release PR')
+    expect(prStage.title).toContain('v0.127.0 is tagged, so its release pull request is merged')
+    expect(stripStages(s).find((x) => x.key === 'pr')).toMatchObject({ state: 'done', tone: 'ok' })
+    expect(stripStages(s).find((x) => x.key === 'pr')?.unknown).toBeUndefined()
+  })
+
+  it('finds a tagged version’s release pull request by its head branch when its title names no version', () => {
+    const relPR: BranchPR = { ...pr(1041, 'Release', 'merged'), head: 'chore/release-0.127.0' }
+    const s = releaseStatus(base({
+      lastTag: { name: 'v0.127.0', at: T - H }, unreleased: pending({}, 0), merged: 0, prs: [relPR],
+      run: run('v0.127.0', 'pass', [job('completed')], { url: 'u' }),
+    }))
+    expect(s.pr).toEqual({ number: 1041, merged: true })
+    expect(s.stages.find((x) => x.key === 'pr')?.text).toBe('#1041')
+  })
+
+  it('reads a release branch’s version', () => {
+    expect(releaseBranchVersion('chore/release-0.191.0')).toBe('0.191.0')
+    expect(releaseBranchVersion('release/v1.2.3')).toBe('1.2.3')
+    expect(releaseBranchVersion('feat/release-notes')).toBeUndefined()
+    expect(releaseVersionOf({ title: 'chore(release): 0.191.0', head: 'x' })).toBe('0.191.0')
+    expect(releaseVersionOf({ title: 'Ship it', head: 'chore/release-0.191.0' })).toBe('0.191.0')
   })
 
   it('marks a failed release run', () => {
