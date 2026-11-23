@@ -16,9 +16,10 @@
  * state, the running ones pulsing, then the time; the same hover card names
  * every one. A click on a circle hands that check to the caller.
  */
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import { CHECK_BAR_GAP, NO_RUNNER_TITLE, checkBar, checkBarWords, checksSentence, fmtRun, nodeBaseName, osName, shortRun, type CITone, type ChecksSummary, type ChecksView, type CheckBarWord, type DeltaTone, type PipeNode } from '@/lib/ci'
+import { placeBeside, placeNear } from '@/lib/popoverPlace'
 
 /** A state's circle: ✓ on green, ✗ on red, amber pulsing while running, hollow queued, a slash skipped; a muted-amber ⚠ for a job GitHub never gave a machine. */
 export function StateMark({ tone }: { tone: CITone }) {
@@ -151,6 +152,7 @@ export type CheckFit = 'full' | 'noskip' | 'compact' | 'worst'
 export function CheckSummary({ s, label, onPick, focusable = true, className = '', view = 'summary', beside = false, fit = 'full', bar }: { s: ChecksSummary; label: string; onPick?: (n: PipeNode) => void; focusable?: boolean; className?: string; view?: ChecksView; beside?: boolean; fit?: CheckFit; bar?: number }) {
   const c = s.counts
   const anchor = useRef<HTMLSpanElement>(null)
+  const scroller = useRef<HTMLDivElement>(null)
   const [open, setOpen] = useState(false)
   const shut = useRef<number | undefined>(undefined)
   const show = () => {
@@ -164,6 +166,16 @@ export function CheckSummary({ s, label, onPick, focusable = true, className = '
     else shut.current = window.setTimeout(() => setOpen(false), 120)
   }
   useEffect(() => () => window.clearTimeout(shut.current), [])
+  // Focused, the keys scroll the open list: the cockpit's card takes no
+  // pointer, so a list cut to the window's height scrolls from here.
+  const keys = (e: KeyboardEvent) => {
+    const l = scroller.current
+    if (!open || !l || l.scrollHeight <= l.clientHeight) return
+    const step = ({ ArrowDown: 40, ArrowUp: -40, PageDown: l.clientHeight - 24, PageUp: 24 - l.clientHeight, End: l.scrollHeight, Home: -l.scrollHeight } as Record<string, number>)[e.key]
+    if (step === undefined) return
+    e.preventDefault()
+    l.scrollTop += step
+  }
   const sentence = checksSentence(s)
   const time = shortRun(s.ms)
   const skips = fit === 'full'
@@ -209,10 +221,10 @@ export function CheckSummary({ s, label, onPick, focusable = true, className = '
   return (
     <span ref={anchor} data-check-summary={s.green ? 'green' : c.fail ? 'fail' : c.norunner && s.done ? 'norunner' : s.done ? 'done' : 'running'} data-check-view={view} data-check-fit={fit === 'full' ? undefined : fit} data-check-bar-w={bar} tabIndex={focusable ? 0 : undefined}
       role={view === 'circles' ? 'group' : 'img'} aria-label={`${label}: ${sentence}`}
-      onMouseEnter={show} onMouseLeave={hide} onFocus={show} onBlur={hide}
+      onMouseEnter={show} onMouseLeave={hide} onFocus={show} onBlur={hide} onKeyDown={keys}
       className={`inline-flex min-w-0 items-center gap-1.5 overflow-hidden whitespace-nowrap rounded-[4px] text-[11.5px] outline-none focus-visible:ring-1 focus-visible:ring-accent ${className}`}>
       {body}
-      {open && <CheckList s={s} label={label} anchor={anchor} onEnter={beside ? undefined : show} onLeave={beside ? undefined : hide} onPick={onPick} beside={beside} />}
+      {open && <CheckList s={s} label={label} anchor={anchor} scroller={scroller} onEnter={beside ? undefined : show} onLeave={beside ? undefined : hide} onPick={onPick} beside={beside} />}
     </span>
   )
 }
@@ -221,51 +233,61 @@ export function CheckSummary({ s, label, onPick, focusable = true, className = '
 const LIST_MAX = 30
 
 /** Every check of the PR, in a card beside the summary, drawn in the page's body so a scrolling list never clips it. */
-function CheckList({ s, label, anchor, onEnter, onLeave, onPick, beside }: { s: ChecksSummary; label: string; anchor: RefObject<HTMLSpanElement | null>; onEnter?: () => void; onLeave?: () => void; onPick?: (n: PipeNode) => void; beside?: boolean }) {
-  const [pos, setPos] = useState<CSSProperties>({ visibility: 'hidden' })
-  useLayoutEffect(() => {
-    const r = anchor.current?.getBoundingClientRect()
-    if (!r) return
-    const vw = window.innerWidth, vh = window.innerHeight
-    if (beside) {
-      // Outside the panel, level with the row, kept on screen.
-      const edge = anchor.current?.closest('[data-checks-edge]')?.getBoundingClientRect()
-      const left = edge ? edge.left : r.left
-      const top = Math.max(8, Math.min(r.top - 8, vh - 240))
-      setPos({ right: Math.max(8, vw - left + 10), top, maxHeight: vh - top - 8 })
-      return
-    }
-    const right = Math.max(8, vw - r.right - 8)
-    const above = r.top > vh - r.bottom
-    setPos(above ? { right, bottom: vh - r.top + 6, maxHeight: r.top - 14 } : { right, top: r.bottom + 6, maxHeight: vh - r.bottom - 14 })
-  }, [anchor, beside])
+function CheckList({ s, label, anchor, scroller, onEnter, onLeave, onPick, beside }: { s: ChecksSummary; label: string; anchor: RefObject<HTMLSpanElement | null>; scroller: RefObject<HTMLDivElement | null>; onEnter?: () => void; onLeave?: () => void; onPick?: (n: PipeNode) => void; beside?: boolean }) {
+  const card = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState<CSSProperties>({ visibility: 'hidden', left: 0, top: 0 })
+  // Measured, then placed so the whole card stays in the window
+  // (lib/popoverPlace): under or over the summary, or beside the panel and
+  // lifted off the window's foot; taller than the window, its list scrolls
+  // under a header that stays. Placed again as the page scrolls or resizes.
+  const place = useCallback(() => {
+    const a = anchor.current, c = card.current, l = scroller.current
+    if (!a || !c || !l) return
+    const r = a.getBoundingClientRect()
+    const vp = { w: window.innerWidth, h: window.innerHeight }
+    const size = { w: c.offsetWidth, h: c.offsetHeight - l.clientHeight + l.scrollHeight }
+    const edge = beside ? a.closest('[data-checks-edge]')?.getBoundingClientRect() : undefined
+    const p = beside ? placeBeside(r, edge ? edge.left : r.left, size, vp) : placeNear(r, size, vp)
+    c.dataset.side = p.side
+    setPos((was) => (was.left === p.left && was.top === p.top && was.maxHeight === p.maxHeight && was.visibility === undefined ? was : { left: p.left, top: p.top, maxHeight: p.maxHeight }))
+  }, [anchor, scroller, beside])
+  useLayoutEffect(place, [place, s])
+  useEffect(() => {
+    window.addEventListener('resize', place)
+    window.addEventListener('scroll', place, true)
+    return () => { window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true) }
+  }, [place])
   const shown = s.nodes.slice(0, LIST_MAX)
   const more = s.nodes.length - shown.length
   const timeLine = s.ms ? (s.done ? `took ${fmtRun(s.ms)}` : `running for ${fmtRun(s.ms)}`) : ''
   return createPortal(
-    <div role="tooltip" data-check-list data-beside={beside || undefined} onMouseEnter={onEnter} onMouseLeave={onLeave} onClick={(e) => e.stopPropagation()}
+    <div ref={card} role="tooltip" data-check-list data-beside={beside || undefined} onMouseEnter={onEnter} onMouseLeave={onLeave} onClick={(e) => e.stopPropagation()}
       style={{ position: 'fixed', zIndex: 60, pointerEvents: beside ? 'none' : undefined, ...pos }}
-      className="w-[min(380px,calc(100vw-16px))] overflow-y-auto rounded-lg border border-border-strong bg-panel px-2.5 py-2 text-[11.5px] shadow-lg">
-      <div className="text-[12px] font-medium text-fg">{label}</div>
-      <div className="mb-1.5 text-fg-muted">{checksSentence(s)}{timeLine ? ` · ${timeLine}` : ''}</div>
-      {s.vs && <div className="-mt-1 mb-1.5 text-fg-faint">{s.vs.title}</div>}
-      <ul className="grid grid-cols-[10px_minmax(0,1fr)_auto_auto_auto] items-center gap-x-2 gap-y-[3px]">
-        {shown.map((n) => (
-          <li key={n.key} className="contents">
-            <StateMark tone={n.tone} />
-            <button type="button" data-check-row={n.jobId ?? n.key} data-tone={n.tone} disabled={!onPick && !n.url} onClick={() => onPick?.(n)}
-              className="min-w-0 truncate text-left text-fg hover:underline disabled:cursor-default disabled:hover:no-underline" title={n.name}>
-              {nodeBaseName(n)}
-            </button>
-            <span className="text-fg-faint">{osName(n.os)}</span>
-            <span className={TEXT[n.tone]}>{WORD[n.tone]}</span>
-            <span className="num text-right text-fg-muted">{n.ms !== undefined ? fmtRun(n.ms) : ''}</span>
-            {n.step && <span data-check-step className="col-span-4 col-start-2 -mt-[2px] truncate text-[11px] text-danger" title={n.step}>failed at {n.step}</span>}
-            {n.tone === 'norunner' && <span data-check-norunner className="col-span-4 col-start-2 -mt-[2px] text-[11px] text-norunner">{NO_RUNNER_TITLE}</span>}
-          </li>
-        ))}
-      </ul>
-      {more > 0 && <div className="mt-1 text-fg-faint">+{more} more</div>}
+      className="flex w-[min(380px,calc(100vw-16px))] flex-col overflow-hidden rounded-lg border border-border-strong bg-panel py-2 text-[11.5px] shadow-lg">
+      <div data-check-list-head className="shrink-0 px-2.5">
+        <div className="text-[12px] font-medium text-fg">{label}</div>
+        <div className="mb-1.5 text-fg-muted">{checksSentence(s)}{timeLine ? ` · ${timeLine}` : ''}</div>
+        {s.vs && <div className="-mt-1 mb-1.5 text-fg-faint">{s.vs.title}</div>}
+      </div>
+      <div ref={scroller} data-check-list-scroll className="min-h-0 overflow-y-auto px-2.5">
+        <ul className="grid grid-cols-[10px_minmax(0,1fr)_auto_auto_auto] items-center gap-x-2 gap-y-[3px]">
+          {shown.map((n) => (
+            <li key={n.key} className="contents">
+              <StateMark tone={n.tone} />
+              <button type="button" data-check-row={n.jobId ?? n.key} data-tone={n.tone} disabled={!onPick && !n.url} onClick={() => onPick?.(n)}
+                className="min-w-0 truncate text-left text-fg hover:underline disabled:cursor-default disabled:hover:no-underline" title={n.name}>
+                {nodeBaseName(n)}
+              </button>
+              <span className="text-fg-faint">{osName(n.os)}</span>
+              <span className={TEXT[n.tone]}>{WORD[n.tone]}</span>
+              <span className="num text-right text-fg-muted">{n.ms !== undefined ? fmtRun(n.ms) : ''}</span>
+              {n.step && <span data-check-step className="col-span-4 col-start-2 -mt-[2px] truncate text-[11px] text-danger" title={n.step}>failed at {n.step}</span>}
+              {n.tone === 'norunner' && <span data-check-norunner className="col-span-4 col-start-2 -mt-[2px] text-[11px] text-norunner">{NO_RUNNER_TITLE}</span>}
+            </li>
+          ))}
+        </ul>
+        {more > 0 && <div className="mt-1 text-fg-faint">+{more} more</div>}
+      </div>
     </div>,
     document.body,
   )
