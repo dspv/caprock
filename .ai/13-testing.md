@@ -147,7 +147,7 @@ memories or automatic extraction. The headless-browser golden path imports a
 synthetic vault, changes and revokes consent, reads its source marker, removes
 the import and checks that its file stayed unchanged.
 
-Second Brain's privacy filter: `internal/redact/redact_test.go` holds
+2nd Brain's privacy filter: `internal/redact/redact_test.go` holds
 fake positives of every kind (keys, tokens, a PEM block, test cards, the
 example IBANs, labelled passwords, secrets and accounts, Russian labels as
 escapes) and the negatives it must leave alone (commit SHAs, UUIDs,

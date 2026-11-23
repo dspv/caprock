@@ -1035,7 +1035,7 @@ On macOS:
 | ⌘E, ⇧⌘E     | Split: a new shell beside, below                                                    |
 | ⌘[ ]        | Previous and next pane                                                              |
 | ⌘J          | Next session waiting on you                                                         |
-| ⇧⌘H         | Add to Second Brain: keep a line of your own                                        |
+| ⇧⌘H         | Add to 2nd Brain: keep a line of your own                                           |
 | ⌘F          | Find in the terminal or the file; with Settings in front, search Settings           |
 | ⌥⌘G         | Highlight where you type: on or off, in every terminal                              |
 | ⌘-click     | A link in the terminal: open it in your default browser                             |
@@ -1062,7 +1062,7 @@ On Windows and Linux each is Ctrl+Shift with the same letter or arrow
 Ctrl+Alt+Shift+W and Reopen closed tab Ctrl+Alt+Shift+T, since Ctrl+Shift+F, W and T
 are Find, Close and New shell; the theme is Ctrl+Alt+Shift+P; the Dashboard is Ctrl+Shift+D, never Ctrl+D,
 which stays the shell's end of input; tabs are
-Ctrl+Shift+1–9; Add to Second Brain is Ctrl+Shift+H; Files is Ctrl+Shift+X and
+Ctrl+Shift+1–9; Add to 2nd Brain is Ctrl+Shift+H; Files is Ctrl+Shift+X and
 its actions Alt+3–Alt+8 (F3–F8 too); a link opens on
 Ctrl+click and its browser chooser on Ctrl+Shift+click). The arrow
 chords are Alt+Shift there (Alt+Shift+↓ ↑ sessions, Alt+Shift+→ ←
@@ -1187,28 +1187,30 @@ it: nothing that updates behind the sheet takes it from the field you are in.
   On Windows and Linux closing quits. Quitting never stops the daemon or a
   session.
 
-## Second Brain
+## 2nd Brain
 
 The few answers worth keeping, kept as a graph: ideas, decisions, findings
 and open questions, each linked to its project and topics and to the moment
 in the session it came from. It remembers what your agents learn and hands
 it to your next Claude Code session; other agents can read it through
-[`caprock mcp`](mcp.md). Open it from *Second Brain* in the dashboard's screen row, or from
-the Second Brain block in the app's sidebar.
+[`caprock mcp`](mcp.md). Open it from *2nd Brain* in the dashboard's screen row, or from
+the 2nd Brain block in the app's sidebar.
 
 - **Drop an answer in.** Under any answer on the Memory screen, in a
   session's Answers tab, or under a reply in the chat view, press **Drop into
-  Second Brain**. Caprock reads the answer from its own record, so the memory knows
+  2nd Brain**. Caprock reads the answer from its own record, so the memory knows
   its session, project and time; its first line becomes the title.
 - **Add a line of your own.** ⇧⌘H (Ctrl+Shift+H on Windows and Linux), or ⌘K
-  → *Add to Second Brain…*: type it, pick Idea, Decision, Finding or Question, name
+  → *Add to 2nd Brain…*: type it, pick Idea, Decision, Finding or Question, name
   topics if you like, and ⌘↩.
-- **See it as a graph.** The Second Brain screen opens on the graph: your memories
+- **See it as a graph.** The 2nd Brain screen opens on the graph: your memories
   and the topics and projects they hang off. Drag to move, scroll to zoom,
   double-click to fit, click a dot to open it; *List* shows the same as
-  rows. In the app's sidebar, the Second Brain block below your projects shows the
-  newest thirty as a small graph — a new memory drops in as it is kept —
-  and the three newest titles. While it is empty it is a small card with
+  rows. In the app's sidebar, the 2nd Brain block below your projects is
+  one quiet row with what it is doing; unfolded, it shows your newest thirty
+  memories as a small copy of the screen's graph (a new memory flashes at
+  its place as it is kept), so opening the screen shows the same picture,
+  larger. While it is empty it is a small card with
   **Start building**, which asks in place before anything is read (your own
   `claude`, on this computer, within the daily limit, starting with your
   last 30 days of sessions; **Turn on** to say yes), and once on it says what it is doing — how many sessions are
@@ -1216,8 +1218,8 @@ the Second Brain block in the app's sidebar.
 - **Find and tidy.** Search, pick a project or a span; open a memory to edit
   its title and summary, pin it, link it to a topic, jump to the session it
   came from, or delete it.
-- **Let it build itself.** The Second Brain screen asks
-  once whether to build it automatically; Settings → Second Brain switches it
+- **Let it build itself.** The 2nd Brain screen asks
+  once whether to build it automatically; Settings → 2nd Brain switches it
   later. When a session has been quiet for ten minutes, Caprock asks your own
   `claude` (a small model, Haiku) to pick out what it decided and found, and
   keeps those as memories linked back to the moment they were said. Short
@@ -1228,8 +1230,8 @@ the Second Brain block in the app's sidebar.
   do not run your hooks.
 - **Not everything is worth keeping.** A session a scheduled job starts
   through Caprock's API can say so (`"automation": true` on
-  `POST /v1/agents`): Second Brain never reads it and hands it nothing.
-  Settings → Second Brain → *Never read these folders* does the same for
+  `POST /v1/agents`): 2nd Brain never reads it and hands it nothing.
+  Settings → 2nd Brain → *Never read these folders* does the same for
   every session in a folder you name — it is skipped unread, and that
   folder's project stays out of the graph, search and what new sessions are
   handed unless you open the project yourself. Nothing already kept is
@@ -1240,7 +1242,7 @@ the Second Brain block in the app's sidebar.
 - **Free.** All of it: every memory you keep, and the automatic build once
   you say yes. No licence is needed for any of it.
 
-**Privacy.** Second Brain lives in Caprock's database on this computer, and
+**Privacy.** 2nd Brain lives in Caprock's database on this computer, and
 nothing in it is sent to Caprock. Dropping memories in by hand sends nothing
 anywhere. Building it automatically is off until you say yes: then a finished
 session's prompts and answers go to your own `claude`, which sends them to
@@ -1507,8 +1509,8 @@ computer, or one other). At most one a
 day; it waits until you stop typing, never appears while a session is
 waiting for a permission answer, and never covers a terminal.
 
-- **Second Brain.** The strip used to offer it ahead of its arrival; it
-  has arrived, free for everyone (see [Second Brain](#second-brain)), so
+- **2nd Brain.** The strip used to offer it ahead of its arrival; it
+  has arrived, free for everyone (see [2nd Brain](#2nd-brain)), so
   the strip no longer shows it.
 - **Answering a question.** Two one-click questions and an optional email,
   if you want to hear when it is ready.

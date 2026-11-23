@@ -28,7 +28,7 @@ export function ObsidianVaults({ onClose }: { onClose: () => void }) {
       footer={<SheetButton onClick={onClose}>Done</SheetButton>}>
       <div className="grid gap-4 px-5 py-4">
         <p className="text-[13px] leading-relaxed text-fg-muted">
-          Read the Markdown notes in a vault. Links and tags join Second Brain; your files stay unchanged.
+          Read the Markdown notes in a vault. Links and tags join 2nd Brain; your files stay unchanged.
           Caprock checks for changes every 10 minutes while it runs.
         </p>
         <form className="grid gap-2" onSubmit={(e) => {
@@ -53,7 +53,7 @@ export function ObsidianVaults({ onClose }: { onClose: () => void }) {
           </label>
           <p className="text-[12px] leading-relaxed text-fg-muted">
             Off keeps imported notes in Caprock. On lets agents read them through MCP and memory handoffs,
-            and lets Second Brain send their topic names to your model. Answers can reach the model your agent uses.
+            and lets 2nd Brain send their topic names to your model. Answers can reach the model your agent uses.
           </p>
         </form>
         {error && <p role="alert" className="text-[13px] text-danger [overflow-wrap:anywhere]">{error}</p>}

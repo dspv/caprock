@@ -49,7 +49,7 @@ export function SecondBrainModal({ onClose, onOpen }: { onClose: () => void; onO
       className="fixed inset-0 z-30 flex items-start justify-center overflow-y-auto bg-black/55 px-3 py-[5vh] sm:px-4"
       role="dialog"
       aria-modal="true"
-      aria-label="Second Brain"
+      aria-label="2nd Brain"
     >
       <div
         ref={panel}
@@ -73,7 +73,7 @@ export function SecondBrainModal({ onClose, onOpen }: { onClose: () => void; onO
         <p className="mt-1 text-[12.5px] text-fg-muted" data-brain-privacy>Free — runs on your own Claude, on this computer.</p>
         <button type="button" onClick={() => { onOpen?.(); onClose() }}
           className="mt-4 w-full rounded-lg bg-accent px-3 py-2.5 text-[14.5px] font-semibold text-panel hover:bg-accent-strong">
-          {onOpen ? 'Open Second Brain' : 'Got it'}
+          {onOpen ? 'Open 2nd Brain' : 'Got it'}
         </button>
         {/* Three short lines in the text colour (the owner, 2026-10-15,
           * translated: four long grey bullets "don't read at all"). */}

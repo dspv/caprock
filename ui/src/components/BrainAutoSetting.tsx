@@ -39,7 +39,7 @@ export function BrainAutoSetting() {
   const limit = LIMITS.includes(auto.daily_tokens) ? auto.daily_tokens : LIMITS[1]
   return (
     <Section
-      title="Second Brain"
+      title="2nd Brain"
       aside={
         <span className={`text-[12px] ${auto.enabled ? 'text-accent' : 'text-fg-faint'}`}>
           {!auto.on ? 'off' : auto.enabled ? 'on' : 'not active'}
@@ -141,7 +141,7 @@ function ArrivalsToggle() {
       checked={on}
       onChange={(v) => { setOn(v); setBrainArrivals(v) }}
       label="Show memories moving"
-      hint="A session’s new memories drift into Second Brain as a silver thread, and the ones a new session is handed drift into its tab. At most one a minute each way, never while you type. With reduced motion only the count shows."
+      hint="A session’s new memories drift into 2nd Brain as a silver thread, and the ones a new session is handed drift into its tab. At most one a minute each way, never while you type. With reduced motion only the count shows."
     />
   )
 }

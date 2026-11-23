@@ -238,7 +238,7 @@ describe('the panel', () => {
       expect(row.hasAttribute('data-warn')).toBe(true)
       expect(row.textContent).toContain('Disk is nearly full')
       expect(row.querySelector('[data-row-reason]')!.textContent).toBe("3.0 GB free of 460 GB on the disk that holds Caprock's data.")
-      expect(row.querySelector('[data-row-help]')!.textContent).toBe("Caprock's largest item there is its history, 2.1 GB: every session, kept on purpose for spend, search and Second Brain. Settings → Storage shows what it holds.")
+      expect(row.querySelector('[data-row-help]')!.textContent).toBe("Caprock's largest item there is its history, 2.1 GB: every session, kept on purpose for spend, search and 2nd Brain. Settings → Storage shows what it holds.")
       expect(row.textContent).not.toMatch(/delete|retention/i)
       const open = row.querySelector<HTMLButtonElement>('[data-row-action="storage"]')!
       expect(open.textContent).toBe('Storage settings')

@@ -30,7 +30,7 @@ function given(days: number, licensed = false) {
 
 // Second Brain is built and free (owner decision, 2026-10-14): its pre-order
 // sale is gone from the strip, and no address brings it back.
-describe('Second Brain', () => {
+describe('2nd Brain', () => {
   it('is no longer offered for sale', () => {
     expect(OFFERS.map((o) => o.id)).not.toContain('second-brain')
     expect(forcedOffer('?offer=second-brain')).toBe(null)

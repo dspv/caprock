@@ -18,10 +18,10 @@ import { McpConnectList } from '@/components/McpConnect'
 
 /** What `caprock mcp` offers, in the order tools/list gives them (internal/mcp/tools.go). */
 export const MCP_TOOLS: [name: string, what: string][] = [
-  ['search_memories', 'search Second Brain'],
+  ['search_memories', 'search 2nd Brain'],
   ['current_decisions', 'the decisions in force for a project'],
   ['get_memory', 'one memory and what it links to'],
-  ['memory_topics', 'the topics and projects Second Brain knows'],
+  ['memory_topics', 'the topics and projects 2nd Brain knows'],
   ['next_session_handoff', 'what a new session in this repository is handed'],
   ['recent_sessions', 'recent sessions here, or everywhere'],
   ['session_summary', 'what a session did: files, pull requests, cost'],
@@ -62,7 +62,7 @@ export function McpSetting({ executable }: { executable?: string }) {
   return (
     <Section title="Use Caprock from your agents (MCP)">
       <p className="text-[12.5px] leading-relaxed text-fg-muted" data-keep>
-        Your coding agents can ask Caprock what it knows — Second Brain, the recent sessions in their repository and what
+        Your coding agents can ask Caprock what it knows — 2nd Brain, the recent sessions in their repository and what
         those sessions wrote, cost and tokens, CI and loop alerts. Read-only: no tool can type into a session, start or stop
         one, or change a setting. What a tool returns goes into your agent&rsquo;s conversation, and so to the model it runs
         on; text shaped like a key or token is replaced with [redacted]. It opens no port: it reads this Caprock while it runs.

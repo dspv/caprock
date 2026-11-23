@@ -77,8 +77,8 @@ func (t *tools) list() []Tool {
 	return []Tool{
 		{
 			Name:  "search_memories",
-			Title: "Search Second Brain",
-			Description: "Search the user's Second Brain: decisions, findings and notes kept from earlier coding sessions, across every project or one. " +
+			Title: "Search 2nd Brain",
+			Description: "Search the user's 2nd Brain: decisions, findings and notes kept from earlier coding sessions, across every project or one. " +
 				"Returns up to 30 ranked candidates (any word matches; rarer words, and hits in a title or its English keywords, rank higher; " +
 				"a few synonyms such as PR/pull request, cost/price/spend and decision/rule are matched; typos are tolerated), " +
 				"each with kind, date, project, keywords and a short summary: judge by meaning which ones answer the question, then read one with get_memory. " +
@@ -95,7 +95,7 @@ func (t *tools) list() []Tool {
 		{
 			Name:  "current_decisions",
 			Title: "Current decisions",
-			Description: "The decisions in force for a project, newest first: every decision in Second Brain that no newer one supersedes. " +
+			Description: "The decisions in force for a project, newest first: every decision in 2nd Brain that no newer one supersedes. " +
 				"Read this before changing direction on something the user already decided.",
 			Schema: obj(map[string]any{
 				"project": str("The project's name (the repository folder's name). Omit for the repository this server was started in."),
@@ -106,21 +106,21 @@ func (t *tools) list() []Tool {
 		{
 			Name:        "get_memory",
 			Title:       "Read one memory",
-			Description: "One Second Brain memory in full, with what it is linked to (topics, people, projects, related memories).",
+			Description: "One 2nd Brain memory in full, with what it is linked to (topics, people, projects, related memories).",
 			Schema:      obj(map[string]any{"id": map[string]any{"type": "integer", "description": "The memory's id, from search_memories."}}, "id"),
 			Call:        t.getMemory,
 		},
 		{
 			Name:        "memory_topics",
-			Title:       "Second Brain topics",
-			Description: "The topics Second Brain has memories about, most-linked first, and how many memories each project holds.",
+			Title:       "2nd Brain topics",
+			Description: "The topics 2nd Brain has memories about, most-linked first, and how many memories each project holds.",
 			Schema:      obj(map[string]any{"project": str("Keep one project's topics. Omit for all.")}),
 			Call:        t.memoryTopics,
 		},
 		{
 			Name:  "next_session_handoff",
 			Title: "What the next session gets",
-			Description: "What Caprock hands a new session started in a repository: the Second Brain memories it carries, " +
+			Description: "What Caprock hands a new session started in a repository: the 2nd Brain memories it carries, " +
 				"whether the handoff is switched on, and when the passage it would quote was written.",
 			Schema: obj(map[string]any{"repo": str(repoDesc)}),
 			Call:   t.handoff,

@@ -712,7 +712,7 @@ const Message = memo(function Message({ m, onPath, plain = false }: { m: ChatMes
     return (
       <div data-msg-id={m.id} className="group py-1.5 [&_div]:text-fg [&>div]:text-[14px]">
         <Prose text={m.text} onPath={onPath} />
-        {/* Keep it in Second Brain (ADR-063): quiet until the reply is hovered or focused. */}
+        {/* Keep it in 2nd Brain (ADR-063): quiet until the reply is hovered or focused. */}
         <span className="flex opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none">
           <BrainDropButton eventId={m.id} className="-ml-1 mt-0.5" />
         </span>

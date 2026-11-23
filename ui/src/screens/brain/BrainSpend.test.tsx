@@ -23,7 +23,7 @@ const spend = (over: Partial<Spend> = {}): Spend => ({
   ...over,
 })
 
-describe('what Second Brain spends', () => {
+describe('what 2nd Brain spends', () => {
   afterEach(() => {
     cleanup()
     vi.clearAllMocks()

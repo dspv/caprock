@@ -26,7 +26,7 @@ describe('Connect your agents to Caprock (MCP)', () => {
   it('offers Connect per installed agent and says what the click does', async () => {
     m.list.mockResolvedValue(list(claude('not_connected'), codex('not_installed')))
     render(<McpConnectRow />)
-    expect(await screen.findByText('Let your agents ask Second Brain')).toBeInTheDocument()
+    expect(await screen.findByText('Let your agents ask 2nd Brain')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Connect' })).toBeInTheDocument()
     expect(screen.queryByText('Codex')).toBeNull()
     expect(screen.getByText(/Connect adds Caprock to Claude Code’s MCP servers for your user; Disconnect removes it/)).toHaveTextContent(/Caprock sends nothing anywhere/)

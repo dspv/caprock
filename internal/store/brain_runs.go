@@ -465,7 +465,7 @@ func BrainHandoff(ctx context.Context, q Querier, project string) (BrainHandoffP
 	}
 	var parts []string
 	if len(dl) > 0 {
-		parts = append(parts, "Current decisions in the user's Second Brain for this repository, newest first (a newer one replaces an older one it contradicts; they may be stale):"+strings.Join(dl, ""))
+		parts = append(parts, "Current decisions in the user's 2nd Brain for this repository, newest first (a newer one replaces an older one it contradicts; they may be stale):"+strings.Join(dl, ""))
 	}
 	if len(ml) > 0 {
 		parts = append(parts, "Also kept for this repository (decisions and findings from earlier sessions; they may be stale):"+strings.Join(ml, ""))

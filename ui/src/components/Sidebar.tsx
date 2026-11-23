@@ -614,7 +614,7 @@ export function Sidebar(props: SidebarProps) {
         </div>
       </div>
 
-      {/* The list scrolls here and ends above Second Brain and the footer,
+      {/* The list scrolls here and ends above 2nd Brain and the footer,
         * its siblings below: nothing is drawn under either, and the bottom
         * padding leaves the last row whole when scrolled to the end. Sized
         * by its content (flex-auto), so a long list presses on Second Brain,
@@ -762,7 +762,7 @@ export function Sidebar(props: SidebarProps) {
         {props.onRoute && <MachineRows onOpen={props.onRoute} onSettingsSection={props.onSettingsSection} dashboardActive={props.dashboardActive && !props.mailActive && !props.pipelineActive} />}
       </div>
 
-      {/* Second Brain under the list (ADR-063), never in its scroll, so its
+      {/* 2nd Brain under the list (ADR-063), never in its scroll, so its
         * status line is never cut off by the footer; folds, remembers it.
         * Its orb sparks for the sessions working now, from this model. */}
       {props.onRoute && <BrainSidebar onOpen={props.onRoute} working={today.working} />}

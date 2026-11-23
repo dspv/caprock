@@ -104,7 +104,7 @@ describe('the doctor in plain words', () => {
     const row = doctorRows(low).find((r) => r.key === 'disk')!
     expect([row.title, row.value, row.warn]).toEqual(['Disk is nearly full', '3.0 GB free', true])
     expect(row.reason).toBe("3.0 GB free of 460 GB on the disk that holds Caprock's data.")
-    expect(row.help).toBe("Caprock's largest item there is its history, 2.0 GB: every session, kept on purpose for spend, search and Second Brain. Settings → Storage shows what it holds.")
+    expect(row.help).toBe("Caprock's largest item there is its history, 2.0 GB: every session, kept on purpose for spend, search and 2nd Brain. Settings → Storage shows what it holds.")
     expect(row.action).toEqual({ key: 'storage', label: 'Storage settings' })
     expect(`${row.reason} ${row.help}`).not.toMatch(/delete|retention/i)
     // Pastes bigger than the history: not "largest".

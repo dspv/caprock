@@ -53,7 +53,7 @@ const SYNONYMS: [words: string[], title: RegExp][] = [
   [['ide', 'vscode', 'code', 'zed', 'open'], /^editor$/i],
   [['limit', 'quota', 'pause', 'window'], /plan limit/i],
   [['limit', 'rate', 'quota', 'kimi', 'deepseek', 'fallback', 'switch', 'continue'], /when a limit is reached/i],
-  [['brain', 'graph', 'notes'], /second brain/i],
+  [['brain', 'graph', 'notes', 'second'], /2nd brain/i],
   [['memory', 'remember'], /memory between sessions/i],
   [['prompt', 'prompts', 'snippet', 'command', 'commands'], /saved prompts/i],
   [['template', 'scaffold'], /project templates/i],

@@ -122,10 +122,10 @@ test('Settings opens and closes', async ({ app, page }) => {
   await expect(page.getByRole('heading', { name: 'Settings', level: 1 })).toHaveCount(0)
 })
 
-test('the Second Brain screen renders', async ({ app, page }) => {
+test('the 2nd Brain screen renders', async ({ app, page }) => {
   await app.open()
-  await app.sidebar.getByRole('link', { name: /Open Second Brain/ }).click()
-  await expect(page.getByRole('heading', { name: 'Second Brain', level: 1 })).toBeVisible()
+  await app.sidebar.getByRole('link', { name: /Open 2nd Brain/ }).click()
+  await expect(page.getByRole('heading', { name: '2nd Brain', level: 1 })).toBeVisible()
   await expect(page.locator('[data-brain-screen]')).not.toHaveAttribute('data-brain-phase', 'loading')
 })
 
@@ -234,7 +234,7 @@ test('an Obsidian vault imports privately, consent can be changed, and removing 
   await expect(page.getByRole('region', { name: 'Obsidian sources' })).toContainText('Vault journal.md')
   await page.screenshot({ path: test.info().outputPath('obsidian-source.png') })
   await page.getByRole('button', { name: /Open the graph/ }).click()
-  const graph = page.getByRole('dialog', { name: 'Second Brain graph' })
+  const graph = page.getByRole('dialog', { name: '2nd Brain graph' })
   await expect(graph.getByText('◆ Obsidian note')).toBeVisible()
   await page.screenshot({ path: test.info().outputPath('obsidian-graph.png') })
   await graph.getByRole('button', { name: 'Close the graph' }).click()

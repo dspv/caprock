@@ -90,7 +90,7 @@ Every MVP feature must trace to a documented user pain. **Rule: a feature with n
      ([ADR-078](08-decisions.md)); the SessionStart handoff supplies context
      once, while later questions otherwise require copying from the dashboard.
    - Feature: **Use Caprock from your agents (MCP)** — free, read-only tools
-     for Second Brain, session history and prose, costs, CI and loop alerts.
+     for 2nd Brain, session history and prose, costs, CI and loop alerts.
      The user adds the stdio server to their agent; returned text enters that
      agent's conversation and reaches its model. Setup and boundaries live in
      [docs/mcp.md](../docs/mcp.md).
@@ -98,7 +98,7 @@ Every MVP feature must trace to a documented user pain. **Rule: a feature with n
 12. **Existing Obsidian notes should join the agents' memory graph.**
    - Evidence: the owner's 2026-10-18 handoff for the paused Obsidian import,
      explicitly requiring a switch for whether agents may use the notes.
-   - Feature: **Import from Obsidian** in Second Brain, preserving source
+   - Feature: **Import from Obsidian** in 2nd Brain, preserving source
      files, refreshing notes and links, and keeping agent sharing off until
      chosen per vault ([ADR-079](08-decisions.md), [user guide](../docs/obsidian.md)).
 

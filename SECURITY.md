@@ -60,7 +60,7 @@ through a session, such as an API key echoed by a command or pasted into a
 prompt. Caprock does not strip credentials from the recorded sessions. Treat
 the database as being as sensitive as the sessions it recorded.
 
-Second Brain's memories are the exception, because they are handed on to
+2nd Brain's memories are the exception, because they are handed on to
 later sessions and, if you set it up, to agents over MCP: before a memory is
 saved, and in the text sent to be read, API keys, tokens, private keys, card
 numbers, IBANs and labelled passwords, secrets and bank account numbers are

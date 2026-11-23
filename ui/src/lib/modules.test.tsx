@@ -102,7 +102,7 @@ describe('what waits in a module', () => {
     expect(document.querySelector('[data-module-items]')).toBeNull()
   })
 
-  it('is an accordion with Second Brain: unfolding one folds the other, kept in this browser', async () => {
+  it('is an accordion with 2nd Brain: unfolding one folds the other, kept in this browser', async () => {
     localStorage.setItem(BRAIN_FOLD_KEY, 'open')
     stubFetch(ops(two))
     render(<ModuleRows onOpen={vi.fn()} dashboardActive />)

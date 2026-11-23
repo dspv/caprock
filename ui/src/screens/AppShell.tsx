@@ -266,7 +266,7 @@ const SCREENS: [string, string, string][] = [
   ['history', 'Lifetime', 'every session, every day, in totals'],
   ['week', 'Week', 'one week, as a card'],
   ['notes', 'Memory', 'what the agents said, searchable'],
-  ['brain', 'Second Brain', 'what your sessions decided and found, as a graph'],
+  ['brain', '2nd Brain', 'what your sessions decided and found, as a graph'],
   ['tasks', 'Tasks', 'the board'],
   ['queue', 'Queue', 'what each agent is doing, what waits, roughly when it is done'],
   ['mail', 'Mail', 'every inbox in one place, on this machine'],
@@ -1721,7 +1721,7 @@ export function AppShell() {
       ...(source === 'api' && !isPairedDevice()
         ? [{ id: 'a-project-template', group: 'Actions' as const, label: 'New project from a template…', detail: 'a GitHub template repository or a folder, your brief, an agent', icon: <FolderPlusIcon size={14} />, run: onFromTemplate }]
         : []),
-      { id: 'a-brain', group: 'Actions', label: 'Add to Second Brain…', detail: 'keep a line of your own', hint: keys('⇧⌘H'), icon: <BrainGlyph size={14} />, run: () => openBrainCapture() },
+      { id: 'a-brain', group: 'Actions', label: 'Add to 2nd Brain…', detail: 'keep a line of your own', hint: keys('⇧⌘H'), icon: <BrainGlyph size={14} />, run: () => openBrainCapture() },
       { id: 'a-pipeline', group: 'Actions', label: 'Open Pipeline', detail: 'in its own tab: every pull request on its way — open, CI, merged, released', hint: keys(PIPELINE_KEY), icon: <DeckIcon size={14} />, run: () => run({ kind: 'pipeline' }) },
       { id: 'a-inspector', group: 'Actions', label: prefs.inspector ? 'Hide the inspector' : 'Show the inspector', hint: keys('⌘I'), icon: <InspectorIcon size={14} />, run: () => run({ kind: 'inspector' }) },
       ...(browserAvailable() ? [{ id: 'a-phone-preview', group: 'Actions' as const, label: 'Preview on phone…', detail: 'a local dev server or an address, beside the terminal as a phone shows it', icon: <PhoneIcon size={14} />, run: () => setSheet({ kind: 'preview', mode: 'list' }) }] : []),

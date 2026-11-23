@@ -206,7 +206,7 @@ function DayChart({ days, limit, stacks }: { days: Spend['days']; limit: number;
         )}
       </figcaption>
       <div className="relative min-h-[128px] flex-1" role="group" onMouseLeave={() => setTip(null)}
-        aria-label={`Second Brain tokens per day, last ${days.length} days, against the daily limit of ${tokensShort(limit)}`}>
+        aria-label={`2nd Brain tokens per day, last ${days.length} days, against the daily limit of ${tokensShort(limit)}`}>
         {rules.map((v) => (
           <div key={v} aria-hidden className="pointer-events-none absolute inset-x-0 border-t border-border/60" style={{ bottom: `${(v / max) * 100}%` }} data-brain-spend-rule>
             <span className="num absolute -top-[5px] right-0 w-7 text-right text-[9px] leading-none text-fg-faint">{gridLabel(v)}</span>
@@ -372,7 +372,7 @@ function Detail({ spend, auto, id }: { spend: Spend | null; auto: BrainAutoStatu
   const todayPct = limit > 0 ? Math.round((Math.max(0, auto.spent) / limit) * 100) : null
   return (
     <div id={id} className="min-w-0" data-brain-spend-detail>
-      <Panel title={`Last ${spend.days.length} days`} right={<span>Second Brain’s reads, by day and project</span>}>
+      <Panel title={`Last ${spend.days.length} days`} right={<span>2nd Brain’s reads, by day and project</span>}>
         <div className="@container">
           {/* The Dashboard's Today row: one hero figure, the rest stepping
             * down, divided by hairlines (screens/Now.tsx). */}
@@ -416,7 +416,7 @@ export function BrainSpend({ auto }: { auto: BrainAutoStatus }) {
   const catchUp = catchUpLine(auto.catch_up) ?? retagLine(auto.retag)
   const over = auto.daily_tokens > 0 && auto.spent >= auto.daily_tokens
   return (
-    <section className="grid min-w-0 gap-2" aria-label="Second Brain tokens" data-brain-spend>
+    <section className="grid min-w-0 gap-2" aria-label="2nd Brain tokens" data-brain-spend>
       <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-controls={detailId} data-brain-spend-toggle
         className="grid min-w-0 gap-1.5 rounded-[10px] border border-border bg-panel px-3 py-2 text-left hover:border-border-strong">
         <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
@@ -425,7 +425,7 @@ export function BrainSpend({ auto }: { auto: BrainAutoStatus }) {
           </span>
           {share && (
             <span className="rounded-full border border-border px-1.5 py-[1px] text-[11.5px] text-fg-muted" data-brain-spend-share
-              title="Second Brain's tokens over every Claude token Caprock recorded in the last 24 hours, its own included">
+              title="2nd Brain's tokens over every Claude token Caprock recorded in the last 24 hours, its own included">
               {share} of all your Claude tokens today
             </span>
           )}

@@ -9,7 +9,7 @@
     {
       "name": "caprock",
       "source": "./plugins/caprock",
-      "description": "Ask Caprock from Claude Code: Second Brain memories and decisions, what past sessions did, spend and tokens per repo, CI status, stuck sessions. Read-only, local; needs the Caprock app running.",
+      "description": "Ask Caprock from Claude Code: 2nd Brain memories and decisions, what past sessions did, spend and tokens per repo, CI status, stuck sessions. Read-only, local; needs the Caprock app running.",
       "category": "developer-tools",
       "tags": ["memory", "session-history", "cost-tracking", "ci", "local-first", "mcp"]
     }

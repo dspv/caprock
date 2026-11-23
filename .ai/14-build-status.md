@@ -1115,8 +1115,8 @@ recorded; a catch-up line from the status's generic `catch_up` (fed today by
 the backfill). A click opens 14 days per day and per project from the new
 `GET /v1/brain/spend`. Dollars stay labelled API list price, as elsewhere:
 the app has no way to tell API billing from a subscription. See
-[04-ui.md § Second Brain](04-ui.md#second-brain) and
-[03-contracts.md § Second Brain](03-contracts.md#second-brain).
+[04-ui.md § Second Brain](04-ui.md#2nd-brain) and
+[03-contracts.md § Second Brain](03-contracts.md#2nd-brain).
 
 ### 2026-10-18 — unreleased: projects on the tablet home
 
@@ -1135,7 +1135,7 @@ Spam gains a reviewed bulk move to Trash. Trash gains permanent cleanup by messa
 
 - The graph uses the full canvas with a collapsible inspector, gentler
   centring, clearer links and display controls that preserve node positions.
-  See [04-ui.md § Second Brain](04-ui.md#second-brain) for the interaction.
+  See [04-ui.md § Second Brain](04-ui.md#2nd-brain) for the interaction.
 
 ### 2026-10-18 — unreleased: Obsidian vaults in Second Brain (ADR-079)
 

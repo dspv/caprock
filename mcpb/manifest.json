@@ -3,7 +3,7 @@
   "name": "caprock",
   "display_name": "Caprock",
   "version": "0.0.0",
-  "description": "Ask Caprock about your coding agents' work: Second Brain memories and decisions, past sessions, spend, CI. Read-only, local; needs Caprock installed and running.",
+  "description": "Ask Caprock about your coding agents' work: 2nd Brain memories and decisions, past sessions, spend, CI. Read-only, local; needs Caprock installed and running.",
   "long_description": "Caprock records every coding-agent session on your computer (Claude Code, Codex, Gemini CLI, OpenCode and more). This extension runs `caprock mcp`, a read-only MCP server over that record, so you can ask \"did we decide this before?\", \"which session explained the SSO change?\" or \"what has this repository cost this week?\".\n\nIt carries no Caprock of its own: it starts the caprock already installed on this computer and says where to get it if there is none (https://caprock.dev/install). Caprock has to be running (the desktop app, or `caprock up`). It opens no port and sends nothing anywhere. Outside a project folder, name the repository you mean; the tools take it as `repo`.",
   "author": {
     "name": "Dmitriy Solodukha",
@@ -30,7 +30,7 @@
   "tools": [
     {
       "name": "search_memories",
-      "description": "Up to 30 ranked Second Brain memories for some words, to judge by meaning"
+      "description": "Up to 30 ranked 2nd Brain memories for some words, to judge by meaning"
     },
     {
       "name": "current_decisions",
@@ -42,7 +42,7 @@
     },
     {
       "name": "memory_topics",
-      "description": "The topics Second Brain knows, and the memories per project"
+      "description": "The topics 2nd Brain knows, and the memories per project"
     },
     {
       "name": "next_session_handoff",

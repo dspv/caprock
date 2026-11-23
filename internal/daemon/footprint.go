@@ -468,7 +468,7 @@ func footprintVerdicts(f *FootprintReport) []FootprintVerdict {
 // disk is not Caprock's to judge.
 func diskLowText(d FootprintDisk) string {
 	return fmt.Sprintf("The disk that holds Caprock's data has %s free of %s (under %s). "+
-		"%s: every session, kept on purpose for spend, search and Second Brain. "+
+		"%s: every session, kept on purpose for spend, search and 2nd Brain. "+
 		"Settings > Storage shows what it holds.",
 		Bytes(uint64(max(d.VolumeFreeBytes, 0))), Bytes(uint64(d.VolumeTotalBytes)), Bytes(footprintFreeWarn), historyLead(d))
 }
