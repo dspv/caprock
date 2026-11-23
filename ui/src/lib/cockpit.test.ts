@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Event, SessionSummary, Subagent, Summary } from './api'
 import {
-  askLine, chipGroups, chipLayout, cockpitState, commandGist, commandTarget, fmtAge, fmtRun, resultOutcome, shortPath, slimToolResult, toolGroups, toolTarget, planWindowsFor, requester, runningTool, subagentChips, subagentDoing, subagentInitial, subagentWaiting, toolDetail, toolKind, toolRuns, turnCosts,
+  askLine, callCommand, chipGroups, chipLayout, cockpitState, commandGist, commandTarget, fmtAge, fmtRun, resultOutcome, shortPath, slimToolResult, toolGroups, toolTarget, planWindowsFor, requester, runningTool, subagentChips, subagentDoing, subagentInitial, subagentWaiting, toolDetail, toolKind, toolRuns, turnCosts,
   MAX_SUBAGENT_CHIPS, RUNNING_STALE_MS,
 } from './cockpit'
 
@@ -207,6 +207,29 @@ describe('formatting', () => {
     expect(toolDetail('mcp__github__get_pr', {})).toBe('github·get_pr')
     expect(toolDetail('Grep', { pattern: 'func New', path: '/w/acme' })).toBe('func New')
     expect(toolDetail('LS', { path: '/w/acme' })).toBe('acme')
+  })
+})
+
+describe('a step says what it did, not where it ran', () => {
+  const wt = '/Users/ds/dev/caprock/.claude/worktrees/agent-x'
+  it('reads a Bash call by its description', () => {
+    expect(toolDetail('Bash', { command: `cd ${wt} && npx vitest run`, description: 'Run full vitest suite' })).toBe('Run full vitest suite')
+    expect(callCommand('Bash', { command: `cd ${wt} && npx vitest run` }, 'Run full vitest suite')).toBe(`cd ${wt} && npx vitest run`)
+  })
+  it('drops the cd hops before the command', () => {
+    expect(toolDetail('Bash', { command: `cd ${wt} && npx vitest run` })).toBe('npx vitest run')
+    expect(toolDetail('Bash', { command: 'cd /tmp; cd "/Users/ds/my dir" && make test' })).toBe('make test')
+    expect(toolDetail('Bash', { command: 'cd /tmp' })).toBe('cd /tmp')
+  })
+  it('reads git -C as git and shortens home paths', () => {
+    expect(toolDetail('Bash', { command: `git -C ${wt} status --short` })).toBe('git status --short')
+    expect(toolDetail('Bash', { command: `go test ${wt}/internal/api/...` })).toBe('go test internal/api/...')
+    expect(toolDetail('Bash', { command: 'ls /Users/ds/dev/caprock/internal/api' })).toBe('ls …/internal/api')
+  })
+  it('leaves a plain command, and a file’s name, as they are', () => {
+    expect(toolDetail('Bash', { command: 'go vet ./...' })).toBe('go vet ./...')
+    expect(callCommand('Bash', { command: 'go vet ./...' }, 'go vet ./...')).toBe('')
+    expect(toolDetail('Read', { file_path: '/Users/ds/dev/caprock/internal/api/subagents.go' })).toBe('subagents.go')
   })
 })
 

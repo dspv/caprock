@@ -84,15 +84,72 @@ function oneLine(s: string, n = 80): string {
   return chars.length > n ? chars.slice(0, n - 1).join('') + '…' : flat
 }
 
-/** The short line a call was given: a file's name, a command, a pattern, a URL. */
+// A leading `cd <dir> &&` or `cd <dir>;`, the dir bare or quoted.
+const LEADING_CD = /^\s*cd\s+(?:"[^"]*"|'[^']*'|[^\s;&|]+)\s*(?:&&|;)\s*/
+// `git -C <dir>`: the folder is where it ran, not what it did.
+const GIT_DASH_C = /\bgit\s+-C\s+(?:"[^"]*"|'[^']*'|\S+)/g
+// An absolute path under a home folder, after a space, quote, = or (.
+const HOME_PATH = /(^|[\s=:'"(])(\/(?:Users|home)\/[^\s'"();&|]+)/g
+const WORKTREES = '/.claude/worktrees/'
+
+/** /Users/me/app/.claude/worktrees/x/ui/a.ts → ui/a.ts; /Users/me/dev/app/internal/api → …/internal/api; /Users/me/dev → ~/dev. */
+function shortHomePath(p: string): string {
+  const w = p.indexOf(WORKTREES)
+  if (w >= 0) {
+    const rest = p.slice(w + WORKTREES.length)
+    const j = rest.indexOf('/')
+    return j >= 0 && j + 1 < rest.length ? rest.slice(j + 1) : '.'
+  }
+  // segs[0] is Users or home, segs[1] the user.
+  const segs = p.split('/').filter(Boolean)
+  return segs.length <= 4 ? `~/${segs.slice(2).join('/')}` : `…/${segs.slice(-2).join('/')}`
+}
+
+/**
+ * A command line without the parts that say where it ran rather than what it
+ * did: leading `cd <dir> &&` hops dropped, `git -C <dir>` read as `git`, a
+ * path inside a worktree made relative to it and any other home path cut to
+ * its last two folders. The daemon's twin is quietCommand in
+ * internal/api/subagents.go.
+ */
+export function quietCommand(c: string): string {
+  for (;;) {
+    const m = LEADING_CD.exec(c)
+    if (!m || m[0].length >= c.length) break
+    c = c.slice(m[0].length)
+  }
+  return c.replace(GIT_DASH_C, 'git').replace(HOME_PATH, (_, pre: string, p: string) => pre + shortHomePath(p))
+}
+
+/**
+ * The command a call ran, for the hover behind its short line: '' when it ran
+ * none or its line already is the command. Clipped to 1000 characters, as the
+ * daemon's callCommand (internal/api/subagents.go) clips it.
+ */
+export function callCommand(tool: string, input: unknown, detail: string): string {
+  const c = toolCommand(tool, input).trim()
+  if (!c || c === detail) return ''
+  const chars = [...c]
+  return chars.length > 1000 ? chars.slice(0, 999).join('') + '…' : c
+}
+
+/**
+ * The short line a call was given: a file's name, what a command was for (its
+ * description) or else the command with its noise stripped, a pattern, a URL.
+ */
 export function toolDetail(tool: string, input: unknown): string {
   const i = (input ?? {}) as Record<string, unknown>
   const file = str(i.file_path) || str(i.notebook_path) || str(i.filePath)
   if (file) return base(file)
   const cmd = i.command
   if (Array.isArray(cmd)) return oneLine(cmd.filter((x) => typeof x === 'string').join(' '))
-  // Codex's exec carries a script: the line is what it ran (lib/chat).
-  if (typeof cmd === 'string' && cmd) return oneLine(toolCommand(tool, input) || cmd)
+  if (typeof cmd === 'string' && cmd) {
+    // Claude Code's Bash says what the command is for: "Run the tests" says
+    // more than "cd /Users/…/agent-x && npx vitest run".
+    if (str(i.description).trim()) return oneLine(str(i.description))
+    // Codex's exec carries a script: the line is what it ran (lib/chat).
+    return oneLine(quietCommand(toolCommand(tool, input) || cmd))
+  }
   // A search's pattern says more than the folder it searched.
   const other = str(i.pattern) || str(i.query) || str(i.url) || str(i.description) || str(i.subagent_type) || str(i.skill) || str(i.prompt)
   if (other) return oneLine(other)

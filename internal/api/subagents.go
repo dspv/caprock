@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -189,8 +190,9 @@ func (s *Server) handleSessionSubagents(w http.ResponseWriter, r *http.Request) 
 }
 
 // callDetail is the short line a call was given, as the cockpit's tool list
-// shows it (ui/src/lib/cockpit.ts toolDetail): a file's name, a command's
-// first line, a pattern, a URL.
+// shows it (ui/src/lib/cockpit.ts toolDetail): a file's name, what a command
+// was for (its description) or else the command with its noise stripped
+// (quietCommand), a pattern, a URL.
 func callDetail(tool string, input json.RawMessage) string {
 	var in map[string]any
 	_ = json.Unmarshal(input, &in)
@@ -201,8 +203,13 @@ func callDetail(tool string, input json.RawMessage) string {
 		}
 	}
 	if c := str("command"); c != "" {
+		// Claude Code's Bash says what the command is for: "Run the tests"
+		// says more than "cd /Users/…/agent-x && npx vitest run".
+		if d := strings.TrimSpace(str("description")); d != "" {
+			return oneLine(d, 80)
+		}
 		// Codex's exec carries a script: the line is what it ran.
-		return oneLine(toolcmd.Command(tool, c), 80)
+		return oneLine(quietCommand(toolcmd.Command(tool, c)), 80)
 	}
 	for _, k := range []string{"pattern", "query", "url", "description", "subagent_type", "skill", "prompt"} {
 		if v := str(k); v != "" {
@@ -219,6 +226,75 @@ func callDetail(tool string, input json.RawMessage) string {
 		}
 	}
 	return ""
+}
+
+// callCommand is the command a call ran, for the hover behind its short
+// line: "" when the call ran none or its line already is the command.
+// Clipped to 1000 runes, its lines kept.
+func callCommand(tool string, input json.RawMessage, detail string) string {
+	var in struct {
+		Command string `json:"command"`
+	}
+	if json.Unmarshal(input, &in) != nil || in.Command == "" {
+		return ""
+	}
+	c := strings.TrimSpace(toolcmd.Command(tool, in.Command))
+	if c == "" || c == detail {
+		return ""
+	}
+	if r := []rune(c); len(r) > 1000 {
+		return string(r[:999]) + "…"
+	}
+	return c
+}
+
+var (
+	// A leading `cd <dir> &&` or `cd <dir>;`, the dir bare or quoted.
+	leadingCd = regexp.MustCompile(`^\s*cd\s+(?:"[^"]*"|'[^']*'|[^\s;&|]+)\s*(?:&&|;)\s*`)
+	// `git -C <dir>`: the folder is where it ran, not what it did.
+	gitDashC = regexp.MustCompile(`\bgit\s+-C\s+(?:"[^"]*"|'[^']*'|\S+)`)
+	// An absolute path under a home folder, after a space, quote, = or (.
+	homePath = regexp.MustCompile(`(^|[\s=:'"(])(/(?:Users|home)/[^\s'"();&|]+)`)
+)
+
+// quietCommand is a command line without the parts that say where it ran
+// rather than what it did: leading `cd <dir> &&` hops dropped, `git -C <dir>`
+// read as `git`, a path inside a worktree (…/.claude/worktrees/<name>/) made
+// relative to it and any other home path cut to its last two folders. Its UI
+// twin is quietCommand in ui/src/lib/cockpit.ts.
+func quietCommand(c string) string {
+	for {
+		loc := leadingCd.FindStringIndex(c)
+		if loc == nil || loc[1] >= len(c) {
+			break
+		}
+		c = c[loc[1]:]
+	}
+	c = gitDashC.ReplaceAllString(c, "git")
+	return homePath.ReplaceAllStringFunc(c, func(m string) string {
+		sub := homePath.FindStringSubmatch(m)
+		return sub[1] + shortHomePath(sub[2])
+	})
+}
+
+// shortHomePath reads /Users/me/dev/app/.claude/worktrees/x/ui/a.ts as
+// ui/a.ts, /Users/me/dev/app/internal/api as …/internal/api and /Users/me/dev
+// as ~/dev.
+func shortHomePath(p string) string {
+	const wt = "/.claude/worktrees/"
+	if i := strings.Index(p, wt); i >= 0 {
+		rest := p[i+len(wt):]
+		if j := strings.IndexByte(rest, '/'); j >= 0 && j+1 < len(rest) {
+			return rest[j+1:]
+		}
+		return "."
+	}
+	// segs[0] is Users or home, segs[1] the user.
+	segs := strings.FieldsFunc(p, func(r rune) bool { return r == '/' })
+	if len(segs) <= 4 {
+		return "~/" + strings.Join(segs[2:], "/")
+	}
+	return "…/" + strings.Join(segs[len(segs)-2:], "/")
 }
 
 func baseOf(p string) string {
@@ -249,7 +325,10 @@ type SubagentCallView struct {
 	ToolUseID string `json:"tool_use_id,omitempty"`
 	Tool      string `json:"tool"`
 	// Detail is its short line, as the cockpit's tool list writes it.
-	Detail    string `json:"detail,omitempty"`
+	Detail string `json:"detail,omitempty"`
+	// Command is the command it ran when Detail is not that command (its
+	// description, or the command with its noise stripped): for the hover.
+	Command   string `json:"command,omitempty"`
 	StartedAt int64  `json:"started_at"`
 	// EndedAt is omitted while it has no result.
 	EndedAt int64 `json:"ended_at,omitempty"`
@@ -355,8 +434,9 @@ func (s *Server) handleSubagentDetail(w http.ResponseWriter, r *http.Request) {
 		d.State = "quiet"
 	}
 	for _, c := range tr.Calls[start:end] {
+		detail := callDetail(c.Tool, c.Input)
 		d.Calls = append(d.Calls, SubagentCallView{
-			ID: c.ID, ToolUseID: c.ToolUseID, Tool: c.Tool, Detail: callDetail(c.Tool, c.Input),
+			ID: c.ID, ToolUseID: c.ToolUseID, Tool: c.Tool, Detail: detail, Command: callCommand(c.Tool, c.Input, detail),
 			StartedAt: c.StartedAt, EndedAt: c.EndedAt, Error: c.Error,
 		})
 	}

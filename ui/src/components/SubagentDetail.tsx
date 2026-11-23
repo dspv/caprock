@@ -97,7 +97,7 @@ export function SubagentDetail({ sessionId, agentId, now, id }: { sessionId: str
               const name = c.tool.startsWith('mcp__') ? c.tool.replace(/^mcp__(.+?)__/, '$1·') : c.tool
               return (
                 <li key={c.id} className="grid grid-cols-[14px_minmax(0,1fr)_auto] items-center gap-1.5 py-[3px] text-[11.5px]"
-                  data-live={open && working ? 'true' : undefined} title={`${c.tool}${c.detail ? ` — ${c.detail}` : ''} · ${new Date(c.started_at).toLocaleTimeString()}`}>
+                  data-live={open && working ? 'true' : undefined} title={`${c.tool}${c.detail ? ` — ${c.detail}` : ''} · ${new Date(c.started_at).toLocaleTimeString()}${c.command ? `\n${c.command}` : ''}`}>
                   <span className={c.error ? 'text-danger' : open && working ? 'text-ok' : 'text-fg-muted'}><KindIcon kind={toolKind(c.tool)} size={12} /></span>
                   <span className="min-w-0 truncate">
                     <span className={c.error ? 'text-danger' : 'text-fg'}>{name}</span>
@@ -228,7 +228,7 @@ export function SubagentSteps({ sessionId, agentId, now, working }: { sessionId:
         return (
           <li key={c.id} data-live={running ? 'true' : undefined}
             className="grid grid-cols-[12px_minmax(0,1fr)_auto] items-center gap-1.5 px-1 py-[2px] text-[11px]"
-            title={`${c.tool}${c.detail ? ` — ${c.detail}` : ''}`}>
+            title={`${c.tool}${c.detail ? ` — ${c.detail}` : ''}${c.command ? `\n${c.command}` : ''}`}>
             <span className={c.error ? 'text-danger' : running ? 'text-ok' : 'text-fg-faint'}><KindIcon kind={toolKind(c.tool)} size={11} /></span>
             <span className="min-w-0 truncate">
               <span className={c.error ? 'text-danger' : 'text-fg-muted'}>{name}</span>

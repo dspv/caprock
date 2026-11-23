@@ -3144,6 +3144,8 @@ export interface SubagentCall {
   tool: string
   /** Its short line, as the tool list writes it. */
   detail?: string
+  /** The command it ran, when `detail` is not that command (its description, or the command with its noise stripped): for the hover. */
+  command?: string
   /** Unix ms; `ended_at` absent while it has no result. */
   started_at: number
   ended_at?: number

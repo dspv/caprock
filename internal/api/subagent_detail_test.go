@@ -176,3 +176,45 @@ func TestSessionSubagentsRecentAsksForMore(t *testing.T) {
 		t.Fatalf("recent=10: %+v", got.Recent)
 	}
 }
+
+// A step says what it did: a Bash call's description wins over its command,
+// which stays for the hover; with no description the command loses the
+// `cd <dir> &&` hops, `git -C <dir>` and long home paths; a plain command and
+// a file's name read as they are.
+func TestCallDetailSaysWhatAStepDid(t *testing.T) {
+	cases := []struct {
+		name, tool, input, detail, command string
+	}{
+		{"description wins", "Bash",
+			`{"command":"cd /Users/ds/dev/caprock/.claude/worktrees/agent-x && npx vitest run","description":"Run full vitest suite"}`,
+			"Run full vitest suite", "cd /Users/ds/dev/caprock/.claude/worktrees/agent-x && npx vitest run"},
+		{"cd chain stripped", "Bash",
+			`{"command":"cd /Users/ds/dev/caprock/.claude/worktrees/agent-x && npx vitest run"}`,
+			"npx vitest run", "cd /Users/ds/dev/caprock/.claude/worktrees/agent-x && npx vitest run"},
+		{"several cds and a semicolon", "Bash",
+			`{"command":"cd /tmp; cd \"/Users/ds/my dir\" && make test"}`,
+			"make test", "cd /tmp; cd \"/Users/ds/my dir\" && make test"},
+		{"git -C", "Bash",
+			`{"command":"git -C /Users/ds/dev/caprock/.claude/worktrees/agent-x status --short"}`,
+			"git status --short", "git -C /Users/ds/dev/caprock/.claude/worktrees/agent-x status --short"},
+		{"worktree path relative", "Bash",
+			`{"command":"go test /Users/ds/dev/caprock/.claude/worktrees/agent-x/internal/api/..."}`,
+			"go test internal/api/...", "go test /Users/ds/dev/caprock/.claude/worktrees/agent-x/internal/api/..."},
+		{"home path to its last two folders", "Bash",
+			`{"command":"ls /Users/ds/dev/caprock/internal/api"}`,
+			"ls …/internal/api", "ls /Users/ds/dev/caprock/internal/api"},
+		{"plain command unchanged", "Bash", `{"command":"go vet ./..."}`, "go vet ./...", ""},
+		{"a lone cd is kept", "Bash", `{"command":"cd /tmp"}`, "cd /tmp", ""},
+		{"file keeps its name", "Read", `{"file_path":"/Users/ds/dev/caprock/internal/api/subagents.go"}`, "subagents.go", ""},
+	}
+	for _, c := range cases {
+		in := json.RawMessage(c.input)
+		d := callDetail(c.tool, in)
+		if d != c.detail {
+			t.Errorf("%s: detail = %q, want %q", c.name, d, c.detail)
+		}
+		if got := callCommand(c.tool, in, d); got != c.command {
+			t.Errorf("%s: command = %q, want %q", c.name, got, c.command)
+		}
+	}
+}
