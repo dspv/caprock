@@ -390,7 +390,7 @@ describe('where it is drawn', () => {
     const plan = region.querySelector('[data-release-plan]')!
     expect(plan.firstElementChild).toHaveAttribute('data-release-group', 'head')
     expect(plan.firstElementChild!.lastElementChild).toHaveAttribute('data-release-strip')
-    expect(region.querySelector('[data-release-head]')).toHaveTextContent(/^Next release 0\.117\.5·patch·last release (\d+[mhd] ago|just now)$/)
+    expect(region.querySelector('[data-release-head]')).toHaveTextContent(/^Next release 0\.117\.5·patch · fixes only·last release (\d+[mhd] ago|just now)$/)
     // Grouped by kind in Keep a Changelog order, each in its own words.
     const kinds = [...region.querySelectorAll('[data-release-kind]')]
     expect(kinds.map((k) => k.querySelector('h5')!.textContent)).toEqual(['Changed', 'Fixed'])
@@ -419,6 +419,43 @@ describe('where it is drawn', () => {
     expect(region.querySelector('[data-release-row="633"]')).toBeNull()
     fireEvent.click(later)
     expect(region.querySelector('[data-release-row="633"] [data-release-state]')).toHaveTextContent('ready')
+  })
+
+  // Owner, 2026-11-23, variants 1A and 2A: the version a waiting feature
+  // would make, and each other PR on one line with its checks per OS.
+  it('says the version the open PRs would make, and lists each on one line with M W L squares', async () => {
+    const w = workFixture()
+    w.repos[0]!.unreleased = { ref: 'origin/master', items: ['a'], count: 1, kinds: { Fixed: 1 } }
+    h.data = w
+    const stats = statsFixture()
+    stats.prs!.find((p) => p.number === 633)!.title = 'feat(ui): input highlight'
+    Object.assign(stats.board!.cards.find((x) => x.number === 633)!, {
+      stage: 'open', ci: 'running',
+      os: [{ os: 'linux', state: 'pass', checks: 3 }, { os: 'macos', state: 'fail', checks: 3, names: ['go (macos-14)'] }, { os: 'windows', state: 'running', since: Date.now() - 60_000, checks: 3, names: ['e2e (windows-latest)'] }],
+    })
+    writeDeck('stats:/w/caprock', stats)
+    render(<CockpitRelease sessionId="s1" repoRoot="/w/caprock" />)
+    const region = await screen.findByRole('region', { name: 'Release' })
+    await within(region).findByRole('heading', { name: 'Next release 0.117.5' })
+    expect(region.querySelector('[data-release-why]')).toHaveTextContent('patch · fixes only')
+    const hint = region.querySelector('[data-release-hint]')!
+    expect(hint).toHaveAttribute('data-release-hint', '0.118.0')
+    expect(hint.querySelector('[data-release-hint-text]')).toHaveTextContent('0.118.0 once #633 lands')
+    expect(hint.querySelector('[data-release-hint-sub]')).toHaveTextContent('1 feature waiting: #633')
+    fireEvent.click(region.querySelector('[data-release-section="branch"]')!)
+    const row = region.querySelector('[data-release-row="633"]')!
+    expect(row.closest('ul')).toHaveClass('font-sans')
+    expect(row.querySelector('[data-release-kind]')).toHaveTextContent(/^feat$/)
+    expect(row.querySelector('[data-release-title]')).toHaveTextContent(/^Input highlight$/)
+    expect(row.querySelector('[data-release-title]')).toHaveClass('truncate')
+    expect(row.querySelector('[data-release-number]')).toHaveTextContent('#633')
+    const sq = [...row.querySelectorAll('[data-os]')]
+    expect(sq.map((s) => `${s.textContent}:${s.getAttribute('data-os-state')}`)).toEqual(['M:fail', 'W:running', 'L:pass'])
+    expect(sq[0]).toHaveAttribute('title', 'macOS: failed: go (macos-14)')
+    expect(row.querySelector('[data-release-os]')!.getAttribute('aria-label')).toMatch(/^CI: macOS: failed: go \(macos-14\); Windows: running 1m: e2e \(windows-latest\); Linux: passed \(3 checks\)$/)
+    // The squares say the CI state: no state word beside them.
+    expect(row.querySelector('[data-release-state]')).toBeNull()
+    expect(row.querySelector('a')!.getAttribute('href')).toContain('pr=633')
   })
 
   it('says a batch PR’s red CI on its via line, the failing check in plain words', async () => {

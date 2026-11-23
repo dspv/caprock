@@ -3533,10 +3533,15 @@ over the 14 local calendar days ending today:
   `failed` names up to 3 failed checks, or failed workflows when read from
   the runs list), `os` its live-read checks by the OS their names say (*go
   (windows-latest)*, *test (ubuntu-24.04)*; skipped ones left out), each
-  `{os, state, since?, checks}` — `os` `linux`, `macos` or `windows` in that
+  `{os, state, since?, checks, names[]?}` — `os` `linux`, `macos` or `windows` in that
   order, `state` `fail` when any failed, else `running` while any is
   unfinished (`since` its unfinished checks' earliest start), else
-  `no_runner` when one is a job GitHub never ran, else `pass`;
+  `no_runner` when one is a job GitHub never ran, else `pass`; `names`
+  (2026-11-23) the checks that hold it there, at most 3: the failed ones
+  when `fail`, the unfinished ones (started first) when `running`. A check
+  that names no OS (*lint*, *e2e (headless shell)*) counts toward every OS
+  the others name (2026-11-23: a red lint left three green squares over a
+  red pull request);
   absent with no live read or when no check names an OS (2026-10-16, the
   release plan's dots), `ci_ms` the span of its live-read (else
   runs-list) checks from the first start to the last finish once they

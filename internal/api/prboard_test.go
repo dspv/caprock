@@ -1,6 +1,7 @@
 package api
 
 import (
+	"reflect"
 	"slices"
 	"testing"
 	"time"
@@ -75,7 +76,7 @@ func TestBuildBoard(t *testing.T) {
 	if got[2].CIMS != (20*time.Minute).Milliseconds() || got[5].CIMS != (10*time.Minute).Milliseconds() || got[4].CIMS != 0 {
 		t.Errorf("CI time: %d %d %d", got[2].CIMS, got[5].CIMS, got[4].CIMS)
 	}
-	if len(got[2].OS) != 1 || got[2].OS[0] != (BoardOS{OS: "windows", State: "fail", Checks: 1}) || got[3].OS != nil {
+	if len(got[2].OS) != 1 || !reflect.DeepEqual(got[2].OS[0], BoardOS{OS: "windows", State: "fail", Checks: 2, Names: []string{"test (windows)"}}) || got[3].OS != nil {
 		t.Errorf("checks by OS: %+v %+v", got[2].OS, got[3].OS)
 	}
 	if got[4].CI != "running" || got[4].StageAt != at(10*time.Minute) || got[4].Spend.Live != 1 || got[6].CI != "running" {
@@ -146,11 +147,14 @@ func TestBoardReleaseGap(t *testing.T) {
 }
 
 // A check's OS is read from its name as a matrix job names it; each OS is
-// failed, running since its earliest unfinished check, or passed.
+// failed, running since its earliest unfinished check, or passed, and names
+// the checks that hold it there. A check naming no OS counts toward every OS
+// the others name.
 func TestChecksByOS(t *testing.T) {
 	got := checksByOS([]github.Check{
 		{Name: "go (ubuntu-latest)", State: "pass"},
 		{Name: "go (macos-14)", State: "pending", StartedAt: 20},
+		{Name: "app (macos-14)", State: "pending"},
 		{Name: "ui (macos-14)", State: "pending", StartedAt: 10},
 		{Name: "go (windows-latest)", State: "fail"},
 		{Name: "e2e (windows-latest)", State: "pending", StartedAt: 5},
@@ -159,15 +163,28 @@ func TestChecksByOS(t *testing.T) {
 		{Name: "winget manifest", State: "pass"},
 	})
 	want := []BoardOS{
-		{OS: "linux", State: "pass", Checks: 1},
-		{OS: "macos", State: "running", Since: 10, Checks: 2},
-		{OS: "windows", State: "fail", Checks: 2},
+		{OS: "linux", State: "pass", Checks: 3},
+		{OS: "macos", State: "running", Since: 10, Checks: 5, Names: []string{"go (macos-14)", "ui (macos-14)", "app (macos-14)"}},
+		{OS: "windows", State: "fail", Checks: 4, Names: []string{"go (windows-latest)"}},
 	}
-	if !slices.Equal(got, want) {
+	if !reflect.DeepEqual(got, want) {
 		t.Errorf("by OS:\n got %+v\nwant %+v", got, want)
 	}
 	if checksByOS([]github.Check{{Name: "lint", State: "pass"}}) != nil {
 		t.Error("checks naming no OS give OS entries")
+	}
+	// A red lint is red on every OS named; an OS no check names gets none.
+	got = checksByOS([]github.Check{
+		{Name: "go (ubuntu-latest)", State: "pass"},
+		{Name: "go (windows-latest)", State: "pass"},
+		{Name: "lint", State: "fail"},
+	})
+	want = []BoardOS{
+		{OS: "linux", State: "fail", Checks: 2, Names: []string{"lint"}},
+		{OS: "windows", State: "fail", Checks: 2, Names: []string{"lint"}},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("lint folded:\n got %+v\nwant %+v", got, want)
 	}
 }
 

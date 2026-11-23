@@ -76,8 +76,8 @@ export interface NotesHeading {
   why?: { text: string; title: string }
   /** "last release 8h ago", "5 min ago", "8h ago": the last release's age. */
   age?: string
-  /** The age in a narrow panel, when it differs: "8h ago". */
-  ageShort?: string
+  /** The age said only where the line has room (400px and up): a bare *27m ago* beside a version read as the version's age. */
+  ageWide?: boolean
   title: string
 }
 
@@ -116,10 +116,11 @@ export function notesHeading(s: ReleaseStatus, lastTag: { name: string; at: numb
   // Owner, 2026-11-20: a bare *0.185.1* did not say what the number is.
   return {
     state: 'waiting', text: s.version ? `Next release ${s.version}` : 'Next release', short: s.version ? `Next ${s.version}` : undefined, why: whyWords(s),
-    // Narrow, *Next 0.185.3 · patch · 36m ago* (owner, 2026-11-20): words
-    // go before anything is cut; the hover keeps *last release*.
-    age: at ? `last release ${ago(now - at)}` : undefined, ageShort: at ? ago(now - at) : undefined,
-    title: s.why?.title ?? 'No version is predicted: some changelog entries say no kind, or no tag was read to count from.',
+    // Narrow, *Next 0.185.3 · patch · fixes only* (owner, 2026-11-23,
+    // variant 1A): a bare *27m ago* there was read as the version's age, so
+    // the last release's age goes, and stays on the version's hover.
+    age: at ? `last release ${ago(now - at)}` : undefined, ageWide: at ? true : undefined,
+    title: `${s.why?.title ?? 'No version is predicted: some changelog entries say no kind, or no tag was read to count from.'}${at ? `\nLast release ${ago(now - at)}.` : ''}`,
   }
 }
 
@@ -127,14 +128,14 @@ export function notesHeading(s: ReleaseStatus, lastTag: { name: string; at: numb
 const ago = (ms: number) => { const t = ageText(ms); return t === 'now' ? 'just now' : `${t} ago` }
 
 /**
- * "patch", "minor": the bump word alone (owner, 2026-11-19, variant A's
- * *0.184.1  patch · last 57m ago*); its reason, *fixes only*, *a feature*,
- * leads the hover.
+ * "patch · fixes only", "minor · a feature": the bump and its reason
+ * (owner, 2026-11-23, variant 1A: *patch · 27m ago* did not say why it is a
+ * patch); the rule behind it on hover.
  */
 function whyWords(s: ReleaseStatus): NotesHeading['why'] {
   if (!s.bump || !s.why) return undefined
   const reason = s.bump === 'minor' ? 'a feature' : s.bump === 'patch' ? 'fixes only' : 'a breaking change'
-  return { text: s.bump, title: `${s.bump}: ${reason}.\n${s.why.title}` }
+  return { text: `${s.bump} · ${reason}`, title: `${s.bump}: ${reason}.\n${s.why.title}` }
 }
 
 /**

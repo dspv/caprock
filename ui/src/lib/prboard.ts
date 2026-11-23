@@ -55,7 +55,10 @@ export interface BoardOS {
   state: 'pass' | 'fail' | 'running' | 'no_runner'
   /** While running: the earliest start of its unfinished checks (unix ms). */
   since?: number
+  /** Its checks, the ones naming no OS (lint, e2e) among them: those count toward every OS named. */
   checks: number
+  /** The checks holding it in its state, at most three: the failed ones, or the unfinished ones; absent from an older daemon. */
+  names?: string[]
 }
 
 export interface BoardRelease {

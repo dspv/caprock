@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { PlanRow } from './releaseplan'
 import type { Subagent, WorkRepo } from './api'
 import type { SessionBranch, SessionBranches } from './branches'
-import { ageText, BLOCKS, carriedBranches, BRANCHES_LISTED, BRANCHES_SHOWN, branchRows, bumpOf, landingOf, mergedEntries, nextVersion, onMaster, osDots, parseVersion, pickSession, planEmpty, planForRepo, planSections, releaseLine, releasePlan, rowOf, shownRows, sinceLine, subagentRows } from './releaseplan'
+import { ageText, BLOCKS, carriedBranches, BRANCHES_LISTED, BRANCHES_SHOWN, branchRows, bumpOf, landingOf, mergedEntries, nextVersion, onMaster, osDots, osSquares, parseVersion, pickSession, planEmpty, planForRepo, planSections, releaseLine, releasePlan, rowOf, shownRows, sinceLine, subagentRows } from './releaseplan'
 import type { BoardCard } from './prboard'
 import { buildWork, type WorkItem } from './work'
 import { NOW, session, statsFixture, workFixture } from './work.fixture'
@@ -304,5 +304,33 @@ describe('the default branch’s entries', () => {
     expect(onMaster(plain)).toBe(plain)
     expect(mergedEntries(plain)).toBe(4)
     expect(onMaster(undefined)).toBeUndefined()
+  })
+})
+
+// Owner, 2026-11-23, variant 2A: M W L squares in place of *CI 2/3*.
+describe('a pull request’s checks as squares per OS', () => {
+  it('draws macOS, Windows, Linux in that order, each state named with the checks that hold it', () => {
+    const sq = osSquares([
+      { os: 'linux', state: 'fail', checks: 4, names: ['go (ubuntu-latest)', 'lint'] },
+      { os: 'macos', state: 'pass', checks: 5 },
+      { os: 'windows', state: 'running', since: NOW - 6 * 60_000, checks: 4, names: ['go (windows-latest)'] },
+    ], NOW)!
+    expect(sq.map((s) => `${s.letter}:${s.tone}`)).toEqual(['M:pass', 'W:running', 'L:fail'])
+    expect(sq[0]!.title).toBe('macOS: passed (5 checks)')
+    expect(sq[1]!.title).toBe('Windows: running 6m: go (windows-latest)')
+    expect(sq[2]!.title).toBe('Linux: failed: go (ubuntu-latest), lint')
+  })
+
+  it('is grey, not started, for an OS with no check yet or one queued for a machine', () => {
+    const sq = osSquares([{ os: 'windows', state: 'running', checks: 2, names: ['app (windows-latest)'] }, { os: 'linux', state: 'no_runner', checks: 1 }], NOW)!
+    expect(sq.map((s) => s.tone)).toEqual(['wait', 'wait', 'no_runner'])
+    expect(sq[0]!.title).toBe('macOS: not started, no check of it listed yet')
+    expect(sq[1]!.title).toBe('Windows: not started, waiting for a machine: app (windows-latest)')
+    expect(sq[2]!.title).toBe('Linux: a job GitHub gave no machine, not tested (1 check)')
+  })
+
+  it('draws none when no check names an OS', () => {
+    expect(osSquares(undefined)).toBeUndefined()
+    expect(osSquares([])).toBeUndefined()
   })
 })

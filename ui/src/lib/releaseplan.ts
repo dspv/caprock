@@ -100,6 +100,8 @@ export interface PlanRow {
   age?: { text: string; title: string }
   /** Its checks per OS, macOS · Linux · Windows; absent when no check names an OS. */
   ci?: OSDot[]
+  /** The release panel's squares, macOS · Windows · Linux, always three; absent when no check names an OS. */
+  squares?: OSSquare[]
   /** How long its CI took (or has run), against the repository's usual; absent when not read. */
   ciTime?: { text: string; title: string; tone?: 'warn' }
   /** The agent spend recorded on it, at API list price; "—" when none was. */
@@ -312,6 +314,46 @@ export function osDots(os: readonly BoardOS[] | undefined, now?: number): OSDot[
   return out.length ? out : undefined
 }
 
+/** A square of the release panel's pull request rows (owner, 2026-11-23, variant 2A). */
+export interface OSSquare {
+  os: BoardOS['os']
+  letter: 'M' | 'W' | 'L'
+  label: string
+  /** wait: no check of it has started (none listed yet, or all queued for a machine). */
+  tone: 'pass' | 'running' | 'fail' | 'wait' | 'no_runner'
+  title: string
+}
+
+/** The squares' order, as the owner wrote them: M W L. */
+const SQUARE_ORDER: { os: BoardOS['os']; letter: OSSquare['letter'] }[] = [{ os: 'macos', letter: 'M' }, { os: 'windows', letter: 'W' }, { os: 'linux', letter: 'L' }]
+
+/**
+ * A pull request's checks as three squares, macOS · Windows · Linux: passed,
+ * running, failed, or not started (an OS no check of it has started on —
+ * none listed yet, or every one still waiting for a machine). The hover
+ * names the OS, its state and, failed or running, the checks that hold it
+ * there (`BoardOS.names`). Checks that name no OS (lint, e2e) count toward
+ * every OS (internal/api checksByOS). Nothing when no check names an OS:
+ * three grey squares would say *not started* of a repository that tests on
+ * no OS by name.
+ */
+export function osSquares(os: readonly BoardOS[] | undefined, now?: number): OSSquare[] | undefined {
+  if (!os?.length) return undefined
+  return SQUARE_ORDER.map(({ os: k, letter }): OSSquare => {
+    const label = OS_LABEL[k]
+    const o = os.find((x) => x.os === k)
+    const names = o?.names?.length ? `: ${o.names.join(', ')}` : ''
+    const n = o ? ` (${o.checks} check${o.checks === 1 ? '' : 's'})` : ''
+    if (!o) return { os: k, letter, label, tone: 'wait', title: `${label}: not started, no check of it listed yet` }
+    if (o.state === 'pass') return { os: k, letter, label, tone: 'pass', title: `${label}: passed${n}` }
+    if (o.state === 'fail') return { os: k, letter, label, tone: 'fail', title: `${label}: failed${names || n}` }
+    if (o.state === 'no_runner') return { os: k, letter, label, tone: 'no_runner', title: `${label}: a job GitHub gave no machine, not tested${n}` }
+    if (!o.since) return { os: k, letter, label, tone: 'wait', title: `${label}: not started, waiting for a machine${names || n}` }
+    const took = now ? ` ${spanText(Math.max(0, now - o.since))}` : ''
+    return { os: k, letter, label, tone: 'running', title: `${label}: running${took}${names || n}` }
+  })
+}
+
 /**
  * What a row waits for now, in plain words, from what the board read: the
  * landing queue's label, a session's state, the pull request's stage, its
@@ -476,6 +518,7 @@ export function rowOf(it: WorkItem, labels?: BranchPR['labels'], ctx: RowContext
     wait,
     age: started && ctx.now ? { text: ageText(ctx.now - started), title: `${it.kind === 'pr' ? 'Opened' : 'Started'} ${spanText(Math.max(0, ctx.now - started))} ago` } : undefined,
     ci,
+    squares: it.kind === 'pr' && it.stage !== 'merged' ? osSquares(it.card?.os, ctx.now) : undefined,
     ciTime: ciTimeOf(it, ctx),
     cost: costOf(it),
     session: pickSession(it.sessions, ctx.now),

@@ -207,7 +207,7 @@ describe('the cockpit’s Release section', () => {
     unmount()
     draw(false)
     // The heading names what the number is (owner, 2026-11-20).
-    expect(document.querySelector('[data-release-head]')).toHaveTextContent(/^Next release 0\.183\.1·patch·last release 1h ago$/)
+    expect(document.querySelector('[data-release-head]')).toHaveTextContent(/^Next release 0\.183\.1·patch · fixes only·last release 1h ago$/)
     // One line for the batch and its CI, never twice (owner, 2026-11-20:
     // the via line and the words both said #977 and CI red), the failing
     // check by name on hover rather than *fix: go (windows-latest)*.
@@ -262,13 +262,16 @@ describe('the cockpit’s Release section', () => {
     writeDeck(`stats:${ROOT}`, stats([], [], [rel('v0.182.4', 86_400_000, 23)]))
     writeDeck(workRepoKey(ROOT), repo('v0.182.4', 5))
     draw(false)
-    expect(document.querySelector('[data-release-head]')).toHaveTextContent(/^Next release 0\.183\.0·minor·last release 1h ago$/)
+    expect(document.querySelector('[data-release-head]')).toHaveTextContent(/^Next release 0\.183\.0·minor · a feature·last release 1h ago$/)
     // Words go before anything is cut (owner, 2026-11-20): the version's
-    // " release" below 340px of panel, the age's "last release " below 400px
-    // — *Next 0.183.0 · minor · 1h ago* in the 330px cockpit.
+    // " release" below 340px of panel; the last release's age only from
+    // 400px (owner, 2026-11-23: a bare *1h ago* read as the version's age)
+    // — *Next 0.183.0 · minor · a feature* in the 330px cockpit.
     const wide = [...document.querySelectorAll('[data-head-wide]')]
-    expect(wide.map((e) => e.className)).toEqual(['hidden @[340px]/head:inline', 'hidden @[400px]/head:inline'])
-    expect(wide.map((e) => e.textContent)).toEqual(['release ', 'last release '])
+    expect(wide.map((e) => e.className)).toEqual(['hidden @[340px]/head:inline'])
+    expect(wide.map((e) => e.textContent)).toEqual(['release '])
+    expect(document.querySelector('[data-release-since-wide]')).toHaveClass('hidden', '@[400px]/head:flex')
+    expect(document.querySelector('[data-release-version]')!.getAttribute('title')).toMatch(/\nLast release 1h ago\.$/)
     const strip = document.querySelector('[data-release-strip]')!
     expect(strip).toHaveAttribute('data-release-tone', 'idle')
     expect(strip).toHaveAttribute('aria-label', 'Release stage 2 of 5: Release PR, not started')
