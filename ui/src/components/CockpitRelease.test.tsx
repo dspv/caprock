@@ -92,6 +92,34 @@ describe('the cockpit’s Release section', () => {
     expect(asked.some((u) => u.startsWith('/v1/work'))).toBe(false)
   })
 
+  // Owner, 2026-11-24, variant A: just out, the version is a green pill and
+  // the release's agent cost stands beside its age, in the line's own words.
+  it('folded within the hour of a release: a green pill, its age, and its agent cost', () => {
+    const out = { ...rel('v0.183.0', 4 * 60_000, 23), cost_usd: 17.25, prs: [942, 940, 939], sessions: 2 }
+    writeDeck(`stats:${ROOT}`, stats([pr(942, 'chore(release): 0.183.0', 'merged', now - 600_000)], [{ number: 942, stage: 'released', spend: SPEND }], [out, rel('v0.182.4', 86_400_000, 23)]))
+    writeDeck(workRepoKey(ROOT), repo('v0.183.0', 0))
+    draw(true)
+    expect(line()).toHaveAttribute('data-release-fold', 'out')
+    expect(line()).toHaveAttribute('aria-label', '0.183.0 released · 4 min ago · $17.25')
+    const pill = line()!.querySelector('[data-release-pill]')!
+    expect(pill).toHaveTextContent(/^0\.183\.0 released$/)
+    expect(pill).toHaveClass('rounded-full', 'text-ok', 'font-semibold')
+    const cost = line()!.querySelector('[data-release-fold-cost]')!
+    expect(cost).toHaveTextContent(/^·\s?\$17\.25$/)
+    expect(cost.getAttribute('title')).toMatch(/^\$17\.25 agents spent on 3 pull requests, 2 sessions/)
+    // Not on view in a test's DOM: no burst, and the tag is not taken as seen.
+    expect(document.querySelector('[data-release-burst]')).toBeNull()
+    expect(localStorage.getItem('caprock.release-burst')).toBeNull()
+  })
+
+  it('folded within the hour of a release with no recorded cost: no figure, never $0', () => {
+    writeDeck(`stats:${ROOT}`, stats([pr(942, 'chore(release): 0.183.0', 'merged', now - 600_000)], [{ number: 942, stage: 'released', spend: SPEND }], [rel('v0.183.0', 4 * 60_000, 23), rel('v0.182.4', 86_400_000, 23)]))
+    writeDeck(workRepoKey(ROOT), repo('v0.183.0', 0))
+    draw(true)
+    expect(line()).toHaveAttribute('aria-label', '0.183.0 released · 4 min ago')
+    expect(line()!.querySelector('[data-release-fold-cost]')).toBeNull()
+  })
+
   // Owner, 2026-11-23: an ordinary open feature PR (#1030) was drawn as the
   // release's *via #1030 · green · ready to merge* while master held fixes
   // only. It is not the batch: no via line, no *PR #* in the folded line,

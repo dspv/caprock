@@ -200,6 +200,30 @@ describe('the right panel’s folded Release line', () => {
     expect(fold(s, { lastTag: 'v0.183.0', now: T + 2 * H })).toMatchObject({ kind: 'idle', text: 'Nothing new since v0.183.0' })
   })
 
+  // Owner, 2026-11-24, variant A: the release's agent cost beside it — only
+  // when that release is listed and a cost above zero was recorded (rule 6).
+  it('adds what agents spent on the release just out, only when it was recorded', () => {
+    const out = rel('v0.183.0', T - 4 * 60_000, 23)
+    const s = releaseStatus(base({ merged: 0, unreleased: pending({}, 0), lastTag: { name: 'v0.183.0', at: T - H }, releases: [out, rel('v0.182.4', T - 30 * H, 23)], run: run('v0.183.0', 'pass') }))
+    const spent = { ...out, cost_usd: 17.249, prs: [1049, 1050, 1052], sessions: 2 }
+    const f = fold(s, { releases: [spent] })
+    expect(f).toMatchObject({ kind: 'out', text: '0.183.0 released · 4 min ago · $17.25' })
+    expect(f.cost?.text).toBe('$17.25')
+    expect(f.cost?.title).toMatch(/^\$17\.25 agents spent on 3 pull requests, 2 sessions\n/)
+    expect(f.cost?.title).not.toMatch(/partial/)
+    expect(f.title).toContain('$17.25 agents spent on 3 pull requests, 2 sessions')
+    // One of each, and a partial count said so.
+    expect(fold(s, { releases: [{ ...spent, prs: [1052], sessions: 1, partial: true }] }).cost?.title).toMatch(/^\$17\.25 agents spent on 1 pull request, 1 session\nIt may be partial/)
+    // Matched by version whatever the tag's spelling; the batch's words after the cost.
+    expect(fold(s, { releases: [{ ...spent, tag: '0.183.0' }], batch: { number: 960, ci: 'pass' } }).text).toBe('0.183.0 released · 4 min ago · $17.25 · PR #960 green')
+    // Never a $0 for "not recorded", nor another release's cost, nor a cost with no release list.
+    for (const releases of [[out], [{ ...spent, cost_usd: 0 }], [{ ...spent, tag: 'v0.182.4' }], undefined]) {
+      const g = fold(s, { releases })
+      expect(g.text).toBe('0.183.0 released · 4 min ago')
+      expect(g.cost).toBeUndefined()
+    }
+  })
+
   // Owner, 2026-11-20, translated: "I stopped understanding what this means
   // … I must know the status exactly". Merged and no release PR: nothing runs.
   it('says a release ready and not started in grey, with the changes and the batch still open', () => {

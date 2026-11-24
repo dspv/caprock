@@ -30,10 +30,11 @@
  * *state · extra · age* (CompactRows).
  */
 import { OSGlyph } from './OSGlyph'
-import { useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import type { ReleaseCI, SessionCIStats, SessionRepoCI, Work, WorkEntry, WorkRepo } from '@/lib/api'
 import { asBoard, type ShipsBy } from '@/lib/prboard'
-import { HINT_ROWS, mainChecks, nextHint, OUT_RECENT_MS, prKind, releaseFold, releaseStatus, STATUS_TEXT, tagUnpublished, type BatchPR, type NextHint, type ReleaseStatus } from '@/lib/releasestatus'
+import { HINT_ROWS, mainChecks, nextHint, OUT_RECENT_MS, prKind, releaseFold, releaseStatus, STATUS_TEXT, tagUnpublished, type BatchPR, type NextHint, type ReleaseFold, type ReleaseStatus } from '@/lib/releasestatus'
 import { batchOf, groupNotes, notesHeading, notesOf, notInIt, viaLine, type NotesHeading, type NotInIt, type ViaLine } from '@/lib/releasenotes'
 import { stageWords, stripStages } from '@/lib/releasestatus'
 import { LastRelease, ReleaseInFlight, ReleaseStages, ReleaseStrip, ReleaseWhy } from './ReleaseStatus'
@@ -681,7 +682,9 @@ function keptWork(repo: WorkRepo, now: number): Work {
  * *· master checks failed* in place of *not started* while the default
  * branch's checks run or failed after a merge), *Waiting for #949 to merge · 0.183.1 · 2
  * changes*, *Releasing 0.183.0 · checks 1 of 3 systems*, *Release 0.183.0
- * stopped · checks failed*, *0.183.0 released · 5 min ago*. It needs the repository's tags and
+ * stopped · checks failed*, *0.183.0 released · 5 min ago · $17.25* (the
+ * version a green pill that bursts once, the release's agent cost where
+ * recorded: ReleasedParts). It needs the repository's tags and
  * changelog entries: the entry of the Work answer kept whenever a page read
  * it (`work:<root>`), the Work answer read folded only when none is kept or
  * the kept one is older than REPO_KEPT_MS. The release run is the copy the
@@ -762,7 +765,7 @@ export function CockpitRelease({ sessionId, repoRoot }: { sessionId: string; rep
   if (!plan) return null
   const n = plan.rows.length
   const merge = plan.ships === 'merge'
-  const fold = merge ? undefined : releaseFold(status, { waiting: repo?.unreleased?.count || merged, batch, lastTag: repo?.tags?.last?.name, now, cards: board?.cards, main })
+  const fold = merge ? undefined : releaseFold(status, { waiting: repo?.unreleased?.count || merged, batch, lastTag: repo?.tags?.last?.name, now, cards: board?.cards, main, releases: board?.releases })
   const keptText = statsKept.kept && statsKept.at ? asOfText(now - statsKept.at) : undefined
   const label = (
     <SectionLabel right={!folded ? (keptText ? <span data-release-kept-age title="The pull requests and their checks as last read, drawn faint while they are read again" className="shrink-0 whitespace-nowrap text-[10.5px] text-fg-faint">{keptText}</span> : undefined) : (fold ? (
@@ -772,7 +775,7 @@ export function CockpitRelease({ sessionId, repoRoot }: { sessionId: string; rep
       <span data-fold-only data-release-fold={fold.kind} data-release-kept={keptText ? '' : undefined} title={`${fold.text}\n${fold.title}${keptText ? `\n${keptText}, being read again` : ''}`} aria-label={fold.text}
         className={`flex h-[16px] min-w-0 flex-wrap items-center justify-end gap-x-1 overflow-hidden leading-[16px] tabular-nums ${STATUS_TEXT[fold.tone]}${keptText ? ` ${KEPT_CLASS}` : ''}`}>
         {fold.tone === 'active' && <span aria-hidden data-release-fold-pulse className="release-step-pulse block size-[6px] shrink-0 rounded-full bg-progress" />}
-        {fold.text.split(' · ').map((part, i) => (
+        {fold.kind === 'out' ? <ReleasedParts fold={fold} tag={status.last?.tag ?? fold.text} repo={repoRoot ?? ''} /> : fold.text.split(' · ').map((part, i) => (
           <span key={i} data-release-fold-part className={i === 0 ? 'min-w-0 truncate' : 'whitespace-nowrap'}>{i > 0 && <span aria-hidden className="mr-1 text-fg-faint">·</span>}{part}</span>
         ))}
       </span>
@@ -835,6 +838,138 @@ export function CockpitRelease({ sessionId, repoRoot }: { sessionId: string; rep
         )}
       </div>
     </section>
+  )
+}
+
+/** Where the tag each repository's pill last burst for is kept, per viewer: { [repo root]: tag }. */
+const BURST_KEY = 'caprock.release-burst'
+const BURST_MS = 1_100
+const BURST_N = 14
+const BURST_COLORS = ['var(--color-ok)', 'var(--color-warn)', 'var(--color-accent)']
+
+function burstSeen(repo: string, tag: string): boolean {
+  try { return (JSON.parse(localStorage.getItem(BURST_KEY) || '{}') as Record<string, string>)[repo] === tag } catch { return false }
+}
+
+function burstKeep(repo: string, tag: string) {
+  try {
+    const m = JSON.parse(localStorage.getItem(BURST_KEY) || '{}') as Record<string, string>
+    m[repo] = tag
+    // A handful of repositories at most: the oldest go first.
+    const keys = Object.keys(m)
+    for (const k of keys.slice(0, Math.max(0, keys.length - 20))) delete m[k]
+    localStorage.setItem(BURST_KEY, JSON.stringify(m))
+  } catch { /* storage blocked: it may burst again, nothing worse */ }
+}
+
+/**
+ * The folded line's version just out, as a green pill with a check (owner,
+ * 2026-11-24, variant A: "more noticeable, a sense of hooray"). The first
+ * time a viewer sees a release's pill, about fourteen small squares burst
+ * from it once, for about a second, in the ok, warn and accent colours —
+ * once per tag and repository (kept in localStorage), never on a poll, a
+ * render or a reload, and never with reduced motion. The squares are drawn
+ * over the page (fixed, in a portal): the line clips what does not fit it.
+ */
+function ReleasedPill({ text, tag, repo }: { text: string; tag: string; repo: string }) {
+  const ref = useRef<HTMLSpanElement>(null)
+  const burst = useRef<HTMLSpanElement>(null)
+  const [on, setOn] = useState(false)
+  useEffect(() => {
+    if (burstSeen(repo, tag)) return
+    // Not on view (a hidden tab, a test's DOM): it bursts when it is.
+    if (!ref.current || ref.current.getBoundingClientRect().width === 0) return
+    burstKeep(repo, tag)
+    let still = false
+    try { still = window.matchMedia('(prefers-reduced-motion: reduce)').matches } catch { /* no matchMedia */ }
+    if (!still) setOn(true)
+  }, [repo, tag])
+  // The squares follow the pill while they fly: the line settles (its age
+  // may go in a narrow panel) after the first frame.
+  useLayoutEffect(() => {
+    if (!on) return
+    let raf = 0
+    const place = () => {
+      const r = ref.current?.getBoundingClientRect()
+      const b = burst.current
+      if (r && b) { b.style.left = `${r.left + 8}px`; b.style.top = `${r.top + r.height / 2}px` }
+      raf = requestAnimationFrame(place)
+    }
+    place()
+    const t = window.setTimeout(() => setOn(false), BURST_MS + 300)
+    return () => { cancelAnimationFrame(raf); window.clearTimeout(t) }
+  }, [on])
+  return (
+    <span ref={ref} data-release-fold-part data-release-pill
+      className="inline-flex h-[16px] min-w-0 items-center gap-1 rounded-full border border-ok/45 bg-ok/12 pl-1 pr-1.5 font-semibold leading-[14px] text-ok">
+      <svg aria-hidden viewBox="0 0 12 12" className="size-[10px] shrink-0" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M2.5 6.3 5 8.6 9.5 3.6" /></svg>
+      <span className="min-w-0 truncate">{text}</span>
+      {on && createPortal(
+        <span ref={burst} aria-hidden data-release-burst className="release-burst pointer-events-none fixed z-50 size-0">
+          {Array.from({ length: BURST_N }, (_, i) => {
+            const a = (i / BURST_N) * Math.PI * 2
+            // A fixed scatter rather than Math.random: the same burst each time.
+            const d = 16 + ((i * 7) % 12)
+            return <i key={i} style={{ '--x': `${(Math.cos(a) * d).toFixed(1)}px`, '--y': `${(Math.sin(a) * d * 0.7).toFixed(1)}px`, background: BURST_COLORS[i % 3], animationDelay: `${((i * 5) % 12) / 100}s` } as CSSProperties} />
+          })}
+        </span>,
+        document.body,
+      )}
+    </span>
+  )
+}
+
+/**
+ * The folded line's parts for a release just out (owner, 2026-11-24,
+ * variant A): the version as a green pill (ReleasedPill), its age muted
+ * beside it with no dot, then the agents' cost in the panel's own text
+ * colour, then the batch's words. Where the panel is too narrow for the
+ * pill, the age and the cost together, the age goes first (it stays in the
+ * line's hover): the cost is what was asked to be seen. Narrower still, the
+ * parts wrap under the line and are clipped, the last first, as on every
+ * other folded line.
+ */
+function ReleasedParts({ fold, tag, repo }: { fold: ReleaseFold; tag: string; repo: string }) {
+  const parts = fold.text.split(' · ')
+  const hasCost = !!fold.cost
+  const costRef = useRef<HTMLSpanElement>(null)
+  const ageW = useRef(0)
+  const [tight, setTight] = useState(false)
+  useLayoutEffect(() => {
+    const cost = costRef.current
+    const line = cost?.parentElement
+    const head = line?.closest<HTMLElement>('[data-section-head]')
+    if (!hasCost || !cost || !line || !head) { setTight(false); return }
+    const measure = () => {
+      const pill = line.querySelector<HTMLElement>('[data-release-pill]')
+      const age = line.querySelector<HTMLElement>('[data-release-fold-age]')
+      if (age && age.offsetWidth > 0) ageW.current = age.offsetWidth
+      const btn = head.querySelector<HTMLElement>(':scope > button')
+      const gap = parseFloat(getComputedStyle(head).columnGap) || 0
+      const lineGap = parseFloat(getComputedStyle(line).columnGap) || 0
+      const avail = head.clientWidth - (btn?.offsetWidth ?? 0) - gap
+      const need = (pill?.offsetWidth ?? 0) + ageW.current + cost.offsetWidth + 2 * lineGap
+      setTight(avail > 0 && need > avail + 0.5)
+    }
+    measure()
+    if (typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(measure)
+    ro.observe(head)
+    return () => ro.disconnect()
+  }, [hasCost, fold.text])
+  return (
+    <>
+      {parts.map((part, i) => {
+        if (i === 0) return <ReleasedPill key={i} text={part} tag={tag} repo={repo} />
+        const cost = i === 2 && hasCost
+        const age = i === 1
+        return (
+          <span key={i} ref={cost ? costRef : undefined} data-release-fold-part data-release-fold-cost={cost ? '' : undefined} data-release-fold-age={age ? '' : undefined}
+            title={cost ? fold.cost!.title : undefined}
+            className={`whitespace-nowrap ${cost ? 'font-semibold text-fg' : 'text-fg-muted'}${age && tight ? ' hidden' : ''}`}>{i > 1 && <span aria-hidden className="mr-1 font-normal text-fg-faint">·</span>}{part}</span>
+        )
+      })}
+    </>
   )
 }
 

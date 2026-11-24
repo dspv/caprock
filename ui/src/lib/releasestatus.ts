@@ -29,7 +29,7 @@
 import type { CIState, ReleaseCI, WorkRepo } from './api'
 import type { BranchPR } from './branches'
 import type { JourneyPillStep } from './journey'
-import type { BoardCard, BoardRelease } from './prboard'
+import { AGENT_COST_NOTE, costText, type BoardCard, type BoardRelease } from './prboard'
 import { mergedEntries, nextVersion, parseVersion, type Bump } from './releaseplan'
 
 export type ReleaseStageKey = 'merged' | 'pr' | 'ci' | 'tag' | 'builds' | 'published' | 'site'
@@ -653,6 +653,33 @@ export interface ReleaseFold {
   text: string
   title: string
   tone: StatusTone
+  /**
+   * What agents spent on the release just out (kind 'out' only), from the
+   * Pipeline's releases: only when that release is listed and a cost above
+   * zero was recorded, never a $0 standing for "not recorded". It is the
+   * text's third part: *0.193.0 released · 4 min ago · $17.25*.
+   */
+  cost?: { text: string; title: string }
+}
+
+/**
+ * The agent cost of the release with this tag as the folded line says it
+ * (releaseFold): nothing unless the release is listed and a cost above zero
+ * was recorded. The figure as a Pipeline card says it (costText); its hover
+ * names the pull requests (the release's own among them) and the sessions.
+ */
+export function releaseCost(tag: string, releases: readonly BoardRelease[] | undefined): ReleaseFold['cost'] {
+  const v = plainVersion(tag) ?? tag
+  const r = releases?.find((x) => x.tag === tag || (plainVersion(x.tag) ?? x.tag) === v)
+  if (!r || !(r.cost_usd > 0)) return undefined
+  const text = costText({ cost_usd: r.cost_usd, sessions: r.sessions, live: 0, agents: [] })
+  if (!text) return undefined
+  const n = r.prs.length
+  const prs = n > 0 ? `${n} pull request${n === 1 ? '' : 's'}` : ''
+  const sessions = r.sessions > 0 ? `${r.sessions} session${r.sessions === 1 ? '' : 's'}` : ''
+  const on = prs ? ` on ${[prs, sessions].filter(Boolean).join(', ')}` : sessions ? ` in ${sessions}` : ''
+  const partial = r.partial ? '\nIt may be partial: the pull requests listed may not reach back to the release before it.' : ''
+  return { text, title: `$${r.cost_usd.toFixed(2)} agents spent${on}${partial}\n${AGENT_COST_NOTE}` }
 }
 
 /** "5 min ago", one unit, as the CI line says its age. */
@@ -678,7 +705,10 @@ const FOLD_KIND: Record<StatusTone, ReleaseFold['kind']> = { idle: 'ready', acti
  * a check state or a time only where read.
  *
  * - *Nothing new since v0.182.4*, grey; *0.183.0 released · 5 min ago*,
- *   green, within OUT_RECENT_MS of its publishing;
+ *   green, within OUT_RECENT_MS of its publishing, with what agents spent
+ *   on it where that was recorded (*0.183.0 released · 5 min ago · $17.25*,
+ *   releaseCost; owner, 2026-11-24, variant A: the version drawn as a green
+ *   pill that bursts once);
  * - *Ready to release 0.183.1 · not started · 2 changes*, grey;
  * - *Waiting for #949 to merge · 0.183.1 · 2 changes*, amber (red with
  *   *CI red*; *· ready to merge*, *· checks running* when its state was read);
@@ -687,11 +717,16 @@ const FOLD_KIND: Record<StatusTone, ReleaseFold['kind']> = { idle: 'ready', acti
  * - *Release 0.183.0 stopped · checks failed*, *… · build failed*, *… ·
  *   draft only, not public*, red.
  */
-export function releaseFold(s: ReleaseStatus, o: { waiting: number; batch?: BatchPR; lastTag?: string; now: number; cards?: readonly BoardCard[]; main?: MainChecks }): ReleaseFold {
+export function releaseFold(s: ReleaseStatus, o: { waiting: number; batch?: BatchPR; lastTag?: string; now: number; cards?: readonly BoardCard[]; main?: MainChecks; releases?: readonly BoardRelease[] }): ReleaseFold {
   if (s.phase === 'idle') {
     const last = s.last
     if (last && o.now - last.at < OUT_RECENT_MS) {
-      return { kind: 'out', text: `${plainVersion(last.tag) ?? last.tag} released · ${agoText(o.now - last.at)}${batchWord(o.batch)}`, title: `${last.tag} was published on GitHub ${agoText(o.now - last.at)}.`, tone: 'ok' }
+      const ago = agoText(o.now - last.at)
+      const cost = releaseCost(last.tag, o.releases)
+      return {
+        kind: 'out', text: `${plainVersion(last.tag) ?? last.tag} released · ${ago}${cost ? ` · ${cost.text}` : ''}${batchWord(o.batch)}`,
+        title: `${last.tag} was published on GitHub ${ago}.${cost ? `\n${cost.title}` : ''}`, tone: 'ok', ...(cost ? { cost } : {}),
+      }
     }
     const tag = o.lastTag ?? last?.tag
     return { kind: 'idle', text: `${tag ? `Nothing new since ${tag}` : 'Nothing new'}${batchWord(o.batch)}`, title: tag ? `Nothing merged and no changelog entry waiting since ${tag}.` : 'Nothing merged and no changelog entry waiting.', tone: 'idle' }
