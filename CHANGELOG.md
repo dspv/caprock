@@ -12,6 +12,16 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.194.2] - 2026-11-24
+
+### Fixed
+
+- **voice:** dictation on an iPhone keeps every phrase. Apple's recogniser
+  starts a new segment after a pause and its next guess holds only the
+  words said since, so the iOS app and Safari showed only the last phrase;
+  a guess that is a new phrase rather than a revision now keeps the words
+  before it, without saying revised words twice.
+
 ## [0.194.1] - 2026-11-24
 
 ### Fixed
