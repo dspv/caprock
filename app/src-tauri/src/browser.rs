@@ -1173,21 +1173,26 @@ fn build<R: Runtime>(
         .initialization_script(KEYS_SCRIPT)
         // Dormant on a desktop page; phone mode's touch (ADR-075, amended).
         .initialization_script(TOUCH_SCRIPT)
+        // Guarded (applog::guard): these run inside WebKit's delegate
+        // methods; a panic is logged and a navigation refused.
         .on_navigation(move |url| {
-            if let Some(k) = key_of(url) {
-                // The keyboard goes back to the dashboard, which acts on the key.
-                focus_main(&nav);
-                tell(&nav, serde_json::json!({ "id": id1, "key": k }));
-                return false;
-            }
-            let ok = may_navigate(url);
-            if !ok {
-                tell(
-                    &nav,
-                    serde_json::json!({ "id": id1, "refused": url.as_str() }),
-                );
-            }
-            ok
+            crate::applog::guard("browser navigation", || {
+                if let Some(k) = key_of(url) {
+                    // The keyboard goes back to the dashboard, which acts on the key.
+                    focus_main(&nav);
+                    tell(&nav, serde_json::json!({ "id": id1, "key": k }));
+                    return false;
+                }
+                let ok = may_navigate(url);
+                if !ok {
+                    tell(
+                        &nav,
+                        serde_json::json!({ "id": id1, "refused": url.as_str() }),
+                    );
+                }
+                ok
+            })
+            .unwrap_or(false)
         })
         .on_new_window(move |url, _| {
             // Never a popup: the dashboard opens it as another browser tab.
@@ -1200,41 +1205,43 @@ fn build<R: Runtime>(
             tell(&title, serde_json::json!({ "id": id3, "title": t }));
         })
         .on_page_load(move |w, p| {
-            // The drain's own blank page is nobody's news.
-            if p.url().scheme() == "about" {
-                return;
-            }
-            let loading = matches!(p.event(), PageLoadEvent::Started);
-            // Something to show: a held page comes out (WKWebView reports
-            // Started once the first bytes commit).
-            release(&load, w.label());
-            if let Some(pages) = load.try_state::<Pages>() {
-                *pages
-                    .loads
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .entry(w.label().to_owned())
-                    .or_default() += 1;
-            }
-            // A loaded page in phone mode gets Touch as the user left it
-            // (it starts on with a phone's agent: TOUCH_SCRIPT).
-            if !loading {
+            crate::applog::guard("browser page load", || {
+                // The drain's own blank page is nobody's news.
+                if p.url().scheme() == "about" {
+                    return;
+                }
+                let loading = matches!(p.event(), PageLoadEvent::Started);
+                // Something to show: a held page comes out (WKWebView reports
+                // Started once the first bytes commit).
+                release(&load, w.label());
                 if let Some(pages) = load.try_state::<Pages>() {
-                    let m = pages.mode(w.label());
-                    if m.ua.is_some() || m.touch {
-                        let _ = w.eval(touch_eval(m.touch));
-                    }
-                    // A side-by-side page keeps its zoom across a load.
-                    let z = pages.zoom(w.label());
-                    if (z - 1.0).abs() > 1e-3 {
-                        let _ = w.set_zoom(z);
+                    *pages
+                        .loads
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .entry(w.label().to_owned())
+                        .or_default() += 1;
+                }
+                // A loaded page in phone mode gets Touch as the user left it
+                // (it starts on with a phone's agent: TOUCH_SCRIPT).
+                if !loading {
+                    if let Some(pages) = load.try_state::<Pages>() {
+                        let m = pages.mode(w.label());
+                        if m.ua.is_some() || m.touch {
+                            let _ = w.eval(touch_eval(m.touch));
+                        }
+                        // A side-by-side page keeps its zoom across a load.
+                        let z = pages.zoom(w.label());
+                        if (z - 1.0).abs() > 1e-3 {
+                            let _ = w.set_zoom(z);
+                        }
                     }
                 }
-            }
-            tell(
-                &load,
-                serde_json::json!({ "id": id4, "url": p.url().as_str(), "loading": loading }),
-            );
+                tell(
+                    &load,
+                    serde_json::json!({ "id": id4, "url": p.url().as_str(), "loading": loading }),
+                );
+            });
         })
         .on_download(move |page, event| save(page, event, &id5));
     // macOS: a child window (moves with the main one, stays above it);

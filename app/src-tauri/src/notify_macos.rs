@@ -67,7 +67,9 @@ define_class!(
             response: &UNNotificationResponse,
             handler: &block2::DynBlock<dyn Fn()>,
         ) {
-            received(response);
+            // Guarded: a panic is logged, and the system still hears that
+            // the response was handled.
+            crate::applog::guard("notification response", || received(response));
             handler.call(());
         }
     }

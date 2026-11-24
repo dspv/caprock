@@ -210,7 +210,7 @@ fn main() {
         // on the Dock icon brings the window back.
         #[cfg(target_os = "macos")]
         if let tauri::RunEvent::Reopen { .. } = _event {
-            hotkey::show(_app);
+            applog::guard("dock reopen", || hotkey::show(_app));
         }
         // Linux: no one answers a notification's buttons once the app is
         // gone, so none is left on screen to be pressed for nothing.
@@ -375,61 +375,73 @@ mod menu {
         }
         app.set_menu(menu)?;
         let sup = sup.clone();
+        // Guarded: a panic in a menu item's action is logged, and the menu
+        // and the app go on (applog::guard).
         app.on_menu_event(move |app, event| {
-            if event.id() == RELOAD {
-                shell::reload_main(app);
-                return;
-            }
-            if event.id() == CHECK_UPDATES {
-                crate::updater::check_from_menu(app);
-                return;
-            }
-            if event.id() == CLOSE_TAB {
-                match close_target(focused_label(app).as_deref()) {
-                    CloseTarget::Tab => {
-                        if let Some(w) = app.get_webview_window(shell::MAIN) {
-                            let _ = w.eval(CLOSE_TAB_JS);
-                        }
-                    }
-                    CloseTarget::Window(label) => close_window(app, &label),
-                    CloseTarget::Nothing => {}
-                }
-                return;
-            }
-            if event.id() == NEW_BROWSER_TAB {
-                if let Some(w) = app.get_webview_window(shell::MAIN) {
-                    let _ = w.show();
-                    let _ = w.set_focus();
-                    let _ = w.eval(NEW_BROWSER_TAB_JS);
-                }
-                return;
-            }
-            if event.id() == SHARE {
-                if let Some(w) = app.get_webview_window(shell::MAIN) {
-                    let _ = w.show();
-                    let _ = w.set_focus();
-                    let _ = w.eval(SHARE_JS);
-                }
-                return;
-            }
-            if event.id() == CLOSE_WINDOW {
-                if let Some(label) = focused_label(app) {
-                    close_window(app, &label);
-                }
-                return;
-            }
-            if event.id() != BACKGROUND {
-                return;
-            }
-            let (item, sup) = (item.clone(), sup.clone());
-            std::thread::spawn(move || {
-                let want = item.is_checked().unwrap_or(true);
-                if sup.set_background(want).is_err() {
-                    let _ = item.set_checked(!want);
-                }
-            });
+            crate::applog::guard("app menu", || on_menu(app, event, &item, &sup));
         });
         Ok(())
+    }
+
+    /// The app menu's own items.
+    fn on_menu(
+        app: &tauri::AppHandle,
+        event: tauri::menu::MenuEvent,
+        item: &CheckMenuItem<tauri::Wry>,
+        sup: &commands::Sup,
+    ) {
+        if event.id() == RELOAD {
+            shell::reload_main(app);
+            return;
+        }
+        if event.id() == CHECK_UPDATES {
+            crate::updater::check_from_menu(app);
+            return;
+        }
+        if event.id() == CLOSE_TAB {
+            match close_target(focused_label(app).as_deref()) {
+                CloseTarget::Tab => {
+                    if let Some(w) = app.get_webview_window(shell::MAIN) {
+                        let _ = w.eval(CLOSE_TAB_JS);
+                    }
+                }
+                CloseTarget::Window(label) => close_window(app, &label),
+                CloseTarget::Nothing => {}
+            }
+            return;
+        }
+        if event.id() == NEW_BROWSER_TAB {
+            if let Some(w) = app.get_webview_window(shell::MAIN) {
+                let _ = w.show();
+                let _ = w.set_focus();
+                let _ = w.eval(NEW_BROWSER_TAB_JS);
+            }
+            return;
+        }
+        if event.id() == SHARE {
+            if let Some(w) = app.get_webview_window(shell::MAIN) {
+                let _ = w.show();
+                let _ = w.set_focus();
+                let _ = w.eval(SHARE_JS);
+            }
+            return;
+        }
+        if event.id() == CLOSE_WINDOW {
+            if let Some(label) = focused_label(app) {
+                close_window(app, &label);
+            }
+            return;
+        }
+        if event.id() != BACKGROUND {
+            return;
+        }
+        let (item, sup) = (item.clone(), sup.clone());
+        std::thread::spawn(move || {
+            let want = item.is_checked().unwrap_or(true);
+            if sup.set_background(want).is_err() {
+                let _ = item.set_checked(!want);
+            }
+        });
     }
 }
 
