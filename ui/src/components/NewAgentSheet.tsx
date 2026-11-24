@@ -9,11 +9,21 @@
  * current project first, so Enter keeps it and a second Enter starts; typing
  * finds a project, a recent folder or a repository under the default folder,
  * and picking one that is not a project yet adds it (ProjectSearch.tsx).
- * Tab and ⇧Tab walk Project, Where, Agent, Model, Subscription (when there
- * is more than one, ADR-048), Permissions, Subagents run on (Claude Code),
- * First message, Cancel, Start in that order; ↑ and ↓ change a select in
- * place; ⌘↩ starts from anywhere in the sheet, the buttons included; Esc
- * cancels. The keys are named in the footer and on Start itself.
+ * Tab and ⇧Tab walk Project, Where, Agent, Subscription (when there is more
+ * than one, ADR-048), Model, Effort, Permissions, Subagents run on (Claude
+ * Code), the instructions card's buttons, First message, Cancel, Start in
+ * that order; ↑ and ↓ change a select in place; ⌘↩ starts from anywhere in
+ * the sheet, the buttons included; Esc cancels. The keys are named in the
+ * footer and on Start itself.
+ *
+ * One screen (owner, 2026-11-24: First message sat below the edge of a
+ * 1440×900 window): the fields above Permissions stand two to a row —
+ * Machine beside Project, Where beside Agent, Model beside Effort — and one
+ * column under 640 px. The two lone links sit at the right end of a label
+ * row, *From an issue or PR…* on Where's and *Add subscription* on Agent's;
+ * the instructions card drops its explanation lines (`compact`). Each
+ * control keeps its look. A window shorter than the sheet still scrolls its
+ * middle under a fixed title and footer (Sheet).
  *
  * Where is worded for someone who has never heard of a git worktree (owner,
  * 2026-10-09: "existing or new — totally unclear"): *This folder* is the
@@ -25,7 +35,8 @@
  * keep one. Not remembered: every start is one agent unless asked.
  *
  * *From GitHub* (when the project's remote is on github.com and GitHub is
- * connected, or when asked for by ⌘K → New agent from issue…): pick an open
+ * connected, or when asked for by ⌘K → New agent from issue…; the link is
+ * *From an issue or PR…* at the end of Where's label row): pick an open
  * issue or pull request (GitHubItemPicker). An issue prefills a new copy's
  * name (`issue-123-short-slug`) and the first message (its title, link and
  * text, trimmed); a pull request does the same and starts the copy at the
@@ -39,8 +50,8 @@
  * repository's own CLAUDE.md / AGENTS.md — is a block of its own, each
  * "Set · 12 lines" or "None", a click from being read or edited.
  *
- * *Machine* (ADR-067, Phase 2), first, only when this computer reaches
- * another: This Mac or one of them. Another computer's start is
+ * *Machine* (ADR-067, Phase 2), first, beside Project, only when this
+ * computer reaches another: This Mac or one of them. Another computer's start is
  * RemoteAgentSheet, read from and run on that computer.
  */
 import { Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
@@ -334,6 +345,76 @@ function LocalAgentSheet({
   startRef.current = () => { if (!busy && !adding && canStart) void start() }
   const startKey = isMacPlatform() ? '⌘↩' : 'Ctrl+↵'
 
+  // The fields above Permissions, two to a row (owner, 2026-11-24: the sheet
+  // must fit a 1440×900 window): Machine beside Project, Where beside Agent,
+  // Model beside Effort; one column on a narrow window. The order is the Tab
+  // order, and a gap is left before Model so Model and Effort share a row.
+  const ghLink = project && !ghItem && !ghOpen && ghRepo && github.status?.connected ? (
+    <button type="button" aria-label="From a GitHub issue or pull request…" title="From a GitHub issue or pull request…" className="text-[12px] text-accent hover:underline" onClick={() => setGhOpen(true)}>
+      From an issue or PR…
+    </button>
+  ) : null
+  const agentShown = catalog.entries.length > 1
+  // One sign-in: a quiet link at the end of the Agent label row (of Model's
+  // when there is no Agent choice); two or more: the Subscription select.
+  const addSubLink = canStart && subList.length === 1 && !addingSub ? (
+    <button type="button" title="Sign in to this agent with another account and pick it here" className="text-[12px] text-fg-muted underline-offset-2 hover:text-fg hover:underline" onClick={() => setAddingSub(true)}>
+      Add subscription
+    </button>
+  ) : null
+  const cells: [key: string, node: ReactNode][] = []
+  if (machinePicker) cells.push(['machine', machinePicker])
+  cells.push(['project', (
+    <div className="grid min-w-0 gap-1.5">
+      <span className="flex items-baseline gap-2 text-[12px] font-medium text-fg-muted">
+        Project
+        {onNewProject && (
+          <button type="button" onClick={() => onNewProject(prompt)} className="ml-auto text-[12px] font-normal text-accent hover:underline">New project…</button>
+        )}
+      </span>
+      <ProjectCombobox projects={allProjects} value={pid} busy={adding} autoFocus onPick={(c) => void pickProject(c)} onSubmit={() => startRef.current()} onNewProject={onNewProject && (() => onNewProject(prompt))} />
+      {choices.length > 0 ? (
+        <select aria-label="Repository" className="input mono" title={choices.map((c) => c.path).join('\n')} value={repoDir} onChange={(e) => { setRepoPick(e.target.value); if (where && where !== NEW_WORKTREE) setWhereRaw('') }}>
+          {choices.map((c) => <option key={c.path} value={c.path}>{c.label}</option>)}
+        </select>
+      ) : null}
+    </div>
+  )])
+  cells.push(['where', (
+    <SheetField label="Where" action={ghLink}>
+      <select className="input" title={WHERE_TOOLTIP} value={where} onChange={(e) => setWhere(e.target.value)}>
+        <option value={NEW_WORKTREE}>New copy from a branch</option>
+        <option value="">{repoBranch ? `This folder · ${repoBranch}` : 'This folder'}</option>
+        {worktrees.map((w) => <option key={w.path} value={w.path}>Existing copy · {w.branch || w.name}</option>)}
+        {atRoot && initialCwd && initialCwd !== project?.root && !choices.some((c) => c.path === initialCwd) && !worktrees.some((w) => w.path === initialCwd) && <option value={initialCwd}>Existing copy · {baseName(initialCwd)}</option>}
+      </select>
+    </SheetField>
+  )])
+  if (agentShown) cells.push(['agent', <AgentPicker value={agent} agents={agents} entries={catalog.entries} onChange={setAgent} dflt={agentDefault} action={addSubLink} />])
+  if (canStart && subList.length > 1) cells.push(['subscription', <SubscriptionPicker list={subList} value={subId} onChange={chooseSub} onAdd={addingSub ? undefined : () => setAddingSub(true)} />])
+  const effortShown = canStart && effort.levels.length > 0
+  if (canStart && effortShown && cells.length % 2 === 1) cells.push(['gap', null])
+  if (canStart) {
+    cells.push(['model', (
+      <SheetField label="Model" action={agentShown ? undefined : addSubLink}>
+        <ModelField agent={agent} value={models[agent] ?? ''} onChange={(v) => setModels((m) => ({ ...m, [agent]: v }))} entry={entry} />
+      </SheetField>
+    )])
+  }
+  // Beside Model: the agent's own default marked, kept as nothing passed (lib/effort.ts).
+  if (effortShown) cells.push(['effort', <EffortPicker levels={effort.levels} value={effort.shown} def={effort.def} onChange={effort.choose} />])
+  const fieldRows: ReactNode[] = []
+  for (let i = 0; i < cells.length; i += 2) {
+    const pair = cells.slice(i, i + 2)
+    fieldRows.push(
+      <div key={pair.map(([k]) => k).join('-')} className="grid min-w-0 gap-3 sm:grid-cols-2">
+        {pair.map(([k, node]) => (node === null ? <div key={k} aria-hidden className="hidden sm:block" /> : <div key={k} className="grid min-w-0">{node}</div>))}
+      </div>,
+    )
+  }
+  // The copy's fields and the GitHub pick follow the row Where is on.
+  const whereRow = Math.floor(cells.findIndex(([k]) => k === 'where') / 2)
+
   return (
     <Sheet
       label="New agent"
@@ -372,31 +453,7 @@ function LocalAgentSheet({
         </p>
       ) : (
         <div className="grid gap-4 px-5 py-4" onKeyDown={(e) => { stepSelect(e) }}>
-          {machinePicker && <div className="grid grid-cols-2 gap-3">{machinePicker}<div /></div>}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="grid min-w-0 gap-1.5">
-              <span className="flex items-baseline gap-2 text-[12px] font-medium text-fg-muted">
-                Project
-                {onNewProject && (
-                  <button type="button" onClick={() => onNewProject(prompt)} className="ml-auto text-[12px] font-normal text-accent hover:underline">New project…</button>
-                )}
-              </span>
-              <ProjectCombobox projects={allProjects} value={pid} busy={adding} autoFocus onPick={(c) => void pickProject(c)} onSubmit={() => startRef.current()} onNewProject={onNewProject && (() => onNewProject(prompt))} />
-              {choices.length > 0 ? (
-                <select aria-label="Repository" className="input mono" title={choices.map((c) => c.path).join('\n')} value={repoDir} onChange={(e) => { setRepoPick(e.target.value); if (where && where !== NEW_WORKTREE) setWhereRaw('') }}>
-                  {choices.map((c) => <option key={c.path} value={c.path}>{c.label}</option>)}
-                </select>
-              ) : null}
-            </div>
-            <SheetField label="Where">
-              <select className="input" title={WHERE_TOOLTIP} value={where} onChange={(e) => setWhere(e.target.value)}>
-                <option value={NEW_WORKTREE}>New copy from a branch</option>
-                <option value="">{repoBranch ? `This folder · ${repoBranch}` : 'This folder'}</option>
-                {worktrees.map((w) => <option key={w.path} value={w.path}>Existing copy · {w.branch || w.name}</option>)}
-                {atRoot && initialCwd && initialCwd !== project?.root && !choices.some((c) => c.path === initialCwd) && !worktrees.some((w) => w.path === initialCwd) && <option value={initialCwd}>Existing copy · {baseName(initialCwd)}</option>}
-              </select>
-            </SheetField>
-          </div>
+          {fieldRows.slice(0, whereRow + 1)}
           {project && ghItem ? (
             <div className="flex min-w-0 items-center gap-2 rounded-[8px] border border-border px-2.5 py-1.5 text-[12.5px]" aria-label="Started from GitHub">
               <span className="shrink-0 text-fg-muted">{ghItem.pr ? 'Pull request' : 'Issue'} <span className="mono">#{ghItem.number}</span></span>
@@ -405,16 +462,12 @@ function LocalAgentSheet({
               <button type="button" className="shrink-0 text-[12px] text-fg-muted hover:text-fg" aria-label="Not from GitHub" title="Not from GitHub: keep the fields as they are" onClick={() => { setGhItem(null); setGhOpen(false) }}>×</button>
             </div>
           ) : null}
-          {project && ghOpen ? (
+          {project && ghOpen && (
             <GitHubItemPicker key={`github-${project.id}`} projectId={project.id} onPick={pickItem} onClose={() => setGhOpen(false)} />
-          ) : project && !ghItem && ghRepo && github.status?.connected ? (
-            <button type="button" className="justify-self-start text-[12.5px] text-accent hover:underline" onClick={() => setGhOpen(true)}>
-              From a GitHub issue or pull request…
-            </button>
-          ) : null}
+          )}
           {where === NEW_WORKTREE && (
             <div className="grid min-w-0 gap-2">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-3 sm:grid-cols-2">
                 {fromPR ? (
                   <div className="grid min-w-0 gap-1.5">
                     <span className="text-[12px] font-medium text-fg-muted">From</span>
@@ -444,7 +497,7 @@ function LocalAgentSheet({
                   Pull the latest <span className="mono">{base}</span> from {branches.find((b) => b.name === base)?.remote} first
                 </label>
               )}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-3 sm:grid-cols-2">
                 <SheetField label="Attempts" hint={several ? 'one copy each' : 'compare and keep one'}>
                   <select className="input" value={attempts} onChange={(e) => setAttempts(Number(e.target.value))}>
                     {ATTEMPT_CHOICES.map((n) => <option key={n} value={n}>{n === 1 ? '1 agent' : `${n} agents, same message`}</option>)}
@@ -463,24 +516,7 @@ function LocalAgentSheet({
               {project && <ProjectSetupCommand key={project.id} project={project} />}
             </div>
           )}
-          <div className="grid grid-cols-2 gap-3">
-            {catalog.entries.length > 1 ? <AgentPicker value={agent} agents={agents} entries={catalog.entries} onChange={setAgent} dflt={agentDefault} /> : <div />}
-            {canStart && (
-              <SheetField label="Model">
-                <ModelField agent={agent} value={models[agent] ?? ''} onChange={(v) => setModels((m) => ({ ...m, [agent]: v }))} entry={entry} />
-              </SheetField>
-            )}
-            {/* Under Agent, on a row of its own: a third column cut both
-              * selects' text off at the sheet's width. */}
-            {canStart && <SubscriptionPicker list={subList} value={subId} onChange={chooseSub} onAdd={addingSub ? undefined : () => setAddingSub(true)} />}
-            {/* Under Model, in its column: the agent's own default marked,
-              * kept as nothing passed (lib/effort.ts). */}
-            {canStart && effort.levels.length > 0 && (
-              <div className="col-span-2 min-w-0 sm:col-span-1 sm:col-start-2">
-                <EffortPicker levels={effort.levels} value={effort.shown} def={effort.def} onChange={effort.choose} />
-              </div>
-            )}
-          </div>
+          {fieldRows.slice(whereRow + 1)}
           {canStart && addingSub && (
             <Suspense fallback={null}>
               <AddSubscriptionFlow agent={agent} onSetup={onSetup} onAdded={(s) => pickSubOnce(s.id)} onClose={() => setAddingSub(false)} />
@@ -503,7 +539,7 @@ function LocalAgentSheet({
             </SheetField>
           )}
           {consent.needed && <BypassConsentNote />}
-          {project && <ProjectInstructions key={project.id} project={project} agent={agent} />}
+          {project && <ProjectInstructions key={project.id} project={project} agent={agent} compact />}
           <SheetField label="First message" hint={entry && !entry.prompt ? "not sent: this agent's arguments have no {prompt}" : 'optional'}>
             <textarea
               className="input min-h-[84px] resize-y font-[family-name:var(--font-sans)] text-[13px] leading-relaxed"

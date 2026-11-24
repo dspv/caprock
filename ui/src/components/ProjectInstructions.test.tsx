@@ -63,4 +63,17 @@ describe('project instructions', () => {
     expect(screen.getByLabelText('Repository instruction files')).toHaveTextContent('no CLAUDE.md or AGENTS.md')
     expect(screen.getByText(/Not given to this agent/)).toBeTruthy()
   })
+
+  it('compact (New agent) keeps the card and its buttons but drops the explanation lines into hover text', () => {
+    render(<ProjectInstructions project={{ ...project, instruction_files: ['CLAUDE.md'] }} compact />)
+    expect(screen.getByRole('button', { name: 'Add project instructions' }).title).toMatch(/set them once/)
+    expect(screen.getByRole('button', { name: 'Show the repository’s files' }).title).toMatch(/Read by the agents themselves/)
+    expect(screen.queryByText(/set them once/)).toBeNull()
+    expect(screen.queryByText('Read by the agents themselves, whoever starts them')).toBeNull()
+  })
+
+  it('compact still says when the agent takes none of Caprock’s', () => {
+    render(<ProjectInstructions project={project} agent="gemini" compact />)
+    expect(screen.getByText(/Not given to this agent/)).toBeTruthy()
+  })
 })

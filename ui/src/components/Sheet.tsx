@@ -121,9 +121,12 @@ export function KeyChip({ primary, danger, children }: { primary?: boolean; dang
   )
 }
 
-/** A labelled field inside a sheet. */
-export function SheetField({ label, hint, children }: { label: string; hint?: ReactNode; children: ReactNode }) {
-  return (
+/** A labelled field inside a sheet. `action` is a quiet link at the right
+ *  end of the label row (New agent's *From an issue or PR…*), so it takes no
+ *  row of its own. It sits outside the <label>, so its words are not part of
+ *  the field's name, and it comes after the field in Tab order. */
+export function SheetField({ label, hint, action, children }: { label: string; hint?: ReactNode; action?: ReactNode; children: ReactNode }) {
+  const field = (
     <label className="grid min-w-0 gap-1.5">
       <span className="flex items-baseline gap-2 text-[13px] font-medium text-fg-muted">
         {label}
@@ -131,5 +134,12 @@ export function SheetField({ label, hint, children }: { label: string; hint?: Re
       </span>
       {children}
     </label>
+  )
+  if (!action) return field
+  return (
+    <div className="relative grid min-w-0">
+      {field}
+      <span className="absolute right-0 top-0 max-w-[60%] truncate text-[13px]">{action}</span>
+    </div>
   )
 }
