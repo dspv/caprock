@@ -1475,6 +1475,20 @@ thread's own records, in Claude Code's words:
   work of its own still running, and the same task id notifies again. A
   main-thread `TaskStop` (`task_id`) or `KillShell` (`shell_id`) ends the task
   it names.
+- **Claude Code's own list ends the rest.** Every Stop hook carries
+  `background_tasks`, the session's running background work at that moment
+  (`{id, type: shell|monitor|subagent, status, description}`, whoever started
+  it). A task launched before the session's newest main-thread `agent.stop`
+  and missing from its list has ended, notified or not; an agent only when
+  none of the background tasks it launched itself (its own hook `tool.post`
+  of `Bash`, `Monitor`, `Agent`/`Task` naming a `backgroundTaskId`, `taskId`
+  or `agentId`) is listed either, because an agent waiting on work of its own
+  is off the list while that work is on it. A Stop with no list (a Claude Code
+  from before it) changes nothing. Owner, 2026-11-24: two release scripts the
+  lead stopped with `pkill` and three agents whose last notification said
+  they were waiting on their own work read open for 12 hours; Claude Code
+  wrote no notification for any of their ends, and its Stop list had dropped
+  them minutes later.
 - **Gone with its process:** a launch before the session's newest main-thread
   `SessionStart` that did not follow a compaction, or older than 12 hours
   (`store.BackgroundWorkWindow`), is not counted.
@@ -1484,11 +1498,15 @@ The background agents it holds open count as working in `live_subagents`, in
 `finished`) and in the opened subagent (`state: "working"`, no `stopped_at`)
 whatever their own events say: Claude Code fires an agent's `SubagentStop`
 when it stops to wait on background work of its own, which read *1 done*, and
-such an agent can stay silent past the 15-minute quiet rule. Two reads of the
-session's own rows since its newest process start (the calls through
+such an agent can stay silent past the 15-minute quiet rule. Reads of the
+session's own rows since its newest process start: the calls through
 `idx_events_attr_work`, which holds each event's kind and tool, so only those
-tools' calls are fetched; the notifications through `idx_events_user_turn`), kept per session by the main thread's newest event,
-since only a main-thread event can change them. The work board reads such a
+tools' calls are fetched; the notifications through `idx_events_user_turn`;
+the newest main-thread Stop through `idx_events_turn_bounds`, its list's ids
+alone taken out of the payload; and, only when an open agent is off that
+list, those agents' own launches through `idx_events_agent`. Kept per session
+by the main thread's newest event, since only a main-thread event can change
+them. The work board reads such a
 session `background`, and `end_when_done` and the idle end leave it running.
 
 ### Needs you and Done

@@ -2773,6 +2773,14 @@ SELECT e.id, (SELECT session_id FROM sessions WHERE sessions.sid = e.sid), ?, e.
     CORRELATED SCALAR SUBQUERY 1
         SEARCH sessions USING INTEGER PRIMARY KEY (rowid=?)
 
+## store.agentLaunches
+SELECT e.agent_id, json_extract((CASE WHEN typeof(e.payload) = 'blob' THEN zjson(e.payload) ELSE e.payload END), '$.tool_response.backgroundTaskId', '$.tool_response.taskId', '$.tool_response.agentId') FROM events e INDEXED BY idx_events_agent WHERE e.sid = (SELECT sid FROM sessions WHERE session_id = ?) AND e.agent_id IN (SELECT value FROM json_each(?)) AND e.ts >= ? AND e.kind = 'tool.post' AND e.source = 'hook' AND e.tool IN ('Bash', 'Monitor', 'Agent', 'Task')
+    SEARCH e USING INDEX idx_events_agent (sid=? AND agent_id=? AND ts>?)
+    SCALAR SUBQUERY 1
+        SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
+    LIST SUBQUERY 2
+        SCAN json_each VIRTUAL TABLE INDEX 1:
+
 ## store.agentSplit
 SELECT COALESCE(agent,'claude') FROM sessions WHERE session_id = ?
     SEARCH sessions USING INDEX sqlite_autoindex_sessions_1 (session_id=?)
@@ -3128,6 +3136,14 @@ SELECT COALESCE(MAX(e.ts), 0) FROM events e WHERE e.sid = (SELECT sid FROM sessi
     SEARCH e USING INDEX idx_events_session_ts (sid=? AND ts>?)
     SCALAR SUBQUERY 1
         SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
+
+## store.newestTaskList
+SELECT e.ts, CASE WHEN json_valid(e.payload) AND json_type(e.payload, '$.background_tasks') = 'array' THEN (SELECT json_group_array(json_extract(t.value, '$.id')) FROM json_each(e.payload, '$.background_tasks') t) END FROM events e INDEXED BY idx_events_turn_bounds WHERE e.sid = (SELECT sid FROM sessions WHERE session_id = ?) AND e.ts >= ? AND e.source = 'hook' AND e.kind IN ('turn.user', 'agent.stop', 'throttle') AND e.kind = 'agent.stop' AND COALESCE(e.agent_id, '') = '' ORDER BY e.ts DESC LIMIT 1
+    SEARCH e USING INDEX idx_events_turn_bounds (sid=? AND ts>?)
+    SCALAR SUBQUERY 2
+        SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
+    CORRELATED SCALAR SUBQUERY 1
+        SCAN t VIRTUAL TABLE INDEX 3:
 
 ## store.preInput
 SELECT (CASE WHEN typeof(payload) = 'blob' THEN zjson(payload) ELSE payload END) FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND key = ?
