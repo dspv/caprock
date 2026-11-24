@@ -1573,7 +1573,7 @@ or Photos library, cloud storage or a volume in the background.
 
 ### Dictating into the chat
 
-On a Mac, the chat's message field and the composer under a terminal have
+In the app, the chat's message field and the composer under a terminal have
 a microphone. **Hold it, speak, and let go**: what you said is in the field,
 not sent yet — read it, fix a word, press Enter. A quick click starts
 listening instead, and a second click stops it. The words appear as you
@@ -1581,7 +1581,7 @@ speak. It works the same for every agent: Claude Code, Codex, Cursor and
 the rest.
 
 The chip beside the microphone (**EN**, **RU**…) is the language it listens
-for; click it to switch, or to pick another. Recognition runs on your Mac
+for; click it to switch, or to pick another. On a Mac, recognition runs
 with Apple's on-device speech recognition: no audio or text leaves it. A
 language your Mac cannot recognise by itself is refused with a line that
 says so, rather than sent to Apple; adding it under System Settings →
@@ -1594,8 +1594,39 @@ The first time, macOS asks whether Caprock may use the microphone and
 speech recognition. If you let go of the button while it asks, Caprock
 starts listening once you allow it and keeps going until you click the
 microphone. If you said no, allow Caprock in System Settings →
-Privacy & Security → Microphone and → Speech Recognition. Windows, Linux
-and a browser tab do not have this microphone yet.
+Privacy & Security → Microphone and → Speech Recognition. A browser tab
+does not have this microphone.
+
+#### On Windows and Linux
+
+Windows and Linux have no speech recognition that works without the
+internet, so the app brings its own: [whisper.cpp](https://github.com/ggml-org/whisper.cpp),
+running inside Caprock on your processor. It needs a voice model, which
+you download once under **Settings → Voice input**:
+
+- **Accurate** (small, 191 MB, recommended) is the one to pick for
+  Russian and English.
+- **Fast** (base, 149 MB) finishes sooner and uses less memory, but misses
+  more words, Russian ones most.
+
+**Download voice model** fetches the file from huggingface.co, where the
+whisper.cpp project publishes its models, and checks its SHA-256 against
+the copy built into Caprock; a file that does not match is deleted.
+Nothing else is sent, before or after, and your voice never leaves the
+computer. The download shows how far it is and can be cancelled; once
+installed, the same place shows where the file is (`%LOCALAPPDATA%\dev.caprock.app\voice\`
+on Windows, `~/.local/share/dev.caprock.app/voice/` on Linux), with **Show
+in folder** and **Remove voice model**. Until it is in, the microphone in
+the chat says so and links there.
+
+Then the microphone works as on a Mac, with one difference: the words
+arrive a sentence at a time, after each pause, rather than word by word.
+When you let go, the line reads *Finishing…* for a few seconds while the
+last sentence is recognised. The model is loaded when you press the
+microphone and dropped a minute after you last used it. If Windows says
+Caprock may not use the microphone, allow it in Settings → Privacy &
+security → Microphone. Voice input needs a processor with AVX2 (Intel from
+2013, AMD from 2015); on an older one the microphone is not shown.
 
 ### Voice mode and the microphone
 

@@ -63,6 +63,7 @@ import { BrainAutoSetting } from '@/components/BrainAutoSetting'
 import { McpSetting } from '@/components/McpSetting'
 import { SharedPictures } from '@/components/SharedPictures'
 import { UpdatesSetting } from '@/components/UpdatesSetting'
+import { VoiceInputSetting } from '@/components/VoiceInputSetting'
 import { CloseButton, dialogOpen } from '@/components/Dialog'
 import { escapeLeavesPage, useCloseSettings } from '@/lib/settingsClose'
 import { CaprockItself } from '@/components/ResourceMeter'
@@ -187,6 +188,8 @@ export function StatusScreen() {
           <AppearanceSection />
           <TerminalSettings />
           {isTauri() && <BrowserSetting />}
+          {/* Windows and Linux only: the shell offers no voice model on a Mac (ADR-104). */}
+          {owner && isTauri() && <VoiceInputSetting />}
           {owner && <StatuslineSetting />}
           {owner && <EditorSetting />}
           {owner && <DefaultFolderSetting />}
@@ -207,6 +210,7 @@ export function StatusScreen() {
           {owner && <PlanSection />}
           {owner && <WindowStopSection />}
           <AppearanceSection />
+          {owner && isTauri() && <VoiceInputSetting />}
           {owner && <SpawnModeSetting />}
           {owner && <KeepAwakeSetting />}
           {owner && <SavedPromptsSetting />}
@@ -381,7 +385,8 @@ function PrivacySection() {
         The release check {plan.update_checks ? 'is on' : 'is off'} (Updates, above): it asks GitHub for the latest version number,
         and with Update automatically the app then downloads that version from GitHub. Apart from it, the Telegram messages you set
         up yourself and GitHub once you connect it, Caprock sends nothing over the internet — except what you send with a click: a
-        share card to caprock.dev when you press X, Threads or LinkedIn, a survey answer, a bug report. Everything else stays on this computer.
+        share card to caprock.dev when you press X, Threads or LinkedIn, a survey answer, a bug report, and on Windows and Linux the
+        voice model from huggingface.co when you press Download under Voice input. Everything else stays on this computer.
       </p>
       <SharedPictures />
     </Section>

@@ -27,6 +27,8 @@ import { resetPickerCache } from './ChatPicker'
 let invoke: ReturnType<typeof vi.fn>
 let nextId = 1
 let supported = true
+// Overrides the status the shell answers (Windows and Linux, ADR-104).
+let status: Record<string, unknown> | null = null
 
 function emit(detail: Record<string, unknown>) {
   act(() => { window.dispatchEvent(new CustomEvent(DICTATION_EVENT, { detail })) })
@@ -37,10 +39,11 @@ const view = (over: object = {}) => ({ session_id: 's1', messages: [], waiting: 
 beforeEach(() => {
   nextId = 1
   supported = true
+  status = null
   resetDeskVoice()
   localStorage.setItem('caprock.speech.lang', 'en-US')
   invoke = vi.fn(async (cmd: string) => {
-    if (cmd === 'dictation_status') return supported ? { supported: true } : { supported: false, reason: 'unsupported' }
+    if (cmd === 'dictation_status') return status ?? (supported ? { supported: true } : { supported: false, reason: 'unsupported' })
     if (cmd === 'dictation_start') return nextId++
     if (cmd === 'dictation_stop') return null
     throw new Error(`unexpected ${cmd}`)
@@ -275,5 +278,72 @@ describe('voice input in the chat field', () => {
     await act(async () => { await Promise.resolve() })
     expect(screen.queryByTestId('desk-mic')).toBeNull()
     expect(screen.getByRole('button', { name: 'Dictate' })).toBeInTheDocument()
+  })
+})
+
+describe('voice input on Windows and Linux (whisper.cpp, ADR-104)', () => {
+  it('without the voice model the mic is shown and a press offers the download, listening to nothing', async () => {
+    status = { supported: false, reason: 'no-model', engine: 'whisper' }
+    const mic = await mountComposer()
+    expect(mic).toHaveAttribute('title', expect.stringContaining('Settings → Voice input'))
+    fireEvent.change(box(), { target: { value: 'Please' } })
+    fireEvent.pointerDown(mic, { button: 0, pointerId: 1 })
+    fireEvent.pointerUp(mic, { button: 0, pointerId: 1 })
+    const line = await screen.findByRole('status')
+    expect(line).toHaveTextContent('Voice input needs a voice model. Download it in Settings → Voice input (about 190 MB, once).')
+    expect(invoke).not.toHaveBeenCalledWith('dictation_start', expect.anything())
+    // What was typed stays.
+    expect(box().value).toBe('Please')
+    // The shell is asked again, so the next press listens once the model is in.
+    await waitFor(() => expect(invoke.mock.calls.filter(([c]) => c === 'dictation_status').length).toBeGreaterThan(1))
+    fireEvent.click(screen.getByTestId('desk-voice-settings'))
+    expect(location.hash).toBe('#/settings/voice')
+    location.hash = ''
+  })
+
+  it('while the model downloads a press says so, not as an error', async () => {
+    status = { supported: false, reason: 'downloading', engine: 'whisper' }
+    const mic = await mountComposer()
+    fireEvent.click(mic, { detail: 0 })
+    const line = await screen.findByRole('status')
+    expect(line).toHaveTextContent('The voice model is still downloading')
+    expect(line).toHaveAttribute('data-desk-voice-line', 'muted')
+  })
+
+  it('a processor that cannot run the model shows no mic', async () => {
+    status = { supported: false, reason: 'cpu-unsupported', engine: 'whisper' }
+    render(<Composer sessionId="s1" agent="claude" asking={false} onBack={vi.fn()} onFiles={vi.fn()} />)
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith('dictation_status', {}))
+    expect(screen.queryByTestId('desk-mic')).toBeNull()
+  })
+
+  it('with the model in it listens as on a Mac, says "this computer", and waits for the last piece', async () => {
+    status = { supported: true, engine: 'whisper' }
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const mic = await mountComposer()
+    fireEvent.click(mic, { detail: 0 })
+    await waitFor(() => expect(mic).toHaveAttribute('data-phase', 'listening'))
+    expect(screen.getByRole('status')).toHaveTextContent('Recognised on this computer; nothing is sent.')
+    emit({ kind: 'partial', id: 1, text: 'Run the tests.' })
+    fireEvent.click(mic, { detail: 0 })
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith('dictation_stop', { id: 1, cancel: false }))
+    expect(screen.getByRole('status')).toHaveTextContent('Finishing…')
+    // whisper is still transcribing the last piece: 3 s is no reason to give up.
+    act(() => { vi.advanceTimersByTime(10_000) })
+    expect(invoke).not.toHaveBeenCalledWith('dictation_stop', { id: 1, cancel: true })
+    emit({ kind: 'final', id: 1, text: 'Run the tests. Then push.' })
+    emit({ kind: 'end', id: 1 })
+    expect(box().value).toBe('Run the tests. Then push.')
+  })
+
+  it('a refused microphone names the Windows setting', async () => {
+    status = { supported: true, engine: 'whisper' }
+    const platform = vi.spyOn(navigator, 'platform', 'get').mockReturnValue('Win32')
+    const mic = await mountComposer()
+    fireEvent.click(mic, { detail: 0 })
+    await waitFor(() => expect(mic).toHaveAttribute('data-phase', 'listening'))
+    emit({ kind: 'end', id: 1, error: 'mic-denied' })
+    expect(screen.getByRole('status')).toHaveTextContent('Allow it in Settings → Privacy & security → Microphone')
+    platform.mockRestore()
   })
 })

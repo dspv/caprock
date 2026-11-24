@@ -36,6 +36,7 @@ const P: Record<string, string> = {
   monitor: 'M3 4h18v12H3zM8 20h8M12 16v4',
   refresh: 'M20 11a8 8 0 0 0-14.9-4M4 4v4h4M4 13a8 8 0 0 0 14.9 4M20 20v-4h-4',
   plug: 'M9 2v6M15 2v6M6 8h12v4a6 6 0 0 1-12 0zM12 18v4',
+  mic: 'M9 3h6v11H9zM5 11a7 7 0 0 0 14 0M12 18v3',
 }
 
 const BY_TITLE: [RegExp, string][] = [
@@ -45,6 +46,7 @@ const BY_TITLE: [RegExp, string][] = [
   [/project templates/i, 'folder'],
   [/appearance/i, 'palette'],
   [/browser/i, 'globe'],
+  [/^voice input/i, 'mic'],
   [/phone/i, 'phone'],
   // Telegram's chat is its own section beside the bot's: its own mark, so
   // the menu does not show the same icon twice in a row (owner, 2026-10-17).

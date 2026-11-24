@@ -95,11 +95,13 @@ pub fn status() -> Status {
         Status {
             supported: true,
             reason: None,
+            engine: Some("apple"),
         }
     } else {
         Status {
             supported: false,
             reason: Some("unbundled"),
+            engine: Some("apple"),
         }
     }
 }

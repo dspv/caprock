@@ -8032,6 +8032,11 @@ which are about agents recording in a terminal; the phone's voice
 ([ADR-083](#adr-083--a-native-ios-app-the-phone-remote-in-a-capacitor-shell-with-native-pairing-voice-face-id-and-push),
 `lib/speech.ts`) is unchanged.
 
+*Extended 2026-11-23 by [ADR-104](#adr-104--voice-input-on-windows-and-linux-whispercpp-in-the-app-a-model-downloaded-on-a-click):*
+Windows and Linux get the same microphone, recognised by whisper.cpp in the
+app from a model the user downloads in Settings → Voice input. *Where it
+shows* below and the rejected *local speech model* hold for the Mac only.
+
 **Context.** The owner wants to dictate into the chat on his Mac rather
 than rely on Claude Code's `/voice`, which has failed in Caprock terminals
 more than once (ADR-101) and exists for Claude Code alone: Codex, Cursor
@@ -8217,3 +8222,131 @@ up, and nothing said why.
 **Revisit if** Cursor's output starts reporting usage (then it joins the
 token cap), a CLI gains a no-tools flag stronger than its read-only mode,
 or the reads limit proves too tight or too loose in practice.
+
+## ADR-104 — Voice input on Windows and Linux: whisper.cpp in the app, a model downloaded on a click
+
+**Date:** 2026-11-23 · **Status:** accepted (owner, 2026-11-23: "do it as
+proposed", on the research page with its Settings mockup, translated).
+Extends [ADR-102](#adr-102--voice-input-in-the-desktop-chat-apples-recognition-on-the-mac-only-through-the-app-for-every-agent)
+to the two systems it left without a microphone; the Mac is untouched.
+
+**Context.** Windows and Linux have no on-device dictation to bind. Windows'
+free dictation (the dictation grammar, Win+H) runs on Microsoft's servers —
+its documentation says the recognition "is performed by a remote web
+service" — and with online speech recognition off only phrase lists and
+grammars remain; Linux has no system recogniser at all. A local model is
+the only way to keep ADR-102's promise there: no audio and no text leave
+the computer.
+
+**Measured** (2026-11-23, GitHub Actions; the research page and its data,
+`scored.json`, are the owner's). Windows: Windows Server 2025, AMD EPYC
+9V45, 2 cores / 4 threads, 16 GB. Linux: Ubuntu, AMD EPYC 9V74, 2 cores / 4
+threads, 16 GB. whisper.cpp v1.9.5 CLI, CPU only, 4 threads; four
+synthetic recordings (macOS voices, 16 kHz mono, 10–14 s, Russian and
+English) plus two short phrases of 2.3–2.5 s.
+
+- **small q5_1** (190 MB file): peak memory 465–484 MB; word error rate 4%
+  English, 4–6% Russian, 7–9% on the technical phrase; a 10–14 s phrase took
+  5.3 s (Windows) and 7.2 s (Linux) with the full 30 s window, 3.1 s and
+  4.3 s with the window cut to the phrase (`-ac`).
+- **base** (148 MB): 286–305 MB; 5% English, 23% Russian, 19% technical;
+  1.5 s and 2.3 s full window, 1.0 s and 1.6 s cut.
+- Cutting the window did not cost accuracy, but three of eight short runs
+  with it ran longer than without (the decoder retried): the cut needs a
+  floor. Loading a model took 0.1–0.3 s, so it need not stay in memory.
+- Rejected on the same runs: tiny (35% Russian), full small (the same
+  accuracy as q5_1 at 488 MB and 753–772 MB of memory), large-v3-turbo q5_0
+  (15–23 s per phrase), Vosk small (33–35% Russian, about half of the
+  technical phrase).
+
+These are synthetic, clean recordings; a laptop microphone and a real voice
+will miss more ([12-risks.md](12-risks.md) OQ-30).
+
+**The decision.**
+
+- **Engine: whisper.cpp in the app's process**, through `whisper-rs`
+  0.16.0 (codeberg.org/tazz4843/whisper-rs, pinned with `=`; it bundles
+  whisper.cpp 1.8.3), CPU only, `app/src-tauri/src/dictate_whisper.rs`.
+  Built on Windows and Linux only; ggml is compiled with `GGML_NATIVE=OFF`
+  and AVX2, FMA and F16C (`.cargo/config.toml`), and the app checks the
+  processor for them before it offers voice input (`cpu-unsupported`), so a
+  build made on a CI runner never crashes an older machine.
+- **The microphone through cpal** 0.18.2 (WASAPI; ALSA, which PulseAudio
+  and PipeWire serve), not the webview's `getUserMedia`: WebKitGTK refuses
+  it unless the app handles its permission request, and WebView2 shows a
+  prompt of its own. Any rate and channel count is averaged to mono and
+  resampled to 16 kHz in the app (`dictate_offline.rs` `Resampler`).
+- **The page sees what the Mac's sends.** The same three commands and the
+  same events (`asking` is never sent; `listening`, `partial`, `final`,
+  `end`). Hold to talk or click, the language from the chip — passed to
+  whisper, never detected. `dictation_status` gains `engine` (`apple`,
+  `whisper`) and three reasons: `no-model`, `downloading`,
+  `cpu-unsupported`. With `no-model` or `downloading` the mic is still
+  shown and a press says *Voice input needs a voice model. Download it in
+  Settings → Voice input* with **Open Settings**.
+- **Words at pauses.** whisper has no honest partial words. Every 150 ms the
+  app moves what the microphone heard into a buffer; once 0.4 s more is in,
+  whisper.cpp's Silero detector (`ggml-silero-v5.1.2.bin`) finds the speech
+  in it, and a pause of at least 0.6 s ends a piece (`next_cut`; 20 s with
+  no such pause cuts at the widest gap; never more than 28 s). Each piece
+  is transcribed at once with `audio_ctx` cut to its length — at least 512
+  positions (about 10 s), the floor the retries above asked for — and the
+  words so far go to the page as `partial`. The release turns the
+  microphone off and transcribes the last piece while the line says
+  *Finishing…*; the page waits up to 60 s for it rather than Apple's 3 s.
+  Decoding is the CLI's default the research measured (beam search of 5),
+  one thread per physical core, at most 8.
+- **The model only while it is used.** Loaded on the press, kept 60 s after
+  the last dictation, then dropped; nothing runs while idle but that one
+  sleeping timer. Remove ends a dictation and unloads it first.
+- **The model, on a click.** Settings → Voice input (Windows and Linux
+  only; `components/VoiceInputSetting.tsx`, `src/voicemodel.rs`) offers
+  *Accurate · small* (`ggml-small-q5_1.bin`, the default) and *Fast · base*
+  (`ggml-base.bin`, with the plain note that it misses more Russian words),
+  one installed at a time. **Download** fetches the model and the 0.9 MB
+  detector from huggingface.co, from the official repositories pinned to a
+  commit (`ggerganov/whisper.cpp` at `5359861c…`, `ggml-org/whisper-vad` at
+  `9ffd54a1…`; Hugging Face hands the bytes over from its CDN). Each file
+  is written to `<file>.part`, hashed as it arrives, and renamed only when
+  its size and SHA-256 match the values compiled into the app, read from
+  those repositories' LFS pointers on 2026-11-23:
+  - `ggml-small-q5_1.bin` — 190,085,487 bytes,
+    `ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb`;
+  - `ggml-base.bin` — 147,951,465 bytes,
+    `60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe`;
+  - `ggml-silero-v5.1.2.bin` — 885,098 bytes,
+    `29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf`.
+
+  A mismatch deletes the file and says so; a broken connection says that
+  instead; Cancel deletes what came. The block shows progress, the
+  installed file's path with *Show in folder* and *Remove voice model*.
+  Files live in Tauri's `app_local_data_dir`:
+  `%LOCALAPPDATA%\dev.caprock.app\voice\` and
+  `~/.local/share/dev.caprock.app/voice/`.
+- **Rule 4.** The download is the only outbound call voice input makes: a
+  GET for a public file, on the user's click, never in the background or
+  again by itself, nothing sent with it. The line beside the button — kept
+  visible with the page's explanations hidden — says where it comes from,
+  that the SHA-256 is checked, that nothing else is sent and that the voice
+  never leaves the computer. Settings → Privacy names it.
+- **Granted to the dashboard page alone**, as ADR-102's commands:
+  `voice_model_status`, `_download`, `_cancel`, `_remove`, `_reveal`
+  (`capabilities/daemon.json`; the shell's tests check every refusal).
+  On a Mac each but the status refuses and the block is not drawn.
+
+**Rejected.**
+
+- *Windows' own dictation.* Microsoft's servers (above).
+- *Vosk.* Faster and with real partial words, but its small models missed a
+  third of Russian words and half of the technical phrase.
+- *tiny, full small, large-v3-turbo.* Above.
+- *Auto-detecting the language.* The chip already says it; detection costs
+  a pass and guesses wrong on short phrases.
+- *The model bundled with the app.* 190 MB in every installer for a feature
+  many never use.
+- *`whisper-stream`'s sliding window* (0.5 s steps over 5 s). It re-reads
+  the whole window every half second; with small on 4 threads it cannot
+  keep up.
+
+**Revisit if** a real voice on a laptop microphone misses far more than the
+synthetic recordings did, or Windows ships an offline dictation API.

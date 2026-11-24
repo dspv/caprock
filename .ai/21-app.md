@@ -1904,12 +1904,15 @@ and `ui/src/lib/composer.ts`.
 - **Look.** `.app-composer` in `tokens.css`: the slab's own ink at 5% over
   the terminal's ground, a hairline at rest, the accent edge and a 3px
   accent halo when it has the keyboard, in every terminal palette.
-- **Voice** (macOS app only, [ADR-102](08-decisions.md)). A microphone and
-  its language chip sit beside *Saved* and ⋯: hold to talk, or click to
-  start and click again; the words land in the box, not sent, recognised
-  on the Mac by Apple's on-device speech recognition through the shell
-  (`app/src-tauri/src/dictate.rs`, `dictate_macos.rs`). Hidden on Windows,
-  Linux and in a browser tab. The behaviour is the chat field's:
+- **Voice** (the desktop app, [ADR-102](08-decisions.md) on macOS,
+  [ADR-104](08-decisions.md) on Windows and Linux). A microphone and its
+  language chip sit beside *Saved* and ⋯: hold to talk, or click to start
+  and click again; the words land in the box, not sent, recognised on the
+  computer through the shell (`app/src-tauri/src/dictate.rs`): Apple's
+  on-device speech recognition on a Mac (`dictate_macos.rs`), whisper.cpp
+  on Windows and Linux once the voice model is downloaded in Settings →
+  Voice input (`dictate_whisper.rs`). Hidden in a browser tab. The
+  behaviour is the chat field's:
   [04-ui.md § Voice input on a computer](04-ui.md).
 
 ## Quick replies
@@ -2705,6 +2708,20 @@ the fallback since the Developer ID; see *With a Developer ID*):
   (`NSSpeechRecognitionUsageDescription`; without it the request ends the
   app). `scripts/check-app-mic.sh` checks both keys. Not Caprock Terminal,
   which answers only for what runs in a terminal.
+- **The chat's microphone on Windows and Linux** (ADR-104, 2026-11-23).
+  The app opens the default microphone itself through cpal (WASAPI; ALSA,
+  which PulseAudio and PipeWire serve) and recognises it with whisper.cpp
+  in its own process (`src/dictate_whisper.rs`, pure parts in
+  `src/dictate_offline.rs`); the webview's `getUserMedia` is not used.
+  Windows' microphone privacy switch applies to the app as a desktop app; a
+  refusal gets its own line. The voice model is a separate download
+  (`src/voicemodel.rs`, Settings → Voice input) into the app's local data
+  folder, `%LOCALAPPDATA%\dev.caprock.app\voice\` or
+  `~/.local/share/dev.caprock.app/voice/`; uninstalling the app leaves it
+  there, and *Remove voice model* deletes it. The model is in memory only
+  from a press until 60 s after the last dictation. Building it needs CMake
+  and libclang, and the ALSA headers on Linux (app/README.md); the Linux
+  packages depend on `libasound2` (deb) and `alsa-lib` (rpm).
 - **The daemon's own background reads skip guarded places**
   (`tcc.Guarded`): Desktop, Documents, Downloads, iCloud Drive, cloud
   storage, Music, Movies, Pictures, `/Volumes`, and links into them. What

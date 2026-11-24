@@ -1,5 +1,5 @@
 /**
- * Voice input in the desktop app's chat (ADR-102): the state of one
+ * Voice input in the desktop app's chat (ADR-102, ADR-104): the state of one
  * dictation, as a pure reducer, and what the microphone button does on a
  * press and a release. The native side is `lib/deskvoice.ts`; the button and
  * the line under the field are `components/DeskVoice.tsx`.
@@ -10,7 +10,9 @@
  * stay in the field, not sent). Every error ends it with a line that says
  * why: a refused microphone or speech recognition, a language this Mac
  * cannot recognise on its own (nothing is sent to Apple instead), or
- * nothing heard. Words already heard are never taken back.
+ * nothing heard. Words already heard are never taken back. On Windows and
+ * Linux (whisper.cpp, ADR-104) two more say where the voice model is: not
+ * downloaded yet, or still downloading — each with Settings → Voice input.
  *
  * The first time, macOS asks for the microphone and speech recognition
  * (`asking`). A release while it asks does not end the dictation: once
@@ -32,6 +34,14 @@ export type VoiceError =
   | 'no-microphone'
   | 'unsupported'
   | 'failed'
+  /** Windows, Linux: the voice model is not downloaded (Settings → Voice input). */
+  | 'no-model'
+  /** Windows, Linux: it is still downloading. */
+  | 'downloading'
+  /** Windows, Linux: this processor cannot run the model. */
+  | 'cpu'
+  /** Windows, Linux: the model file would not load. */
+  | 'model-failed'
 
 export interface VoiceState {
   phase: VoicePhase
@@ -94,6 +104,14 @@ export function voiceError(code: string | undefined): VoiceError | null {
     case 'unsupported':
     case 'unbundled':
       return 'unsupported'
+    case 'no-model':
+      return 'no-model'
+    case 'downloading':
+      return 'downloading'
+    case 'cpu-unsupported':
+      return 'cpu'
+    case 'model-failed':
+      return 'model-failed'
     default:
       return 'failed'
   }
@@ -179,8 +197,55 @@ export function releaseStops(downAt: number, upAt: number, startedByThisPress: b
   return !startedByThisPress || upAt - downAt >= HOLD_MS
 }
 
-/** The line under the field for an error, naming the language where it matters. */
-export function voiceMessage(e: VoiceError, language: string): string {
+/** Where the app runs, for the lines that name a system setting. */
+export type VoiceOS = 'mac' | 'windows' | 'linux'
+
+/** This computer's OS as the page sees it. */
+export function voiceOS(): VoiceOS {
+  if (typeof navigator === 'undefined') return 'mac'
+  const p = navigator.platform || navigator.userAgent
+  if (/Win/.test(p)) return 'windows'
+  if (/Mac|iP(hone|ad)/.test(p)) return 'mac'
+  return 'linux'
+}
+
+/** Whether an error's line offers Settings → Voice input. */
+export function voiceErrorOpensSettings(e: VoiceError | undefined): boolean {
+  return e === 'no-model' || e === 'downloading' || e === 'model-failed'
+}
+
+/**
+ * The line under the field for an error, naming the language where it
+ * matters. `engine` is who listened: Apple's lines name macOS's settings,
+ * whisper's (Windows, Linux) name the voice model and this OS's.
+ */
+export function voiceMessage(e: VoiceError, language: string, engine: 'apple' | 'whisper' = 'apple', os: VoiceOS = voiceOS()): string {
+  if (engine === 'whisper') {
+    switch (e) {
+      case 'denied-mic':
+        return os === 'windows'
+          ? 'Caprock may not use the microphone. Allow it in Settings → Privacy & security → Microphone, then try again.'
+          : 'Caprock may not use the microphone. Check that your user may record in your system\'s sound or privacy settings, then try again.'
+      case 'unavailable-language':
+        return `${language} isn't a language the voice model knows, so nothing was recorded. Pick another one on the chip beside the mic.`
+      case 'unsupported':
+        return 'Voice input is not available in this copy of the app.'
+      case 'no-model':
+        return 'Voice input needs a voice model. Download it in Settings → Voice input (about 190 MB, once).'
+      case 'downloading':
+        return 'The voice model is still downloading — the mic works once it is in.'
+      case 'cpu':
+        return "This computer's processor lacks AVX2, which the voice model needs, so voice input is off here."
+      case 'model-failed':
+        return 'The voice model would not load. Remove it in Settings → Voice input and download it again.'
+      default:
+        break
+    }
+  }
+  return appleMessage(e, language)
+}
+
+function appleMessage(e: VoiceError, language: string): string {
   switch (e) {
     case 'denied-mic':
       return 'Caprock may not use the microphone. Allow it in System Settings → Privacy & Security → Microphone, then try again.'
@@ -195,6 +260,11 @@ export function voiceMessage(e: VoiceError, language: string): string {
     case 'unsupported':
       return 'Voice input needs the Caprock app on a Mac.'
     case 'failed':
+      return 'Voice input stopped — try again.'
+    case 'no-model':
+    case 'downloading':
+    case 'cpu':
+    case 'model-failed':
       return 'Voice input stopped — try again.'
   }
 }

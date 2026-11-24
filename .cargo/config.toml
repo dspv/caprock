@@ -1,0 +1,16 @@
+# How whisper.cpp is compiled into the desktop app (app/src-tauri, ADR-104).
+# whisper-rs-sys hands every GGML_* variable to CMake. Here, not in
+# app/src-tauri/.cargo, because cargo reads this file from the directory it
+# runs in and upwards: `make app-test` runs from the repository root.
+#
+# GGML_NATIVE=OFF: without it ggml is built for the CI runner's own processor
+# (-march=native) and a user's older one crashes with an illegal
+# instruction. The baseline instead is AVX2, FMA and F16C (x86-64 from about
+# 2013); the app checks for them before it offers voice input
+# (voicemodel::cpu_ok). On ARM these x86 switches are ignored.
+[env]
+GGML_NATIVE = "OFF"
+GGML_AVX = "ON"
+GGML_AVX2 = "ON"
+GGML_FMA = "ON"
+GGML_F16C = "ON"

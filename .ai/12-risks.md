@@ -416,6 +416,16 @@ Anything the spec did not answer. Do not resolve these by inventing an answer. "
   it again, or a reply on a funded key showing the model it answers with.
   Mail's default moved to `deepseek-flash` in the same change, so only a
   user who typed `deepseek-chat` by hand still meets it.
+- `OQ-30` — **How well offline voice input hears a real voice** (Windows,
+  Linux; [ADR-104](08-decisions.md)). Every figure behind the model choice
+  and the Settings notes came from synthetic recordings (macOS voices,
+  clean 16 kHz audio) on CI runners, 2026-11-23; a laptop microphone, an
+  accent and a noisy room will miss more, and none of that is measured. Nor
+  is the time *Finishing…* takes with the app's own pause cuts and one
+  thread per physical core (the runners ran 4 threads on 2 cores). Decided
+  by: five to ten phrases dictated into the app on a real Windows and a
+  real Linux machine, scored with the research's script, and the notes in
+  Settings corrected to what they show.
 
 ## What would falsify the whole plan
 
