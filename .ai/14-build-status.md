@@ -532,6 +532,15 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-11-24 — 0.193.0: voice input on Windows and Linux
+
+A minor release, #1030. The desktop app takes voice input on Windows and Linux,
+recognised on the computer by whisper.cpp inside the app, with a voice model
+downloaded once from Settings → Voice input and checked against a SHA-256
+built into Caprock; the voice never leaves the computer (ADR-104). Two
+screenshots dropped into a Claude Code session no longer arrive glued
+together as one long path when Claude Code keeps them as text.
+
 ### 2026-11-24 — 0.192.1: Now says when work runs in the background
 
 A patch release, #1049. A session whose turn ended while its background agents,
