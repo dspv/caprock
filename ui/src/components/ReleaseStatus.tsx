@@ -100,8 +100,10 @@ function dotState(x: StripStage, current: boolean, tone: StatusTone): string {
  * `version` puts a tag already under way first, where no heading above
  * names it.
  */
-export function ReleaseStrip({ status: s, version, out, cards, batch, main, now = Date.now(), href, kept }: {
+export function ReleaseStrip({ status: s, version, out, words: showWords = true, cards, batch, main, now = Date.now(), href, kept }: {
   status: ReleaseStatus; version?: boolean; out?: boolean
+  /** False where the heading above already says the status (a release just out, its pill): the steps alone. */
+  words?: boolean
   /** Where the words go when they name the batch pull request (*Waiting for #977 · CI red*): the Pipeline on it. */
   href?: string
   /** Drawn from a kept copy being read again: faint, its age on hover (owner, 2026-11-20). */
@@ -150,12 +152,12 @@ export function ReleaseStrip({ status: s, version, out, cards, batch, main, now 
         * words say only where it is (*building 0 of 23 files*) — the lead
         * with them was cut (owner, 2026-11-21). On their own line they wrap,
         * never cut (owner, 2026-11-23). */}
-      <p className="m-0 min-w-0 [overflow-wrap:anywhere]">
+      {showWords && <p className="m-0 min-w-0 [overflow-wrap:anywhere]">
         {version && s.version && <span className="num mr-2 font-semibold text-fg">{s.version}</span>}
         {href && w.key === 'merged'
           ? <a data-release-stage-words href={href} title={wordsTitle} className={`tabular-nums no-underline hover:underline ${wordsTone}`}>{w.text}</a>
           : <span data-release-stage-words title={wordsTitle} className={`tabular-nums ${wordsTone}`}>{current && (w.tone === 'active' || w.detailOnly) && w.detail ? w.detail : w.text}</span>}
-      </p>
+      </p>}
     </div>
   )
 }

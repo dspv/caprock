@@ -803,6 +803,10 @@ export function CockpitRelease({ sessionId, repoRoot }: { sessionId: string; rep
   // say the same again (owner, 2026-11-20), so it goes, and the words open
   // the Pipeline on it as the via line did.
   const out = head.state === 'out'
+  // Just out, the heading is the folded line's pill, age and cost
+  // (ReleasedHead), so the words under the steps would say *Released · 5 min
+  // ago* a second time (owner, 2026-11-24): the green *Out* step says it.
+  const outFold = out && fold?.kind === 'out' ? fold : undefined
   const words = head.state !== 'idle' ? stageWords(status, stripStages(status, { out }), { cards: board?.cards, out, now, batch, main }) : undefined
   const viaInWords = !!via && words?.key === 'merged'
   // The pull request the words wait for is always on view (owner,
@@ -822,8 +826,10 @@ export function CockpitRelease({ sessionId, repoRoot }: { sessionId: string; rep
       {label}
       <div data-release-plan={plan.name} className="grid min-w-0 gap-[10px]">
         <div data-release-group="head" className="grid min-w-0 gap-1.5">
-          {!repo && !work.data ? <p className="text-[12px] text-fg-muted">Reading…</p> : <NotesHead head={head} />}
-          {head.state !== 'idle' && <ReleaseStrip status={status} out={out} cards={board?.cards} batch={batch} main={main} now={now}
+          {!repo && !work.data ? <p className="text-[12px] text-fg-muted">Reading…</p>
+            : outFold ? <ReleasedHead fold={outFold} tag={status.last?.tag ?? outFold.text} repo={repoRoot ?? ''} title={head.title} />
+            : <NotesHead head={head} />}
+          {head.state !== 'idle' && <ReleaseStrip status={status} out={out} words={!outFold} cards={board?.cards} batch={batch} main={main} now={now}
             href={wordsHref} kept={keptText ? `${keptText}, being read again` : undefined} />}
           {hint && <NextHintLine hint={hint} rows={hintRows} root={plan.root} waited={waitedInRows ? waited : undefined} />}
         </div>
@@ -863,12 +869,13 @@ function burstKeep(repo: string, tag: string) {
 }
 
 /**
- * The folded line's version just out, as a green pill with a check (owner,
- * 2026-11-24, variant A: "more noticeable, a sense of hooray"). The first
- * time a viewer sees a release's pill, about fourteen small squares burst
+ * The version just out, as a green pill with a check (owner, 2026-11-24,
+ * variant A: "more noticeable, a sense of hooray"), on the folded line and
+ * as the unfolded heading alike. The first time a viewer sees a release's
+ * pill, folded or not, about fourteen small squares burst
  * from it once, for about a second, in the ok, warn and accent colours —
- * once per tag and repository (kept in localStorage), never on a poll, a
- * render or a reload, and never with reduced motion. The squares are drawn
+ * once per tag and repository (kept in localStorage, one key for both
+ * places), never on a poll, a render, a reload or a fold, and never with reduced motion. The squares are drawn
  * over the page (fixed, in a portal): the line clips what does not fit it.
  */
 function ReleasedPill({ text, tag, repo }: { text: string; tag: string; repo: string }) {
@@ -920,14 +927,15 @@ function ReleasedPill({ text, tag, repo }: { text: string; tag: string; repo: st
 }
 
 /**
- * The folded line's parts for a release just out (owner, 2026-11-24,
- * variant A): the version as a green pill (ReleasedPill), its age muted
+ * The parts of a release just out, folded line and unfolded heading alike
+ * (owner, 2026-11-24, variant A): the version as a green pill (ReleasedPill), its age muted
  * beside it with no dot, then the agents' cost in the panel's own text
  * colour, then the batch's words. Where the panel is too narrow for the
  * pill, the age and the cost together, the age goes first (it stays in the
  * line's hover): the cost is what was asked to be seen. Narrower still, the
  * parts wrap under the line and are clipped, the last first, as on every
- * other folded line.
+ * other folded line. Unfolded (ReleasedHead) the room is the heading's own
+ * width.
  */
 function ReleasedParts({ fold, tag, repo }: { fold: ReleaseFold; tag: string; repo: string }) {
   const parts = fold.text.split(' · ')
@@ -938,23 +946,24 @@ function ReleasedParts({ fold, tag, repo }: { fold: ReleaseFold; tag: string; re
   useLayoutEffect(() => {
     const cost = costRef.current
     const line = cost?.parentElement
+    // Folded, the room is the section's head less its button; unfolded, the heading line's own.
     const head = line?.closest<HTMLElement>('[data-section-head]')
-    if (!hasCost || !cost || !line || !head) { setTight(false); return }
+    if (!hasCost || !cost || !line) { setTight(false); return }
     const measure = () => {
       const pill = line.querySelector<HTMLElement>('[data-release-pill]')
       const age = line.querySelector<HTMLElement>('[data-release-fold-age]')
       if (age && age.offsetWidth > 0) ageW.current = age.offsetWidth
-      const btn = head.querySelector<HTMLElement>(':scope > button')
-      const gap = parseFloat(getComputedStyle(head).columnGap) || 0
+      const btn = head?.querySelector<HTMLElement>(':scope > button')
+      const gap = head ? parseFloat(getComputedStyle(head).columnGap) || 0 : 0
       const lineGap = parseFloat(getComputedStyle(line).columnGap) || 0
-      const avail = head.clientWidth - (btn?.offsetWidth ?? 0) - gap
+      const avail = head ? head.clientWidth - (btn?.offsetWidth ?? 0) - gap : line.clientWidth
       const need = (pill?.offsetWidth ?? 0) + ageW.current + cost.offsetWidth + 2 * lineGap
       setTight(avail > 0 && need > avail + 0.5)
     }
     measure()
     if (typeof ResizeObserver === 'undefined') return
     const ro = new ResizeObserver(measure)
-    ro.observe(head)
+    ro.observe(head ?? line)
     return () => ro.disconnect()
   }, [hasCost, fold.text])
   return (
@@ -970,6 +979,24 @@ function ReleasedParts({ fold, tag, repo }: { fold: ReleaseFold; tag: string; re
         )
       })}
     </>
+  )
+}
+
+/**
+ * The unfolded heading for the hour after a release (owner, 2026-11-24,
+ * translated: "where is it?" — the pill and the cost were only folded, and
+ * *released · 23 min ago* stood twice): the folded line's own parts
+ * (ReleasedParts) on one 16px line, the pill bursting only if it has not
+ * already for this tag, folded or here.
+ */
+function ReleasedHead({ fold, tag, repo, title }: { fold: ReleaseFold; tag: string; repo: string; title: string }) {
+  return (
+    <header data-release-head="out" className="min-w-0">
+      <h3 data-release-version data-release-released title={`${title}${fold.cost ? `\n${fold.cost.title}` : ''}`} aria-label={fold.text}
+        className="flex h-[16px] min-w-0 cursor-help flex-wrap items-center gap-x-1 overflow-hidden text-[11.5px] leading-[16px] tabular-nums text-ok">
+        <ReleasedParts fold={fold} tag={tag} repo={repo} />
+      </h3>
+    </header>
   )
 }
 
