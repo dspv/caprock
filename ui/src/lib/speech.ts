@@ -98,6 +98,46 @@ export interface Dictation {
   stop(): void
 }
 
+/** A gap with no result this long (ms) counts as a pause between phrases. */
+export const PHRASE_PAUSE_MS = 800
+
+/** Words for comparing two guesses: lower case, punctuation and case from addPunctuation ignored. */
+function words(s: string): string[] {
+  return s
+    .toLowerCase()
+    .replace(/[\p{Pd}/]+/gu, ' ')
+    .replace(/[^\p{L}\p{N}\s]+/gu, '')
+    .split(/\s+/)
+    .filter(Boolean)
+}
+
+/**
+ * Whether `next` is a new phrase that replaced `current` rather than a
+ * revision of it — so `current` has to be kept before `next` is shown.
+ *
+ * Apple's recogniser (iOS 17 and 18; Apple Developer Forums threads 762952,
+ * 764809, 770278) starts a new segment after a pause of a second or two in
+ * the middle of one recognition: its next partial result holds only the
+ * words said after the pause, with no final result and no flag in between.
+ * Taking that partial as "everything heard" threw away every phrase but the
+ * last. A revision keeps the start and rewrites the tail ("turn of" →
+ * "Turn off the", "how are you" → "How are you?"); a new segment starts
+ * from a different first word, or after a pause shares at most its first
+ * word and is shorter. `pausedMs` is the time since the result before.
+ */
+export function startsOver(current: string, next: string, pausedMs: number): boolean {
+  const cw = words(current)
+  const nw = words(next)
+  if (cw.length === 0 || nw.length === 0) return false
+  let k = 0
+  while (k < cw.length && k < nw.length && (cw[k] === nw[k] || cw[k]!.startsWith(nw[k]!) || nw[k]!.startsWith(cw[k]!))) k++
+  // Everything shown is still there at the start: a revision or more words.
+  if (k === cw.length) return false
+  const paused = pausedMs >= PHRASE_PAUSE_MS
+  if (k === 0) return nw.length < cw.length || paused
+  return paused && nw.length < cw.length && k * 3 <= cw.length
+}
+
 type ResultList = RecognitionEvent['results']
 
 /**
@@ -157,6 +197,8 @@ export function startDictation({ lang, onText, onEnd }: {
   // What the current recognizer's results say, and the first of them.
   let current = ''
   let first: { final: boolean; text: string } | null = null
+  // When the result before arrived, to tell a pause from a quick revision.
+  let lastAt = Date.now()
   let error: string | undefined
   let ended = false
   let stopping = false
@@ -190,13 +232,18 @@ export function startDictation({ lang, onText, onEnd }: {
       const res = e.results
       const head = res.length > 0 ? res[0]! : null
       const headText = head?.[0]?.transcript ?? ''
-      // A list that started over (Chrome on Android, after a pause): what
-      // the old one held is kept, not replaced.
-      if (first?.final && head && headText !== first.text) commit()
       const next = assembleHeard(res)
+      const at = Date.now()
+      const paused = at - lastAt
+      lastAt = at
       // An event that says less than nothing — an empty list, a blank
       // final after stop() — never wipes words already shown.
       if (!next.trim() && current.trim()) return
+      // A list that started over (Chrome on Android, after a pause), or a
+      // guess that became a new phrase (Safari on iOS, whose recogniser
+      // starts a new segment after a pause): what was heard before is
+      // kept, not replaced.
+      if ((first?.final && head && headText !== first.text) || startsOver(current, next, paused)) commit()
       current = next
       first = head ? { final: head.isFinal, text: headText } : null
       if (next.trim()) heardThisRun = true
