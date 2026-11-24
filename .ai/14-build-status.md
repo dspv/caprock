@@ -532,6 +532,13 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-11-24 — 0.194.1: the released pill when the section is open
+
+A patch release, #1057. The expanded Release section shows the same green
+"released" pill, age and agent cost as the folded line, and no longer says
+"released" twice; the burst plays once per release in either view. A
+compression library is updated.
+
 ### 2026-11-24 — 0.194.0: a release you can see land
 
 A minor release, #1055. For the hour after a release the cockpit's folded

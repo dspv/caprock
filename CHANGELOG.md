@@ -12,6 +12,16 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.194.1] - 2026-11-24
+
+### Fixed
+
+- **cockpit:** unfolded, the Release section for the hour after a release now
+  heads with the same green pill, age and agent cost as the folded line, and
+  says *released · 23 min ago* once: the words under the stage steps are gone
+  in that state, the green *Out* step says it. The pill bursts once per tag
+  whether it is first seen folded or unfolded.
+
 ## [0.194.0] - 2026-11-24
 
 ### Changed
