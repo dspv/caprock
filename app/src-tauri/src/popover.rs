@@ -1,9 +1,17 @@
 //! The menu bar popover (macOS): a left click on the menu bar icon shows a
 //! small borderless window under it with the daemon's `#/tray` page — what
-//! needs you, what is running, the plan windows, today's spend. The window is
-//! created hidden as soon as a daemon answers, so a click shows a page that
-//! is already painted. It hides when it loses focus. A right click keeps the
-//! native menu (tray.rs).
+//! needs you, what is running, the plan windows, today's spend. It hides when
+//! it loses focus. A right click keeps the native menu (tray.rs).
+//!
+//! The window is made on the first click (or the first peek), not when a
+//! daemon answers: a web view held for a popover nobody opens was a second
+//! WebKit content process of 25 MB on the bench, 35–70 MB on the owner's Mac,
+//! for the life of the app (2026-11-24 audit). A first click shows the panel
+//! at once, its vibrancy and the page's own loading mark (`ui/index.html`)
+//! until the page draws. Once made it is kept: closing it again after a
+//! while was tried and crashed the app — WebKit removes a window observer
+//! from the window class it was added on, and the panel's class swap
+//! (`panel` below) makes that removal throw (2026-11-24, bench build).
 //!
 //! It is a non-activating panel (`panel` below): showing it, typing Escape in
 //! it or clicking a row never activates Caprock, so the main window stays
@@ -69,20 +77,31 @@ pub fn fit_height(h: f64) -> f64 {
     }
 }
 
-/// Creates the hidden popover for the daemon on `port`, or points it there
-/// when the daemon moved. Called from the monitor while connected.
+/// Remembers the daemon on `port` for the popover, and points an open one
+/// there when the daemon moved. Called from the monitor while connected. It
+/// makes no window: the first click does (`build`).
 pub fn ensure<R: Runtime>(app: &AppHandle<R>, port: u16) {
     // The port is remembered rather than read back with `url()`: a popover
     // whose first load never committed (the daemon stopped while it loaded,
     // as when the app moves a Homebrew daemon onto its own, ADR-040) has no
     // URL, and wry unwraps it on the main thread — the app aborted.
-    if let Some(w) = app.get_webview_window(POPOVER) {
-        if PORT.swap(port, Ordering::Relaxed) != port {
+    if PORT.swap(port, Ordering::Relaxed) != port {
+        if let Some(w) = app.get_webview_window(POPOVER) {
             let _ = w.navigate(url(port));
         }
-        return;
     }
-    PORT.store(port, Ordering::Relaxed);
+}
+
+/// Makes the hidden popover for the daemon last seen, or None before any
+/// daemon answered.
+fn build<R: Runtime>(app: &AppHandle<R>) -> Option<tauri::WebviewWindow<R>> {
+    if let Some(w) = app.get_webview_window(POPOVER) {
+        return Some(w);
+    }
+    let port = PORT.load(Ordering::Relaxed);
+    if port == 0 {
+        return None;
+    }
     let b = WebviewWindowBuilder::new(app, POPOVER, WebviewUrl::External(url(port)))
         .title("Caprock")
         .inner_size(WIDTH, 420.0)
@@ -112,15 +131,23 @@ pub fn ensure<R: Runtime>(app: &AppHandle<R>, port: u16) {
             ..Default::default()
         })
     };
-    let Ok(w) = b.build() else { return };
+    let w = b.build().ok()?;
+    // A click arrives on the main thread, and the panel must exist before
+    // `present` asks for it; from anywhere else it is made there.
     #[cfg(target_os = "macos")]
     {
-        let panel = w.clone();
-        let _ = app.run_on_main_thread(move || {
-            if let Err(e) = panel::convert(&panel) {
+        if objc2::MainThreadMarker::new().is_some() {
+            if let Err(e) = panel::convert(&w) {
                 eprintln!("caprock: the popover stays an ordinary window: {e}");
             }
-        });
+        } else {
+            let panel = w.clone();
+            let _ = app.run_on_main_thread(move || {
+                if let Err(e) = panel::convert(&panel) {
+                    eprintln!("caprock: the popover stays an ordinary window: {e}");
+                }
+            });
+        }
     }
     let handle = app.clone();
     w.on_window_event(move |e| match e {
@@ -141,6 +168,7 @@ pub fn ensure<R: Runtime>(app: &AppHandle<R>, port: u16) {
         }
         _ => {}
     });
+    Some(w)
 }
 
 /// Reloads the popover after the shell replaced the daemon on `port` under it,
@@ -156,9 +184,9 @@ pub fn reload<R: Runtime>(app: &AppHandle<R>, port: u16) {
 }
 
 /// A left click on the menu bar icon: show the popover under it, or hide it.
-/// With no popover yet (no daemon has answered), the main window comes up.
+/// The first click makes it; with no daemon yet, the main window comes up.
 pub fn toggle<R: Runtime>(app: &AppHandle<R>, rect: Rect) {
-    let Some(w) = app.get_webview_window(POPOVER) else {
+    let Some(w) = build(app) else {
         hotkey::show(app);
         return;
     };
@@ -209,8 +237,14 @@ fn main_frontmost<R: Runtime>(app: &AppHandle<R>) -> bool {
 /// `eligible` are the sessions that may peek; `shown` the one the main
 /// window's front tab shows. Main thread.
 pub fn peek_update<R: Runtime>(app: &AppHandle<R>, eligible: &[String], shown: Option<&str>) {
-    let Some(w) = app.get_webview_window(POPOVER) else {
-        return;
+    // Nothing waits that may peek: no window is made for it.
+    let w = match app.get_webview_window(POPOVER) {
+        Some(w) => w,
+        None if eligible.is_empty() => return,
+        None => match build(app) {
+            Some(w) => w,
+            None => return,
+        },
     };
     let visible = w.is_visible().unwrap_or(false);
     let front = shown.filter(|_| main_frontmost(app));

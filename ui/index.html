@@ -162,6 +162,27 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // The menu bar popover is made on its first click (app popover.rs), so
+      // its first view is this page loading: a quiet mark until the page
+      // draws, never a blank panel. Only there; outside the root, so the
+      // start-up watchdog above still sees an empty root as empty.
+      (function () {
+        if (location.hash.indexOf('#/tray') !== 0) return;
+        var r = document.getElementById('root'), m = document.createElement('div');
+        m.id = 'caprock-loading';
+        m.setAttribute('aria-label', 'Loading');
+        m.style.cssText = 'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none';
+        m.innerHTML = '<div style="width:18px;height:18px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;' +
+          'opacity:.45;animation:caprock-spin .8s linear infinite"></div><style>@keyframes caprock-spin{to{transform:rotate(360deg)}}</style>';
+        document.body.appendChild(m);
+        function done() { if (r.childElementCount > 0) { m.remove(); return true } return false }
+        if (!done() && typeof MutationObserver !== 'undefined') {
+          var o = new MutationObserver(function () { if (done()) o.disconnect() });
+          o.observe(r, { childList: true });
+        }
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

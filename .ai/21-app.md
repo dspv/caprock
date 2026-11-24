@@ -1408,7 +1408,18 @@ work) and fixed:
   the pulse and the cockpit's events now apply a 250 ms batch at a time.
 
 The popover renders nothing while closed (its tick is held, its fetches were
-already gated on being shown). The shell's own supervisor polls `/healthz`
+already gated on being shown). Since 2026-11-24 it does not exist until it
+is first opened ([app/README.md](../app/README.md) § Menu bar popover):
+made hidden at start, it held a second WebContent process of 25 MB for the
+life of the app, opened or not. Closing it again 5 minutes after it was
+hidden was built and dropped: `destroy()` on the panel aborted the app in
+`-[NSView removeFromSuperview]`, WebKit's `WKWindowVisibilityObserver`
+removing a key-value observer the panel's class swap no longer finds. Measured with the bench's
+snapshot build on a stand, the popover never opened: the app's processes
+188.9 → 143.3 MB at start, 380.3 → 332.5 MB with eight tabs. The same run
+measured the window by tab count, for what is left to trim: the main
+WebContent process 70 MB with no tab, 134 MB with one, 189 MB with four,
+242 MB with eight. The shell's own supervisor polls `/healthz`
 every 500 ms while the window is shown and every 5 s while it is hidden, in
 the app's process, not the page's; unchanged.
 

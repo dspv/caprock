@@ -407,8 +407,14 @@ in the page, so it is not taken for a click on a notification.
   vibrancy, on top, on every Space) with the daemon's `/?app=1#/tray` page:
   sessions waiting for you first, with Approve only when the whole request is
   shown, then Deny and Open; then running sessions; today's spend and the
-  Claude and Codex windows with their reset countdown. It is created hidden
-  once a daemon answers, so it opens at once, and it hides on blur or Escape.
+  Claude and Codex windows with their reset countdown. It is made on the
+  first click (or the first peek), not when a daemon answers: a popover
+  nobody opened held a second WebKit content process for the life of the
+  app. A first click shows the panel at once with a small loading mark
+  (`ui/index.html`, the `#/tray` route only) until the page draws; once made
+  it is kept. Closing it again after a while crashed the app (WebKit's
+  window observer cannot be removed after the panel's class swap), so it is
+  not done. It hides on blur or Escape.
   Its page may call only `tray_open` (hide it and show the window, on a
   session when named), `tray_hide`, `tray_fit` (its height, clamped 140–640
   px) and `hotkey_status` (capability `tray`). A right click keeps the native
