@@ -757,6 +757,20 @@ html[data-page-hidden] *, html[data-page-hidden] *::before, html[data-page-hidde
   .release-step-pulse { animation: none; }
 }
 
+/* A release just out: small squares burst once from the folded line's
+ * green pill (components/ReleasePlan.tsx ReleasedPill), then are gone. */
+.release-burst i {
+  position: absolute; width: 4px; height: 4px; border-radius: 1px; opacity: 0;
+  animation: releaseBurst 1.1s ease-out forwards;
+}
+@keyframes releaseBurst {
+  0%   { transform: translate(0, 0) scale(0.6); opacity: 1; }
+  100% { transform: translate(var(--x), var(--y)) scale(1) rotate(160deg); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .release-burst { display: none; }
+}
+
 /* ── The app workspace (WP-04, WP-06) ─────────────────────────────────
  * Only under <html data-app>, set by screens/AppShell.tsx, so the browser
  * dashboard and the phone never see any of it. The chrome around the

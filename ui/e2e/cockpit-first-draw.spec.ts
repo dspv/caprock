@@ -228,6 +228,123 @@ test('the folded CI line shortens at narrow widths and never passes the edge', a
   }
 })
 
+/** The theme for a photograph, as the app sets it. */
+async function theme(page: Page, which: 'dark' | 'light') {
+  await page.evaluate((w) => {
+    const el = document.documentElement
+    el.removeAttribute('data-dark')
+    el.removeAttribute('data-tone')
+    el.setAttribute('data-theme', w)
+    el.setAttribute(w === 'dark' ? 'data-dark' : 'data-tone', w === 'dark' ? 'pastel' : 'white')
+  }, which)
+}
+
+// Owner, 2026-11-24, variant A: within the hour of a release the folded
+// line's version is a green pill with the release's agent cost beside its
+// age, on the same one 16px line, inside the panel's edge at every width,
+// the parts that do not fit going whole, the last first. The burst plays
+// once per tag and viewer: a reload does not replay it.
+test('the folded released line: a green pill and the agent cost, inside the edge', async ({ app, page }) => {
+  const out = { ...rel('v0.183.0', 4 * 60_000, 23), cost_usd: 17.25, prs: [942, 940, 939], sessions: 2 }
+  const s = statsOf([pr(942, 'chore(release): 0.183.0', 'merged', 600_000)], [card(942, 'released')], [out, rel('v0.182.4', 86_400_000, 23)])
+  await page.route(/\/v1\/sessions\/[^/]+\/ci\/stats$/, (r) => r.fulfill(json(s)))
+  await page.route(/\/v1\/sessions\/[^/]+\/prs$/, (r) => r.fulfill(json({ connected: true, fetched_at: now, prs: [] })))
+  await page.route(/\/v1\/sessions\/[^/]+\/ci\?pr=\d+$/, (r) => r.fulfill(json({ connected: true, fetched_at: now, pr: { number: 942, url: '', repo: 'acme/app', live: live(942, 'merged', RUNNING) } })))
+  await page.route(/\/v1\/sessions\/[^/]+\/ci\/release$/, (r) => r.fulfill(json({ connected: true, repo: 'acme/app', fetched_at: now,
+    release: { repo: 'acme/app', tag: 'v0.183.0', state: 'pass', at: now, run: { id: 1, name: 'release', status: 'completed', conclusion: 'success', jobs: [] }, release: { url: '', published_at: now - 240_000 } } })))
+  await page.route(/\/v1\/work$/, async (r) => {
+    const res = await r.fetch()
+    const w = await res.json() as { repos?: { root: string; remote?: string; unreleased?: object; tags?: object }[] }
+    for (const x of w.repos ?? []) {
+      x.remote = 'acme/app'
+      x.tags = { last: { name: 'v0.183.0', at: now - 500_000 }, gaps: 0 }
+      x.unreleased = { ref: 'origin/master', items: [], count: 0, kinds: {} }
+    }
+    await r.fulfill({ response: res, json: w })
+  })
+  await page.addInitScript(() => {
+    localStorage.setItem('caprock.app.cockpit-looks', JSON.stringify({ ci: 'compact', release: 'compact', changes: 'compact', processes: 'compact', tasks: 'compact', now: 'compact', tools: 'compact' }))
+  })
+  await app.open()
+  if (shotsDir) await theme(page, 'dark')
+  const alpha = app.session('alpha')
+  await app.openSession('alpha').catch(async () => { await app.row(alpha.name).first().click() })
+  const inspector = page.getByRole('complementary', { name: 'Inspector' })
+  const fold = inspector.locator('[data-release-fold]')
+  await expect(fold).toHaveAttribute('aria-label', /^0\.183\.0 released · 4 min ago · \$17\.25$/)
+  await expect(fold.locator('[data-release-pill]')).toHaveText('0.183.0 released')
+  await expect(fold.locator('[data-release-fold-cost]')).toHaveAttribute('title', /^\$17\.25 agents spent on 3 pull requests, 2 sessions/)
+  // Seen once: the tag is kept, so a reload draws the pill without a burst.
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('caprock.release-burst'))).toMatch(/"v0\.183\.0"/)
+  // The section with room around it: the burst flies past the line.
+  const shot = async (name: string) => {
+    if (!shotsDir) return
+    await theme(page, name.endsWith('-dark') ? 'dark' : 'light')
+    await page.waitForTimeout(100)
+    const b = (await inspector.locator('[data-section-frame="release"]').boundingBox())!
+    await page.screenshot({ path: path.join(shotsDir, `${name}.png`), clip: { x: b.x - 12, y: b.y - 24, width: b.width + 24, height: b.height + 48 } })
+  }
+  if (shotsDir) {
+    // The burst mid-flight, then still.
+    await page.waitForTimeout(250)
+    await shot('released-burst-dark')
+  }
+  await page.reload()
+  if (shotsDir) await theme(page, 'dark')
+  await expect(fold.locator('[data-release-pill]')).toHaveText('0.183.0 released')
+  await page.waitForTimeout(150)
+  await expect(page.locator('[data-release-burst]')).toHaveCount(0)
+  for (const w of [280, 300, 330, 360, 460]) {
+    await page.evaluate((px) => document.documentElement.style.setProperty('--app-inspector-w', `${px}px`), w)
+    await page.waitForTimeout(200)
+    const got = await page.evaluate(() => {
+      const line = document.querySelector('[data-release-fold]') as HTMLElement
+      const head = line.closest('[data-section-head]') as HTMLElement ?? line.parentElement!
+      const edge = head.getBoundingClientRect().right + 0.5
+      const top = line.getBoundingClientRect().top
+      const out: string[] = []
+      if (Math.round(line.getBoundingClientRect().height) !== 16) out.push(`the line is ${line.getBoundingClientRect().height}px high`)
+      // What is on view: the parts on the line's first row (the rest wrap under it and are clipped).
+      const shown: string[] = []
+      for (const el of line.querySelectorAll<HTMLElement>('[data-release-fold-part]')) {
+        const r = el.getBoundingClientRect()
+        if (el.offsetWidth === 0 || r.top - top > 4) continue
+        shown.push((el.textContent ?? '').replace(/^·\s*/, ''))
+        if (r.right > edge) out.push(`"${el.textContent}" ends at ${Math.round(r.right)} > ${Math.round(edge)}`)
+      }
+      const pill = line.querySelector('[data-release-pill]') as HTMLElement
+      const t = pill.querySelector('span') as HTMLElement
+      return { out, shown, pillCut: t.scrollWidth > t.clientWidth + 0.5, pillH: pill.getBoundingClientRect().height }
+    })
+    expect(got.out, `at ${w}px`).toEqual([])
+    expect(got.pillH, `at ${w}px`).toBeLessThanOrEqual(16)
+    expect(got.shown[0], `at ${w}px`).toBe('0.183.0 released')
+    expect(got.pillCut, `the pill cut at ${w}px`).toBe(false)
+    // Whole parts only, in the line's order; narrow, the age goes before the cost.
+    expect([['0.183.0 released', '4 min ago', '$17.25'], ['0.183.0 released', '$17.25'], ['0.183.0 released']].map((x) => x.join('|')), `at ${w}px`).toContain(got.shown.join('|'))
+    // The pill and the cost on view at the narrowest and the widest panel; all three wide.
+    if (w === 280) expect(got.shown, 'at 280px').toContain('$17.25')
+    if (w === 460) expect(got.shown, 'at 460px').toEqual(['0.183.0 released', '4 min ago', '$17.25'])
+    if (w === 460) await shot('released-460-dark')
+    if (w === 280) await shot('released-280-dark')
+  }
+  if (shotsDir) {
+    await theme(page, 'light')
+    await page.waitForTimeout(200)
+    await shot('released-460-light')
+    await page.evaluate(() => document.documentElement.style.setProperty('--app-inspector-w', '280px'))
+    await page.waitForTimeout(200)
+    await shot('released-280-light')
+    // The burst once more for its photograph, light: a fresh viewer.
+    await page.evaluate(() => { localStorage.removeItem('caprock.release-burst'); document.documentElement.style.setProperty('--app-inspector-w', '460px') })
+    await page.reload()
+    await theme(page, 'light')
+    await expect(page.locator('[data-release-burst]')).toHaveCount(1)
+    await page.waitForTimeout(250)
+    await shot('released-burst-light')
+  }
+})
+
 // Owner, 2026-11-19: the word strip wrapped "Published" to a second line at
 // 330px; 2026-11-23, variant A: the steps across the panel with one word
 // each stay one row, the state under them is whole (two lines at most,
