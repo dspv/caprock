@@ -532,6 +532,17 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-11-24 — 0.192.1: Now says when work runs in the background
+
+A patch release, #1049. A session whose turn ended while its background agents,
+shells or monitors still run now reads "Waiting on background work" in Now,
+listing each item and how long it has run, instead of "Done"; a background
+agent waiting on its own work no longer counts as done, and the idle end
+never closes a session mid background command. The checks popover stays
+inside the window, scrolling its list when it is taller than the room, and
+the Release section's Added, Changed and Fixed groups fold with a chevron,
+their counts in one column.
+
 ### 2026-11-23 — 0.192.0: 2nd Brain reads through any agent, effort at start
 
 A minor release, #1045. 2nd Brain no longer needs Claude Code: it reads

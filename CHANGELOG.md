@@ -12,6 +12,31 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.192.1] - 2026-11-24
+
+### Changed
+
+- **cockpit:** the Release section's changelog groups read as toggles: each
+  heading is one clickable row with the cockpit's chevron first, and the
+  counts beside *Added*, *Changed* and *Fixed* line up in a column of their
+  own instead of sitting wherever each word ends.
+
+### Fixed
+
+- **ui:** the list of a pull request's checks no longer runs off the bottom
+  of the window. Near the window's foot it is lifted to fit; taller than the
+  window, its list scrolls under a header that stays, and the arrow keys
+  scroll it from the focused summary. It stays inside the window sideways
+  and follows a scroll or a resize while it is open.
+- **now:** a session whose turn ended while work it started in the background
+  still runs no longer says "Done": Now says *Waiting on background work · 1
+  agent, 1 shell* and lists each background command, Monitor watch or agent
+  with how long it has run, until Claude Code reports it finished, failed or
+  stopped (or the session's process restarts). A background agent that stopped
+  to wait on background work of its own now reads running, not "1 done". The
+  work board shows such a session as background, and end-when-done and the
+  idle end leave it running.
+
 ## [0.192.0] - 2026-11-24
 
 ### Added
