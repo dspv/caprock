@@ -283,8 +283,27 @@ func (s *Server) handleModuleDocList(w http.ResponseWriter, r *http.Request) {
 	tag := moduleListTag(id, coll, after, limit)
 	w.Header().Set("ETag", tag)
 	w.Header().Set("Cache-Control", "no-cache")
+	key := id + "\x00" + coll + "\x00" + after + "\x00" + strconv.Itoa(limit)
+	answer := "read"
+	defer func() {
+		// Who asks, at debug level and once per client and collection per
+		// moduleAskerEvery: the log is how the caller that still pages
+		// without a tag gets found.
+		if asker := moduleAsker(r); s.modList.logAsker(asker+"\x00"+id+"/"+coll, s.d.Now()) {
+			s.d.Log.Debug("module list asked", "component", "api", "module", id, "collection", coll,
+				"client", asker, "answer", answer)
+		}
+	}()
 	if etagMatches(r.Header.Get("If-None-Match"), tag) {
+		answer = "not modified"
 		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+	if body, ok := s.modList.get(key, tag); ok {
+		answer = "from memory"
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(body)
 		return
 	}
 	docs, err := listModuleDocs(r.Context(), s.d.Store.DB(), id, coll, after, limit)
@@ -297,7 +316,16 @@ func (s *Server) handleModuleDocList(w http.ResponseWriter, r *http.Request) {
 	if len(docs) == limit {
 		out["next"] = docs[len(docs)-1].ID
 	}
-	writeJSON(w, http.StatusOK, out)
+	body, err := encodeJSON(out)
+	if err != nil {
+		w.Header().Del("ETag")
+		writeJSON(w, http.StatusOK, out)
+		return
+	}
+	s.modList.put(key, tag, body)
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(body)
 }
 
 // listModuleDocs is store.ListModuleDocs, swapped in tests to count reads.

@@ -3,15 +3,16 @@
  * pending permission prompts, today's cost and the plan limits.
  *
  * Kept cheap, because it shares the main thread with the terminal (.ai/21-app.md
- * principle 3). The live socket is read through a debounced tick (at most one
- * refetch of the live sessions a second, however fast events stream), the
- * full session list and the day's summary once a minute, and permission
+ * principle 3). Session frames keep the held sessions current; the live
+ * sessions are asked for when a frame names one not held (at most once a
+ * second) and every 15 s, the full session list and the day's summary once
+ * a minute, and permission
  * prompts straight from their frames, so a waiting badge lands within a
  * second of the prompt without polling anything.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, type SessionSummary, type Summary } from './api'
-import { live, useLiveTick } from './live'
+import { live } from './live'
 import {
   deriveProjects,
   disambiguate,
@@ -32,6 +33,10 @@ import { everyWhileVisible, pageHidden } from './visible'
 import { onSessionRenamed } from './sessionNames'
 
 const FULL_LIST_MS = 60_000
+/** The live list's fallback ask; frames do the rest (the effect that asks it). */
+export const LIVE_LIST_MS = 15_000
+/** How soon a frame for a session the list does not hold asks for the live list. */
+export const LIVE_UNKNOWN_MS = 1_000
 const SUMMARY_MS = 60_000
 const PROJECTS_MS = 60_000
 /**
@@ -45,8 +50,14 @@ export const SHELLS_MS = 60_000
  * Session and project frames are applied together at most this often. Each one used to
  * redraw the whole workspace — sidebar, tab strip, inspector — and busy agents
  * send several a second while someone types in a terminal beside them.
+ *
+ * 1 s since 2026-11-24 (300 ms before): every apply redraws the workspace
+ * shell and every tab row, and at 300 ms that was 5–6 redraws a second
+ * beside busy agents (a Chromium stand, four tabs). What these frames move
+ * is a row's state, cost and counts, which read the same a second late; the
+ * text an agent writes comes on its own feeds, unbatched by this.
  */
-export const SESSION_FRAMES_MS = 300
+export const SESSION_FRAMES_MS = 1000
 
 /** A session's prompt as asked again after a gap: pending, none, or not known. */
 export type PromptAnswer = 'pending' | 'none' | 'unknown'
@@ -120,9 +131,6 @@ export function applySessionFrames(cur: SessionSummary[], frames: ReadonlyArray<
 }
 
 export function useWorkspaceData(): WorkspaceData {
-  // Hidden, the live list is still asked every 5 s: a session started then
-  // must reach the tray's "N waiting" and the Dock badge, which read this.
-  const tick = useLiveTick(1000, { hiddenMs: 5_000 })
   const [sessions, setSessions] = useState<SessionSummary[]>([])
   const [apiProjects, setApiProjects] = useState<Project[] | null>(null)
   const [shells, setShells] = useState<ApiShell[]>([])
@@ -139,18 +147,27 @@ export function useWorkspaceData(): WorkspaceData {
   const sessionsRef = useRef(sessions)
   sessionsRef.current = sessions
 
-  // The full list, for projects nobody is working in right now.
+  // The full list, for projects nobody is working in right now. An answer
+  // the daemon said is unchanged comes back as the same array (api
+  // getTagged) and is merged all the same: what the window holds may have
+  // moved since from frames and its own actions, and the merge gives back
+  // the list held when nothing differs.
   useEffect(() => {
     let alive = true
     const load = () => api.sessions(false)
-      .then((list) => { if (alive) { setSessions((cur) => mergeSessions(cur, list)); setLoaded(true); setError(undefined) } })
+      .then((list) => {
+        if (!alive) return
+        setSessions((cur) => mergeSessions(cur, list))
+        setLoaded(true)
+        setError(undefined)
+      })
       .catch((e: unknown) => { if (alive) { setLoaded(true); setError(e instanceof Error ? e.message : String(e)) } })
     void load()
     const stop = everyWhileVisible(load, FULL_LIST_MS)
     return () => { alive = false; stop() }
   }, [nonce])
 
-  // The live ones: at once, then on the debounced tick, one request at a time.
+  // The live ones: at once, then as below, one request at a time.
   //
   // This list is the only way a session that runs but has been quiet for a
   // while gets into the sidebar: the full list is the 200 most recently
@@ -169,7 +186,9 @@ export function useWorkspaceData(): WorkspaceData {
     f.busy = true
     f.again = false
     api.sessions(true)
-      .then((list) => { if (f.alive) setSessions((cur) => mergeSessions(cur, list)) })
+      .then((list) => {
+        if (f.alive) setSessions((cur) => mergeSessions(cur, list))
+      })
       .catch(() => { /* the full list's error already speaks */ })
       .finally(() => {
         f.busy = false
@@ -181,7 +200,26 @@ export function useWorkspaceData(): WorkspaceData {
     f.alive = true
     return () => { f.alive = false }
   }, [])
-  useEffect(() => { fetchLive() }, [tick, nonce, fetchLive])
+  // Asked at once, then when a frame names a session the list does not hold
+  // (a new one, or one quiet since before the full list's 200), at most once
+  // a LIVE_UNKNOWN_MS, and every LIVE_LIST_MS regardless. It used to be asked
+  // on every live tick, a second apart while anything worked: 49 times a
+  // minute and 690 KB a minute beside busy agents, every answer re-merged,
+  // for a list the session frames below already keep current (2026-11-24
+  // audit). A frame for a held session changes nothing here.
+  useEffect(() => {
+    fetchLive()
+    // Hidden too: the tray's "N waiting" and the Dock badge read this list.
+    const stop = everyWhileVisible(fetchLive, LIVE_LIST_MS, LIVE_LIST_MS)
+    let timer = 0
+    const off = live.onFrame((f) => {
+      if (f.type !== 'event' && f.type !== 'session') return
+      const id = f.type === 'event' ? f.data.session_id : (f.data as SessionPatch).session?.session_id
+      if (!id || timer || sessionsRef.current.some((s) => s.session_id === id)) return
+      timer = window.setTimeout(() => { timer = 0; fetchLive() }, LIVE_UNKNOWN_MS)
+    })
+    return () => { stop(); off(); if (timer) window.clearTimeout(timer) }
+  }, [nonce, fetchLive])
 
   // The daemon's project list, or the derived one when it has none.
   useEffect(() => {

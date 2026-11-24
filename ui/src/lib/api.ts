@@ -1,6 +1,7 @@
 // Typed client for the daemon API (.ai/03-contracts.md § HTTP API). snake_case
 // on the wire, kept as-is in the types so the contract is visible in the code.
 import type { Gaps } from './gaps'
+import { onMemoryReset } from './memoryResets'
 import type { ReapResult, ResourceReport } from './resources'
 import type { EndIdleResult, MemoryReport, RestartEnd } from './memory'
 import type { ResourceHistory } from './resourceHistory'
@@ -2514,6 +2515,48 @@ async function get<T>(path: string): Promise<T> {
 }
 
 /**
+ * The last answer and its ETag per path, for the lists asked again and again
+ * (the session lists: the workspace's full one once a minute, the live one
+ * on every tick). The daemon answers a request naming the tag with a 304 and
+ * no body when the list is the same, and a copy of the kept answer is
+ * returned (readers change the rows they are handed).
+ * Measured 2026-11-24: the full list was 424 KB on the owner's Mac, the same
+ * most minutes. Small on purpose: the newest TAGGED_KEPT paths.
+ */
+const tagged = new Map<string, { etag: string; value: unknown }>()
+const TAGGED_KEPT = 8
+onMemoryReset(() => tagged.clear())
+
+async function getTagged<T>(path: string, read: (res: Response) => Promise<T>): Promise<T> {
+  const kept = tagged.get(path)
+  const headers: Record<string, string> = { Accept: 'application/json' }
+  if (kept) headers['If-None-Match'] = kept.etag
+  // no-store: the tag is this function's to send, and a 304 must reach it
+  // rather than be turned into the browser's own cached 200.
+  const res = await fetch(path, { headers: withDevice(headers), cache: 'no-store' })
+  if (res.status === 304 && kept) {
+    tagged.delete(path)
+    tagged.set(path, kept)
+    // A copy: a reader that changes what it was handed (the workspace's
+    // rows) must not change the kept answer the next 304 hands back.
+    return structuredClone(kept.value) as T
+  }
+  if (!res.ok) {
+    let body: unknown
+    try { body = await res.json() } catch { /* ignore */ }
+    throw new ApiError(res.status, `${res.status} ${res.statusText}`, body)
+  }
+  const value = await read(res)
+  const etag = res.headers?.get('ETag')
+  tagged.delete(path)
+  if (etag) {
+    tagged.set(path, { etag, value })
+    while (tagged.size > TAGGED_KEPT) tagged.delete(tagged.keys().next().value as string)
+  }
+  return value
+}
+
+/**
  * The sessions list, with how many exist behind it.
  *
  * The list is capped server-side at 200. Without the total, a screen labels
@@ -2531,6 +2574,9 @@ async function sessionsWithTotal(activeOnly: boolean, search = '', limit = 0, ch
   // ignores the parameter, and the caller filters by `chat` too.
   if (chats) qs.set('chats', chats)
   const query = qs.toString()
+  // A plain fetch, which the browser's own cache revalidates by the list's
+  // ETag (Cache-Control: no-cache); only the workspace's two lists keep
+  // their own (getTagged).
   const res = await fetch(`/v1/sessions${query ? `?${query}` : ''}`, {
     headers: withDevice({ Accept: 'application/json' }),
   })
@@ -2668,7 +2714,9 @@ export interface PairAddress {
 }
 
 export const api = {
-  sessions: (activeOnly = false) => get<SessionSummary[]>(`/v1/sessions${activeOnly ? '?active=true' : ''}`),
+  /** The sessions list; the same array as last time when the daemon says it is unchanged (getTagged). */
+  sessions: (activeOnly = false) =>
+    getTagged(`/v1/sessions${activeOnly ? '?active=true' : ''}`, async (res) => (await res.json()) as SessionSummary[]),
   sessionsWithTotal,
   /** One Projects row's sessions, newest first, each with whether it can be picked up. */
   sessionsInDir: (dir: string) => get<SessionSummary[]>(`/v1/sessions?dir=${encodeURIComponent(dir)}`),
@@ -2738,9 +2786,10 @@ export const api = {
   /** The newest events for a session, for anything showing recent activity. */
   recentEvents: (id: string, limit = 2000) => get<Event[]>(`/v1/sessions/${encodeURIComponent(id)}/events?newest=1&limit=${limit}`),
   /** The main thread's newest events of these kinds, filtered before the
-   *  limit: a parent's own calls, however busy its subagents are. */
+   *  limit: a parent's own calls, however busy its subagents are. `slim=1`:
+   *  each tool.post without its body, as cockpit slimToolResult keeps it. */
   recentMainEvents: (id: string, kinds: readonly string[], limit = 400) =>
-    get<Event[]>(`/v1/sessions/${encodeURIComponent(id)}/events?newest=1&main=1&kind=${encodeURIComponent(kinds.join(','))}&limit=${limit}`),
+    get<Event[]>(`/v1/sessions/${encodeURIComponent(id)}/events?newest=1&main=1&kind=${encodeURIComponent(kinds.join(','))}&limit=${limit}&slim=1`),
   /** Every priced model call of the session's main thread, oldest first (the spend scrubber). */
   sessionCalls: (id: string) => get<SessionCall[]>(`/v1/sessions/${encodeURIComponent(id)}/calls`),
   /** The subagents working in a session now, and how many finished lately. */

@@ -526,7 +526,7 @@ func TestAutomationAndExcludedFoldersGetNoMemories(t *testing.T) {
 	if err := store.UpsertSession(ctx, d.store.DB(), "s-job", store.SessionPatch{Project: "caprock", StartedAt: now.UnixMilli(), LastEventAt: now.UnixMilli(), FromHook: true}); err != nil {
 		t.Fatal(err)
 	}
-	if s, w, err := store.HandoffEffect(ctx, d.store.DB()); err != nil || s.Sessions+w.Sessions != 0 {
+	if s, w, err := store.HandoffEffect(ctx, d.store.DB(), nil); err != nil || s.Sessions+w.Sessions != 0 {
 		t.Errorf("counted in the experiment: %+v %+v %v", s, w, err)
 	}
 

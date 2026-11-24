@@ -1301,16 +1301,8 @@ SELECT (SELECT COUNT(*) FROM (SELECT DISTINCT project FROM sessions WHERE projec
         SEARCH e USING INDEX idx_events_handoff (sid=? AND ts>?)
 
 ## store.HandoffEffect
-SELECT COUNT(*) FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND kind = 'tool.pre' AND ts < ?
-    SEARCH events USING COVERING INDEX idx_events_attr_work (sid=? AND ts<?)
-    SCALAR SUBQUERY 1
-        SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
-
-## store.HandoffEffect
-SELECT s.handoff, s.started_at, (SELECT MIN(e.ts) FROM events e WHERE e.sid = s.sid AND e.kind = 'tool.pre' AND e.tool IN ('Edit','Write','MultiEdit','NotebookEdit')) AS first_edit, s.session_id FROM sessions s WHERE s.handoff IN (1, 2)
+SELECT s.handoff, s.started_at, s.session_id, s.sid, COALESCE(s.last_event_at, 0) FROM sessions s WHERE s.handoff IN (1, 2)
     SCAN s
-    CORRELATED SCALAR SUBQUERY 1
-        SEARCH e USING COVERING INDEX idx_events_attr_work (sid=?)
 
 ## store.HermesSpend
 SELECT COALESCE(json_extract(e.payload,'$.cost_basis'),''), COALESCE(json_extract(e.payload,'$.hermes_source'),''), COALESCE(json_extract(e.payload,'$.background'),0), COUNT(*), COALESCE(SUM(e.cost_usd),0), COALESCE(SUM(CASE WHEN e.cost_usd IS NULL AND COALESCE(e.tokens_in,0)+COALESCE(e.tokens_out,0)+COALESCE(e.cache_read,0)+COALESCE(e.cache_write,0) > 0 THEN 1 ELSE 0 END),0) FROM sessions s JOIN events e INDEXED BY idx_events_session_ts ON e.sid = s.sid AND e.ts >= ? WHERE s.agent = 'hermes' AND e.source = 'hermes' AND e.kind = 'turn.assistant' AND json_valid(e.payload) AND json_extract(e.payload,'$.cost_basis') IS NOT NULL AND e.internal = 0 GROUP BY 1, 2, 3
@@ -3092,6 +3084,14 @@ SELECT kind FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id =
     SCALAR SUBQUERY 1
         SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
 
+## store.handoffFirstEdit
+SELECT COUNT(*) FROM events WHERE sid = ? AND kind = 'tool.pre' AND ts < ?
+    SEARCH events USING COVERING INDEX idx_events_attr_work (sid=? AND ts<?)
+
+## store.handoffFirstEdit
+SELECT MIN(ts) FROM events WHERE sid = ? AND kind = 'tool.pre' AND tool IN ('Edit','Write','MultiEdit','NotebookEdit')
+    SEARCH events USING COVERING INDEX idx_events_attr_work (sid=?)
+
 ## store.learnMatch
 WITH a(i, at) AS MATERIALIZED ( SELECT CAST(key AS INTEGER), CAST(value AS INTEGER) FROM json_each(?)) SELECT a.i, s.session_id, MIN(e.ts) FROM a CROSS JOIN events p INDEXED BY idx_events_tool_dist JOIN sessions s ON s.sid = p.sid AND s.repo_root = ? JOIN events e ON e.sid = p.sid AND e.key = 'post:' || substr(p.key, 5) WHERE p.kind = 'tool.pre' AND p.ts >= a.at - ? AND p.ts < a.at + 1000 AND p.tool = 'Bash' AND p.internal = 0 AND p.key LIKE 'pre:%' AND e.ts >= a.at GROUP BY a.i, p.sid
     MATERIALIZE a
@@ -3124,6 +3124,10 @@ SELECT id, session_id, text, created_at, updated_at, via, undelivered_at FROM qu
 ## store.listQueued
 SELECT id, session_id, text, created_at, updated_at, via, undelivered_at FROM queued_messages WHERE session_id = ? AND undelivered_at > 0 ORDER BY id
     SEARCH queued_messages USING INDEX idx_queued_messages_session (session_id=?)
+
+## store.loadKept
+SELECT built_at, version, format, parts FROM parts_kept WHERE range_from = ?
+    SEARCH parts_kept USING INTEGER PRIMARY KEY (rowid=?)
 
 ## store.markBrainVaults
 SELECT EXISTS (SELECT 1 FROM brain_vault_notes)
@@ -3413,6 +3417,13 @@ SELECT (SELECT MIN(id) FROM events), (SELECT MAX(id) FROM events)
 ## store.sampleCompression
 SELECT payload FROM events WHERE id = ? AND kind IN ('tool.pre', 'tool.post') AND typeof(payload) = 'text' AND ts < ?
     SEARCH events USING INTEGER PRIMARY KEY (rowid=?)
+
+## store.saveKept
+DELETE FROM parts_kept WHERE built_at < ?
+    SCAN parts_kept
+
+## store.saveKept
+INSERT INTO parts_kept (range_from, built_at, version, format, parts) VALUES (?, ?, ?, ?, ?) ON CONFLICT(range_from) DO UPDATE SET built_at = excluded.built_at, version = excluded.version, format = excluded.format, parts = excluded.parts
 
 ## store.scanEventParts
 SELECT sid, kind, internal, COALESCE(model,''), COALESCE(msg_id,''), COALESCE(touch_dir,''), COALESCE(inner_tool, tool, ''), COALESCE(tool,''), COALESCE(tool_bytes,0), tokens_in, tokens_out, cache_read, cache_write, cost_usd, ts FROM events INDEXED BY idx_events_attr_work WHERE sid IN (SELECT DISTINCT sid FROM events INDEXED BY idx_events_ts_cover WHERE ts >= ?) AND ts >= ? ORDER BY sid, ts, id

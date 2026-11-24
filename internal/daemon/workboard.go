@@ -290,7 +290,8 @@ func (w *workBoard) session(ctx context.Context, s store.Session, evc *workEvent
 		}
 		if kind == agents.AgentClaude {
 			evs, err := evc.read(&evc.turns, func() ([]event.Event, error) {
-				return store.LastEventsFiltered(ctx, db, s.SessionID, queueTurnScan, store.EventFilter{MainOnly: true, Kinds: turnKinds})
+				evs, err := store.LastEventsFiltered(ctx, db, s.SessionID, queueTurnScan, store.EventFilter{MainOnly: true, Kinds: turnKinds})
+				return turnsKept(evs), err
 			})
 			if err != nil {
 				return ws, nil, err
@@ -411,7 +412,8 @@ func stateOf(waiting string) string {
 // reading of its newest main-thread events.
 func (w *workBoard) narratedState(ctx context.Context, evc *workEventsEntry, id string, now time.Time) (string, error) {
 	evs, err := evc.read(&evc.state, func() ([]event.Event, error) {
-		return store.LastEventsFiltered(ctx, w.d.store.DB(), id, workStateScan, store.EventFilter{MainOnly: true})
+		evs, err := store.LastEventsFiltered(ctx, w.d.store.DB(), id, workStateScan, store.EventFilter{MainOnly: true})
+		return stateKept(evs), err
 	})
 	if err != nil {
 		return "", err

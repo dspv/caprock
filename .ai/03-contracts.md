@@ -1148,7 +1148,7 @@ GET  /v1/sessions?dir=<path>           → SessionSummary[] — one Projects row
 GET  /v1/sessions/{id}                 → SessionDetail (stats + last N events)
 GET  /v1/sessions/{id}/relay           → RelayBrief (the proposed first message for a relay)
 POST /v1/sessions/{id}/continue-on     → ContinueOnResult — continue an owned Claude Code session on another provider or sign-in (§ Continue on another provider)
-GET  /v1/sessions/{id}/events?after=…  → Event[] (paginated; newest=1 returns the tail; with newest=1, main=1 keeps the main thread only and kind=a,b those kinds, both before the limit)
+GET  /v1/sessions/{id}/events?after=…  → Event[] (paginated; newest=1 returns the tail; with newest=1, main=1 keeps the main thread only and kind=a,b those kinds, both before the limit; slim=1 sends tool.post without its body)
 GET  /v1/sessions/{id}/subagents       → {working: SubagentNow[], finished, hour?} — the subagents working in it now; ?hour=1 adds the last hour's count a minute (§ Subagents now)
 GET  /v1/sessions/{id}/subagents/{agent} → SubagentDetail — one subagent opened: task, calls, result, numbers (§ One subagent)
 GET  /v1/sessions/{id}/calls?limit=…   → SessionCall[] — every priced main-thread model call, oldest first (§ Session calls)
@@ -1632,6 +1632,8 @@ The dashboard route `#/session/{id}?at=<unix-ms>` reveals a moment in the timeli
 **`GET /v1/sessions/{id}/events?newest=1` returns the tail rather than the head**, oldest-first within the page. Paging from the start is right for a timeline read forwards and wrong for anything showing recent activity: on a session with thousands of events, `after=0` hands back the first few hundred — hours old — so a caller asking "what just happened" renders an empty window with no indication why.
 
 **With `newest=1`, `main=1` and `kind=a,b,…` filter before the limit.** `main=1` keeps the main thread's events only (`agent_id` empty and `payload.sidechain` not true, the rule notes use); `kind` keeps the listed kinds. The agent cockpit asks for `main=1&kind=tool.pre,tool.post,turn.assistant&limit=400`: on the owner's 36-hour session (2026-10-09) the newest 400 events were all subagents' — 635 of their tool calls in the last hour — and its tool list read *No tool calls yet* over 4,933 calls. The filtered page walks `idx_events_session_ts` and took under 60 ms there. Without `newest=1` both are ignored.
+
+**`slim=1` sends each `tool.post` without its body** (2026-11-24, any form of the read): `tool_response` and `tool_input` are dropped, `interrupted: true` is set when the response object said so, and a result with `is_error: true` keeps the first 200 characters of its text (a string, a list's first `text` block, or an object's `content`, `error` or `stderr`) as `tool_response`, where its exit code is read from. Every other field and every other kind is sent as stored. It is what the inspector kept of a result anyway (`ui/src/lib/cockpit.ts` `slimToolResult`, which still runs on the answer, so an older daemon that ignores the parameter shows the same); the inspector's read (`main=1&kind=tool.pre,tool.post,turn.assistant&limit=400`, also its hover read-ahead) asks with it. Why: that read was 531–703 KB per session on the owner's live sessions, 30–38% of it result bodies thrown away on arrival (2026-11-24 audit). The rows are read as before; only the answer is smaller (`internal/api/slimevents.go`).
 
 **Subagents now.** `GET /v1/sessions/{id}/subagents` → `{working, finished}`. `working` lists the subagents working in the session under the rule `live_subagents` counts by — a background agent the session's `background_work` holds open (§ Background work), whatever its own events say; else an `agent_id` heard from in the last 30 minutes whose newest event is not its `SubagentStop`, and that is not read as stopped without one (`store.SubagentBounds`, 2026-11-23: the lead's process restarted while background subagents ran, their `SubagentStop` never fired, and one read "working" for half an hour): not when its session's newest main-thread `SessionStart` that did not follow a compaction (source `startup`/`resume`, read from its payload) came after its newest event — a subagent runs inside its parent's process; not when its session ended; and not when it has been silent for 15 minutes (`store.SubagentQuietMax`) with no call in progress (its newest event a `tool.pre`) while the parent sits at its prompt (its newest main-thread hook among `turn.user`, `tool.pre` and `agent.stop` is the Stop) — newest activity first, at most 24 (the cockpit draws two rows of twelve chips), each `SubagentNow`: `agent_id`; `agent_type` (the hooks' own; omitted when none named one); `description` (what the parent asked, from the parent's `Agent`/`Task` call whose `tool_response.agentId` is this agent — a background launch says at once, a foreground one only once it returns; omitted otherwise); `tool_calls` (its distinct calls over the whole session: a call heard on both planes shares its key and is one row, and one only the transcript saw — a call Claude Code fired no `PostToolUse` for — counts too; it was the plane that saw more until 2026-10-12, one short of the opened subagent's feed); `started_at`, `last_at` (unix ms, within the window); `tool`, `detail` (its newest call and that call's short line: a file's base name; for a command, its `tool_input.description` when it carries one (Claude Code's Bash always does: *Run full vitest suite*), else its first line with the noise of where it ran stripped — leading `cd <dir> &&` / `cd <dir>;` hops dropped, `git -C <dir>` read as `git`, a path inside `…/.claude/worktrees/<name>/` made relative to it and any other `/Users/…` or `/home/…` path cut to `…/` and its last two folders (`quietCommand`, twin of the UI's); a pattern, a URL — as the cockpit's tool list writes it, at most 80 characters) and `tool_at`; `doing` and `doing_from` (roughly what it is doing now, at most 60 characters with an ellipsis, made from that same newest call without another read: the call's own `tool_input.description` — the phrase Claude writes on a Bash command or an `Agent`/`Task` launch — `doing_from: "call"`; else a phrase from a small table of tool and target, `"tool"`: *Reading x.go*, *Editing x.go*, *Writing x.go*, *Searching for 'p'*, *Finding \*\*/\*.ts*, *Fetching host*, *Searching the web for 'q'*, *Using skill s*, *Loading tools*, *Calling server* for an MCP tool, and for a command *Running tests* when it runs a known test suite, *Running git status*, else *Running* and its program, past `cd`, `set -e` and assignments; else the `description` it was spawned with, `"task"`; both omitted when none says anything. Claude Code's own activity line — "Rerunning AppShell and DiffFiles tests" in its terminal list — is not written anywhere Caprock can read, so this is the nearest thing that is recorded rather than guessed); `running` (that call has no `tool.post` with its `tool_use_id`); `asking` (its newest event is a `permission.prompt`: a subagent waiting on a dialog records nothing else); `model`, `model_display` (its newest turn's model and the pricing table's short name, "Haiku 4.5"; omitted before its first turn) and `cost_usd` (the sum of its own turns' costs over the session — subagent transcript lines carry their model and usage and are priced like any turn — omitted when it has no turn or any turn the table could not price: never a 0 standing in for unknown; internal model calls are left out). `recent` lists the newest three of the `finished` — `?recent=N` asks for up to 30, which the cockpit does while *Show all* under Now's subagent tree is on — newest stop first, each `SubagentDone`: `agent_id`, `agent_type`, `description`, `tool_calls`, `started_at`, `stopped_at` (its `SubagentStop`), `ended_by` (only for one read as stopped without a `SubagentStop`: `restart`, `ended` or `quiet`, as above; `stopped_at` is then the restart, else its newest event) and the same `model`, `model_display`, `cost_usd`; `[]` when none. The response's own `cost_usd` is every subagent of the session together, omitted when any of them is unknown. `finished` counts those that stopped within the window after at least one tool call, the ones read as stopped among them — Claude Code also fires `SubagentStop` for small internal agents that run none, dozens an hour, and they are left out. Every query pins the session's index (`+kind`) or one of the subagent indexes of migration 0054, because SQLite otherwise chose `idx_events_kind_*` and walked every `tool.pre` in the database (1.1 s against 13 ms on the owner's); the counts, the spend and the descriptions read only those indexes, never a payload of the parent's (§ Subagent reads DDL); only when some subagent has no `SubagentStop` after its newest event are the session's status, its main-thread `SessionStart` payloads of the window (for their `source`) and its newest main-thread turn hook read, in three small reads. The cockpit reads it again at most every two seconds while subagent events arrive and every twenty seconds regardless. A paired viewer may read it, as it may read the events it is made from.
 
@@ -4320,6 +4322,22 @@ is actually typed. `limit` defaults to 200 and is capped at 2000;
 instead of leaving everything past the first page unreachable. `chats=exclude`
 leaves chats out (the Now list, the phone's Continue) and `chats=only` lists
 nothing else; absent, both are listed. `X-Total-Count` follows the same scope.
+
+**The list carries an `ETag`** (2026-11-24): a hash of the body and its
+`X-Total-Count`, with `Cache-Control: no-cache`. A request whose
+`If-None-Match` names it gets a **304 with no body**. The list is still
+built; what an unchanged one stops costing is the bytes and the client's
+parse. The workspace's two lists (`api.sessions`) keep the last answer and
+tag per path and send the tag themselves (`ui/src/lib/api.ts` `getTagged`,
+`cache: 'no-store'` so the 304 reaches it); on a 304 a copy of the kept
+array comes back (`structuredClone`: handed the kept array itself, readers
+that change their rows changed the next answer too, and the phone lost its
+rows' actions in e2e `phone.spec`) and is merged as any answer. The counted
+lists (`sessionsWithTotal`: the phone's Home, the browser Home, Now) are
+plain fetches the browser's own cache revalidates by the same tag. Why: the workspace asks the full list
+once a minute and the live one on every tick, and the full list was 424 KB
+on the owner's Mac, 88% of a quiet workspace's polling bytes (2026-11-24
+audit). `?dir=` and `?machines=all` answers carry no tag.
 
 ### Chats (HTTP)
 
@@ -7069,7 +7087,25 @@ machine's alone (`403` from any device).
   from **25,194 to 360 calls an hour** — the 360 are the pages a write
   really changed — and its disk reads from 56 to 20 MB/hour, the collection
   being in the page cache on that machine. A browser revalidates on its
-  own; a module that sends `If-None-Match` itself gets the 304. `GET|PUT|PATCH|DELETE
+  own; a module that sends `If-None-Match` itself gets the 304. **A client
+  that sends no tag is answered from memory** (2026-11-24): each page is kept
+  with the tag it was read at, and while the collection's tag is unchanged
+  the same bytes go out with nothing read — 32 MiB at most (the owner's
+  Ops module lists ~26 MB in all, its biggest collection 21 MB in twelve
+  pages), least recently answered first out, a page over 8 MiB never kept,
+  nothing at all on a machine with no module, a page whose tag moved
+  on dropped when next asked (`internal/api/modulelistcache.go`). Listing a
+  21 MB collection of twelve pages with no tag took 62 ms and twelve reads,
+  and takes 11 ms and none; with four such listings and one write a minute,
+  720 reads became 180 (in-process, 2026-11-24). After the
+  ETag shipped the owner's Mac still read ~7,100 lists an hour, 37% of the
+  daemon's disk reads (744 MB in 11 minutes, 2026-11-24 audit); the Ops
+  module's scheduled scripts start as a new process, with no tag, every
+  minute to every hour (four of them every minute). Who asks is logged at debug
+  level, once per client and collection per 10 minutes (`module list
+  asked`: the user agent's first word, local or a device, with or without a
+  tag, and whether it was read, answered from memory or not modified).
+  `GET|PUT|PATCH|DELETE
   /v1/x/<id>/docs/{collection}/{docId}`: `PUT` writes a JSON object whole
   (`created_at` kept), `PATCH` merges top-level fields into an existing one
   (null removes a field; 404 when absent), `DELETE` → `{deleted}`. Bodies are
@@ -9400,6 +9436,50 @@ CREATE INDEX idx_events_attr_work ON events(
 ```
 
 The summaries are kept per session and only the sessions whose events moved are read again (`store.PartsCache`; the answer-cache notes under § Pricing table say how and why). That read seeks each moved session on this index, so it has to cover every column a summary sums: the model mix needs `model` and the tool distribution `tool_bytes`, which the index did not carry, and without them every row of a live session would be fetched from the table, payload and all. The two columns go on the end, so every query that pins the index by name keeps its plan. SQLite cannot add a column to an index in place, so it is dropped and created again under the same name; on a synthetic 680k-event database the index was 59 MB as inserts had grown it and is 57 MB rebuilt with the two columns (2026-11-21), the rebuild's packing outweighing them.
+
+### Kept parts DDL (migration 0093)
+
+[0093_parts_kept.sql](../internal/store/migrations/0093_parts_kept.sql):
+
+```sql
+CREATE TABLE IF NOT EXISTS parts_kept (
+  range_from INTEGER PRIMARY KEY,
+  built_at   INTEGER NOT NULL,
+  version    TEXT NOT NULL,
+  format     INTEGER NOT NULL,
+  parts      BLOB NOT NULL
+);
+```
+
+A range's per-session parts (`store.PartsCache`, § Session parts DDL)
+across restarts (`internal/store/keptparts.go`, 2026-11-24). `range_from` is
+the range's start in ms (the key the cache keeps it by), `built_at` when its
+events were last read whole, `version` the daemon build that wrote it,
+`format` the encoding (`keptPartsFormat`), and `parts` the parts with the
+`store.EventsMark` they were read at, gob-encoded and zstd-compressed. The
+daemon writes a range after each whole read and at most every 10 minutes
+after partial ones, in the background; a write that fails is made again on
+the next refresh. A range not yet read in this run starts from its row and
+reads only the sessions that moved since the row's mark, by the same rules
+as between two asks in one run. The mark is the database's own (newest
+event id, the moved counter, `session_gen`), so it holds across a restart.
+A row is used only when this build wrote it in this format and it is younger
+than the 6-hour full rebuild; otherwise, and when more than 256 sessions
+moved, the range is read whole as before. Rows older than that are deleted
+on the next write. A cache only: deleting any row costs one whole read.
+`TestKeptPartsEqualAFreshRead` holds a range started from its row after
+more turns, a new session, a session's events deleted and a restart to the
+range counted afresh, figure by figure.
+
+Measured on a read-only copy of the owner's database (2.4 GB, with tool
+output compression on, as his is), a restart 150 s after a first start, in
+two runs in each order: the parts' start-up reads (`scanEventParts`,
+`readAgentParts`, about 255 MB) are gone, the rows are 2.7 MB for all time,
+30 and 7 days, and the first-minute reads went 1,586 → 1,212 MB in the
+second pair (1,247 → 1,498 MB in the first, where other start-up readers
+varied more than that). The first `/v1/history?range=7d` after a start was
+already 30–90 ms both ways (Warm builds it); `/v1/week` and `/v1/glance`,
+which do not read the parts, stay at 2.7–3.2 s and 2.2–2.9 s cold.
 
 ### Permission mode DDL (migration 0088)
 

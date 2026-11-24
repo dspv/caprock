@@ -291,7 +291,11 @@ test('browser Home is never wider than the screen: no sideways scroll and no car
     ? r.fulfill({ json: { permission: { id: 'p1', tool, detail, always, since: new Date().toISOString() } } })
     : r.continue())
   await page.route(/\/v1\/sessions\?/, async (r) => {
-    const res = await r.fetch()
+    // Without the page's If-None-Match: an unchanged list is a 304 with no
+    // body (the list's ETag), and this rewrites the body.
+    const headers = { ...r.request().headers() }
+    delete headers['if-none-match']
+    const res = await r.fetch({ headers })
     const body = await res.json()
     const wait = (x: Record<string, unknown>) => ({ ...x, owned: true, status: 'active', activity: { ...(x.activity as object), health: 'waiting-on-you' } })
     await r.fulfill({ response: res, json: Array.isArray(body) ? body.map(wait) : { ...body, items: (body.items ?? []).map(wait) } })

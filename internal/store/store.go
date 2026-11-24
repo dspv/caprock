@@ -208,7 +208,7 @@ func Open(ctx context.Context, path string, log *slog.Logger, opts ...Option) (*
 		}
 		// _pragma is modernc's DSN syntax. WAL lets the UI read while ingest writes;
 		// busy_timeout avoids SQLITE_BUSY under the (rare) concurrent writer.
-		// cache_size is negative to mean kibibytes rather than pages: 16 MiB,
+		// cache_size is negative to mean kibibytes rather than pages: 4 MiB,
 		// against SQLite's 2 MiB default.
 		//
 		// The default is sized for a small database, and this one is not: the
@@ -225,8 +225,18 @@ func Open(ctx context.Context, path string, log *slog.Logger, opts ...Option) (*
 		// connection, and the pool has eight: in memory SQLite allocates
 		// itself, outside Go's heap, which it did not hand back. After a day
 		// the owner's daemon had a 440 MB footprint with 12 MB of Go heap in
-		// use (2026-10-10). 16 MiB keeps every measured endpoint as fast and
-		// caps the pool at a quarter of that.
+		// use (2026-10-10). 16 MiB kept every measured endpoint as fast and
+		// capped the pool at a quarter of that.
+		//
+		// It is 4 MiB since 2026-11-24. Startup's jobs (repairs, backfills,
+		// the all-history parts scan) fill every connection's cache in the
+		// first 30 s, and SQLite's allocator keeps what it freed up to that
+		// high-water mark: on a stand at the owner's scale (1.18M events,
+		// 2.8 GB, four tabs open, agents working) the daemon settled at 518
+		// MB of footprint, 366 MB of it SQLite's. At 4 MiB the same stand
+		// settled at 276 MB (100 MB SQLite), every timed endpoint as fast
+		// warm and cold, CPU 10.2% → 10.7% of a core (2026-11-24,
+		// .ai/10-infrastructure.md § Profiling the daemon).
 		//
 		// The size is a ceiling, not an allocation: SQLite grows into it only
 		// as pages are touched, so a small database still costs a small process.
@@ -273,7 +283,7 @@ func Open(ctx context.Context, path string, log *slog.Logger, opts ...Option) (*
 		// the file can give free pages back to the disk a few at a time
 		// (vacuum.go). On an existing one it changes nothing until the one
 		// VACUUM the daemon runs while idle (daemon/compact.go).
-		dsn = "file:" + path + "?_txlock=immediate&_pragma=auto_vacuum(INCREMENTAL)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(ON)&_pragma=cache_size(-16384)&_pragma=mmap_size(2147418112)&_pragma=journal_size_limit(" + strconv.Itoa(JournalSizeLimit) + ")"
+		dsn = "file:" + path + "?_txlock=immediate&_pragma=auto_vacuum(INCREMENTAL)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(ON)&_pragma=cache_size(-4096)&_pragma=mmap_size(2147418112)&_pragma=journal_size_limit(" + strconv.Itoa(JournalSizeLimit) + ")"
 	}
 	// Every statement is timed, and one slower than SlowQuery is logged with
 	// its caller (slowlog.go).

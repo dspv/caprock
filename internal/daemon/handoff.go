@@ -208,7 +208,7 @@ func (d *Daemon) memoryStatus(ctx context.Context) (MemoryStatus, error) {
 	if held, err := store.ProseSince(ctx, d.store.DB()); err == nil && held > 0 {
 		ms.Held = time.UnixMilli(held).Format("2006-01-02")
 	}
-	if s, w, err := store.HandoffEffect(ctx, d.store.DB()); err == nil && s.Sessions+w.Sessions > 0 {
+	if s, w, err := store.HandoffEffect(ctx, d.store.DB(), &d.handoffMemo); err == nil && s.Sessions+w.Sessions > 0 {
 		ms.Served, ms.Withheld = &s, &w
 	}
 	return ms, nil

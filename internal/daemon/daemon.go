@@ -169,6 +169,9 @@ type Daemon struct {
 	// eventCount keeps the stored-event count by session, so a status asked
 	// again counts only the sessions whose events moved (store.EventCounter).
 	eventCount store.EventCounter
+	// handoffMemo keeps each handed session's first edit, so the status
+	// refresh reads only the sessions that could have one now (store.HandoffEffect).
+	handoffMemo store.HandoffMemo
 	// subSpend keeps the Subscriptions answer's week of spend (subspend.go).
 	subSpend subSpendCache
 	// planShareC keeps GET /v1/plan-share's rates (planshare.go).
@@ -793,7 +796,7 @@ func (d *Daemon) run(ctx context.Context) error {
 	d.devShare = devshare.New(devshare.Options{Log: d.log, Forbid: func(p int) bool { return p == d.port }})
 	defer d.devShare.Close()
 	d.api = api.New(api.Deps{
-		Store: d.store, Bus: d.bus, Table: d.table, Log: d.log, Hook: hh, CursorHook: ch, CursorHooks: d.cursorHooks, Version: d.opt.Version, Reporter: d, Alerts: d, Morning: d, PhoneLink: d, Telegram: d.tg,
+		Store: d.store, Bus: d.bus, Table: d.table, Log: d.log, Hook: hh, CursorHook: ch, CursorHooks: d.cursorHooks, Version: d.opt.Version, KeepParts: true, Reporter: d, Alerts: d, Morning: d, PhoneLink: d, Telegram: d.tg,
 		Status: d.status, InstallHooks: d.installHooks, BypassAccepted: bypassAccepted, AcceptBypass: acceptBypass, ReadRetention: readRetention, KeepTranscripts: keepTranscripts, Storage: d.storageReport, StoragePack: func(ctx context.Context) any { return d.packReport(ctx) }, StartPack: d.startPackAPI, WindowStop: d.windowStopStatus,
 		Resources:       func(ctx context.Context) any { return d.resources(ctx) },
 		ResourceHistory: func(since int64) any { return d.resourceHistory(since) },

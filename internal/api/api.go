@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"io"
 	"io/fs"
 	"log/slog"
@@ -94,6 +95,10 @@ type Deps struct {
 	PhoneLink PhoneLinkSender
 	UI        fs.FS // embedded dashboard (index.html at root); nil ⇒ placeholder
 	Version   string
+	// KeepParts keeps the summaries' per-session parts in the database
+	// across restarts (store.PartsCache.Keep, migration 0093). The daemon
+	// sets it; a test server keeps them in memory only.
+	KeepParts bool
 	// Status returns daemon/ingest/hooks status for /v1/status.
 	Status func(ctx context.Context) any
 	// InstallHooks registers the shim in Claude Code's settings, as
@@ -623,6 +628,8 @@ type Server struct {
 	// machAll is each other computer's answer for a ?machines=all view
 	// (machinesall.go).
 	machAll machinesAllCache
+	// modList keeps module document list pages by their tag (modulelistcache.go).
+	modList *moduleListCache
 	lanURL  string
 	// altURLs are the other addresses network access answers on, beside
 	// lanURL: the Tailscale one when lanURL is the LAN one, or the reverse,
@@ -719,11 +726,14 @@ func New(d Deps) *Server {
 			lanHost = u.Hostname()
 		}
 	}
-	s := &Server{d: d, replaced: map[string]string{}, mux: http.NewServeMux(), ws: newWSHub(d.Bus, d.Log, lanHost), hist: newAnswerCache(historyTTL, answerMaxStale, time.Now), histWide: newAnswerCache(historyWideTTL, answerMaxStale, time.Now), summ: newAnswerCache(summaryTTL, answerMaxStale, time.Now), usual: newAnswerCache(usualTTL, usualMaxStale, time.Now),
+	s := &Server{d: d, replaced: map[string]string{}, modList: newModuleListCache(moduleListCacheBytes), mux: http.NewServeMux(), ws: newWSHub(d.Bus, d.Log, lanHost), hist: newAnswerCache(historyTTL, answerMaxStale, time.Now), histWide: newAnswerCache(historyWideTTL, answerMaxStale, time.Now), summ: newAnswerCache(summaryTTL, answerMaxStale, time.Now), usual: newAnswerCache(usualTTL, usualMaxStale, time.Now),
 		trends: newAnswerCache(trendsTTL, trendsMaxStale, time.Now), pipeAgents: newAnswerCache(pipeAgentsTTL, trendsMaxStale, time.Now), pipeAgentsPast: newAnswerCache(pipeAgentsPastTTL, trendsMaxStale, time.Now),
 		week: newAnswerCache(weekTTL, answerMaxStale, time.Now), weekLong: newAnswerCache(weekLongTTL, answerMaxStale, time.Now), glance: newAnswerCache(glanceTTL, answerMaxStale, time.Now),
 		drill: newAnswerCache(drillTTL, answerMaxStale, time.Now), deck: newDeckCache(time.Now), repos: newRepoCache(),
 		parts: store.NewPartsCache()}
+	if d.KeepParts {
+		s.parts.Keep(d.Version)
+	}
 	s.ws.hold = s.holdSocket
 	s.sizes = newPTYSizes(func(id string, cols, rows int) {
 		if s.d.Agents != nil {
@@ -1115,7 +1125,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // Close shuts down live connections.
-func (s *Server) Close() { s.ws.Close() }
+func (s *Server) Close() {
+	s.ws.Close()
+	s.parts.WaitSaved() // before the daemon closes the store
+}
 
 // isLoopbackOrigin reports whether an Origin header names this machine.
 //
@@ -1687,7 +1700,35 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 	if total, err := store.CountSessionsQuery(ctx, s.d.Store.DB(), f); err == nil {
 		w.Header().Set("X-Total-Count", strconv.Itoa(total))
 	}
-	writeJSON(w, http.StatusOK, out)
+	writeJSONTagged(w, r, out)
+}
+
+// writeJSONTagged is writeJSON for a 200 that a client asks for again and
+// again: the answer carries an ETag, a hash of its body and its
+// X-Total-Count, and a request naming that tag in If-None-Match gets a 304
+// with no body. The answer is still built; what an unchanged one no longer
+// costs is the bytes and the client's parse of them. The session list is
+// asked for once a minute per window and was 424 KB on the owner's Mac
+// (2026-11-24 audit), the same list most minutes.
+func writeJSONTagged(w http.ResponseWriter, r *http.Request, v any) {
+	b, err := encodeJSON(v)
+	if err != nil {
+		writeJSON(w, http.StatusOK, v)
+		return
+	}
+	h := fnv.New64a()
+	_, _ = h.Write(b)
+	_, _ = io.WriteString(h, "\x00"+w.Header().Get("X-Total-Count"))
+	tag := `"` + strconv.FormatUint(h.Sum64(), 36) + `"`
+	w.Header().Set("ETag", tag)
+	w.Header().Set("Cache-Control", "no-cache")
+	if etagMatches(r.Header.Get("If-None-Match"), tag) {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(b)
 }
 
 func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
@@ -1816,6 +1857,13 @@ func (s *Server) handleSessionEvents(w http.ResponseWriter, r *http.Request) {
 	}
 	if evs == nil {
 		evs = []event.Event{}
+	}
+	// `slim=1` sends each tool.post without its body (slimevents.go): what
+	// the inspector keeps of it, cut before the wire rather than after.
+	if r.URL.Query().Get("slim") == "1" {
+		for i := range evs {
+			evs[i] = slimToolPost(evs[i])
+		}
 	}
 	writeJSON(w, http.StatusOK, evs)
 }
@@ -3567,10 +3615,8 @@ func (s *Server) handleTestMorning(w http.ResponseWriter, r *http.Request) {
 // failure was invisible in the logs. A failure here is now an honest 500.
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(v); err != nil {
+	b, err := encodeJSON(v)
+	if err != nil {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte(`{"error":"response could not be serialized"}` + "\n"))
@@ -3578,7 +3624,18 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(code)
-	_, _ = w.Write(buf.Bytes())
+	_, _ = w.Write(b)
+}
+
+// encodeJSON is the body writeJSON sends for v.
+func encodeJSON(v any) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }
 
 func (s *Server) fail(w http.ResponseWriter, err error) {
