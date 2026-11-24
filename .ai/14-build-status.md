@@ -532,6 +532,13 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-11-24 — 0.194.0: a release you can see land
+
+A minor release, #1055. For the hour after a release the cockpit's folded
+Release line is a green pill, "✓ 0.194.0 released", with its age and what
+agents spent on its pull requests, as Caprock recorded it; a small burst
+plays once when it first appears.
+
 ### 2026-11-24 — 0.193.1: background work ends when Claude Code says it has
 
 A patch release, #1053. Now's "Waiting on background work" no longer lists
