@@ -3,6 +3,7 @@
 import json
 import os
 import sys
+import tempfile
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -26,7 +27,7 @@ def good(c):
             "ShowStatusBar": False,
         },
         "icvp": {"backgroundType": 2, "iconSize": 128.0},
-        "background": ".background.png",
+        "background": ".background.tiff",
         "iloc": {
             "Caprock.app": (c["appPosition"]["x"], c["appPosition"]["y"]),
             "Applications": (c["applicationFolderPosition"]["x"], c["applicationFolderPosition"]["y"]),
@@ -34,7 +35,13 @@ def good(c):
     }
 
 
-FILES = {"background": "abc", "expected_background": "abc"}
+FILES = {
+    "background": "abc",
+    "expected_background": "abc",
+    "volume_icon": "icn",
+    "expected_volume_icon": "icn",
+    "custom_icon": True,
+}
 
 
 class Problems(unittest.TestCase):
@@ -70,6 +77,38 @@ class Problems(unittest.TestCase):
         self.assertIn("not on the volume", dmg_window.problems(w, c, "Caprock.app", {"background": None})[0])
         w["icvp"]["backgroundType"] = 1
         self.assertIn("not a picture", dmg_window.problems(w, c, "Caprock.app", FILES)[0])
+
+    def test_a_missing_or_wrong_volume_icon_or_flag_fails(self):
+        c = conf()
+        w = good(c)
+        got = dmg_window.problems(w, c, "Caprock.app", {**FILES, "volume_icon": None})
+        self.assertEqual(len(got), 1, got)
+        self.assertIn("generic disk", got[0])
+        got = dmg_window.problems(w, c, "Caprock.app", {**FILES, "volume_icon": "other"})
+        self.assertEqual(got, [".VolumeIcon.icns is not the app's .icns"])
+        got = dmg_window.problems(w, c, "Caprock.app", {**FILES, "custom_icon": False})
+        self.assertEqual(len(got), 1, got)
+        self.assertIn("custom-icon flag", got[0])
+        # No .icns in the bundle: nothing to check against.
+        got = dmg_window.problems(w, c, "Caprock.app", {**FILES, "expected_volume_icon": None, "custom_icon": False})
+        self.assertEqual(got, [])
+
+    def test_the_repository_ships_a_2x_background(self):
+        # dmgbuild turns background.png + background@2x.png into one
+        # multi-resolution TIFF; without the @2x the window is soft on Retina.
+        src_tauri = os.path.dirname(os.path.abspath(CONF_PATH))
+        got = dmg_window.scaled_backgrounds(os.path.join(src_tauri, conf()["background"]))
+        self.assertEqual([os.path.basename(p) for p in got], ["background.png", "background@2x.png"])
+
+    def test_scaled_backgrounds_orders_by_scale_and_ignores_others(self):
+        with tempfile.TemporaryDirectory() as d:
+            for n in ("bg@3x.png", "bg.png", "bg@2x.png", "bg@2x.jpg", "other@2x.png"):
+                open(os.path.join(d, n), "wb").close()
+            got = dmg_window.scaled_backgrounds(os.path.join(d, "bg.png"))
+            self.assertEqual([os.path.basename(p) for p in got], ["bg.png", "bg@2x.png", "bg@3x.png"])
+            os.remove(os.path.join(d, "bg@2x.png"))
+            got = dmg_window.scaled_backgrounds(os.path.join(d, "bg.png"))
+            self.assertEqual([os.path.basename(p) for p in got], ["bg.png", "bg@3x.png"])
 
     def test_parse_bounds(self):
         self.assertEqual(dmg_window.parse_bounds("{{100, 100}, {660, 400}}"), (100, 100, 660, 400))

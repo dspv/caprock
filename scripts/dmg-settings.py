@@ -36,9 +36,17 @@ symlinks = {"Applications": "/Applications"}
 # `codesign --verify --strict` rejects as detritus.
 
 # The volume's icon: the .icns the bundle lists (Tauri copied the same file).
+# dmgbuild copies it to the volume's root as .VolumeIcon.icns (a dot name, so
+# the window never shows it) and sets the root folder's custom-icon flag with
+# SetFile, so the mounted disk wears the Caprock icon, not a generic disk.
 icon = next(
     os.path.join(_src_tauri, p) for p in _bundle["icon"] if p.endswith(".icns")
 )
+# The 1x picture. dmgbuild finds background@2x.png beside it on its own
+# (lookForHiDPI, on by default) and ships both as one multi-resolution
+# .background.tiff (tiffutil -cathidpicheck), so the window is sharp on
+# Retina. tauri.conf.json keeps naming the PNG: Tauri's bundler takes PNG,
+# JPG or GIF only.
 background = os.path.join(_src_tauri, _dmg["background"])
 
 _size = _dmg["windowSize"]

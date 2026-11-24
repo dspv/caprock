@@ -1066,21 +1066,37 @@ are stable and referenced by [22-app-plan.md](22-app-plan.md).
   ([04-ui.md § Update notice](04-ui.md#update-notice); § Updates).
   The `.dmg` opens on a branded window (`bundle.macOS.dmg` in
   `tauri.conf.json`, 2026-10-10): 660×400, the app icon at (170, 196) and
-  the Applications folder at (490, 196) in two wells with a dotted arrow
-  between. Since 2026-11-01 (owner's pick of three looks) the ground is
-  graphite, headed *Your agents are waiting* / *Drag Caprock onto
-  Applications*, with four of the app's characters round the arrow; each
-  icon's name sits on a pale plate, because Finder draws the names in black
-  on any background. Before, it was caprock.dev's paper ground. The picture is `app/src-tauri/dmg/background.png`,
-  rendered from `background.html` beside it (one image at window size: the
-  bundler takes PNG, JPG or GIF, so no @2x). The `.dmg` is made by
+  the Applications folder at (490, 196). Since 2026-11-25 (owner's pick,
+  *A on paper · cool*) the ground is cool off-white drafting paper with a
+  faint blue grid and a soft navy glow, the CAPROCK wordmark over the
+  headline *Mission control for your agents*, a dotted navy arc from the app
+  to Applications, four of the app's characters in a row along the bottom
+  between the icons, and *Drag to Applications · then open Caprock from
+  Launchpad* at the foot. No wells or name plates: Finder draws the icons'
+  names in black, which reads on a light ground. From 2026-11-01 it was
+  graphite with two wells, pale name plates and *Your agents are waiting*;
+  before that, caprock.dev's paper ground. The picture is
+  `app/src-tauri/dmg/background.png` (660×400) and `background@2x.png`
+  beside it (1320×800, since 2026-11-25; before, the window was soft on
+  Retina), both rendered from `background.html` with Playwright's headless
+  Chromium at device scale factor 1 and 2 (its header comment has the
+  steps). `tauri.conf.json` names only the 1x PNG, since Tauri's bundler takes
+  PNG, JPG or GIF; dmgbuild finds the @2x beside it and ships the pair as one
+  multi-resolution `.background.tiff` (`tiffutil -cathidpicheck`), which
+  Finder draws at the screen's scale. The mounted disk wears the Caprock icon
+  (dmgbuild's `icon` option, there since the move to dmgbuild; checked since
+  2026-11-25): dmgbuild copies the bundle's `icons/icon.icns` to the volume as
+  `.VolumeIcon.icns` (a dot name, so the window never shows it) and sets the
+  root folder's custom-icon flag. The `.dmg` is made by
   `scripts/app-dmg.sh` with dmgbuild, which writes the window's `.DS_Store`
-  (bounds, background alias to the volume's `.background.png`, icon
+  (bounds, background alias to the volume's `.background.tiff`, icon
   positions) without Finder; Tauri's own `.dmg` skipped its Finder layout step
   under `CI=true`, so no Actions-built release before 2026-11-02 had the
   window (checked: 0.97.0 through 0.170.0 carry no `.DS_Store`). CI's macOS
   app job and `make app-release` mount the `.dmg` and fail unless
-  `app-dmg.sh check` finds that layout (`scripts/dmg_window.py`).
+  `app-dmg.sh check` finds that layout (`scripts/dmg_window.py`): the window,
+  the TIFF made from the repository's two PNGs, `.VolumeIcon.icns` equal to
+  `icon.icns`, and the custom-icon flag.
 - **F13 — Phone v2 Phase A.** The phone (the existing web dashboard on the
   home screen) never needs a manual reconnect, resumes a terminal from the
   byte it last saw, queues a message typed while offline, replays the live

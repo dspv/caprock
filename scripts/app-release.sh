@@ -203,9 +203,10 @@ APP="$MNT/Caprock.app"
 [[ -d "$APP" ]] || die "no Caprock.app in the .dmg"
 [[ -L "$MNT/Applications" ]] || die "no Applications link in the .dmg"
 # The branded window (bundle.macOS.dmg): a .DS_Store with the window's size,
-# the background picture (an alias to the volume's .background.png, the
-# repository's picture) and both icons' positions; without it the window
-# opens as a bare white Finder folder.
+# the background picture (an alias to the volume's .background.tiff, the
+# repository's 1x and @2x pictures in one) and both icons' positions; without
+# it the window opens as a bare white Finder folder. The check also wants the
+# volume's Caprock icon (.VolumeIcon.icns and the custom-icon flag).
 bash scripts/app-dmg.sh check "$MNT" || die "the .dmg's window is not laid out"
 plist() { /usr/libexec/PlistBuddy -c "Print :$1" "$APP/Contents/Info.plist"; }
 [[ "$(plist CFBundleIdentifier)" == dev.caprock.app ]] || die "bundle id is $(plist CFBundleIdentifier)"
