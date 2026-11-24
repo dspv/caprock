@@ -51,6 +51,7 @@ var plainPayloadReads = map[string]string{
 	"internal/store/queries.go:MergeAssistantText":                   "turn.assistant",
 	"internal/store/queries.go:FirstPrompts":                         "turn.user",
 	"internal/store/background.go:backgroundNotes":                   "turn.user, guarded by json_valid",
+	"internal/store/background.go:newestTaskList":                    "agent.stop only, guarded by json_valid",
 	"internal/store/queries.go:sessionQueryFilter":                   "turn.user",
 	"internal/store/queries.go:assistantTextWhere":                   "turn.assistant",
 	"internal/store/queries.go:proseText":                            "turn.assistant, as idx_events_prose indexes it",

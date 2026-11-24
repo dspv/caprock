@@ -32,6 +32,17 @@ import (
 //     not its end: it stopped with work of its own still running, and the
 //     same task id notifies again when that is done. TaskStop (task_id) and
 //     KillShell (shell_id) end the task they name.
+//   - Claude Code's own list says what still runs: every Stop hook carries
+//     background_tasks, the session's running background work at that moment
+//     (shells, monitors and agents, whoever started them). A task launched
+//     before the main thread's newest Stop and missing from its list has
+//     ended, notified or not (owner, 2026-11-24: two release scripts the lead
+//     stopped with pkill, and three agents whose last word was "is waiting on
+//     its own background work", read open for 12 hours; Claude Code wrote no
+//     notification for any of them). An agent waiting on work of its own is
+//     missing from that list while the work it launched is on it, so an agent
+//     ends only when neither it nor any background task it launched itself is
+//     listed. A Stop with no list (a Claude Code from before it) says nothing.
 //   - Everything launched before the process started again (a main-thread
 //     SessionStart that did not follow a compaction) went with that process,
 //     and an ended session has none. A launch older than BackgroundWorkWindow
@@ -103,7 +114,7 @@ func noteStillWorking(prompt string) bool {
 }
 
 // foldBackground reads rows (oldest first) into the tasks still open,
-// oldest launch first.
+// oldest launch first, all of them (capBackground bounds the list).
 func foldBackground(rows []backgroundRow) []BackgroundTask {
 	open := map[string]BackgroundTask{}
 	known := map[string]BackgroundTask{}
@@ -166,10 +177,133 @@ func foldBackground(rows []backgroundRow) []BackgroundTask {
 		}
 		return out[i].ID < out[j].ID
 	})
+	return out
+}
+
+// capBackground keeps the newest maxBackgroundTasks launches.
+func capBackground(out []BackgroundTask) []BackgroundTask {
 	if len(out) > maxBackgroundTasks {
 		out = out[len(out)-maxBackgroundTasks:]
 	}
 	return out
+}
+
+// taskList is the background_tasks of the main thread's newest Stop: the
+// ids Claude Code still ran then.
+type taskList struct {
+	ts  int64
+	ids map[string]bool
+}
+
+// quietAgents are the agents among open launched by the list's moment and
+// not on it. An agent waiting on work of its own is not on it, so what it
+// launched itself must be read before it can be called ended.
+func (l *taskList) quietAgents(open []BackgroundTask) []string {
+	var out []string
+	for _, t := range open {
+		if t.Kind == BackgroundAgent && t.StartedAt <= l.ts && !l.ids[t.ID] {
+			out = append(out, t.ID)
+		}
+	}
+	return out
+}
+
+// keep drops from open what the list says has ended: launched by its moment
+// and not on it — for an agent, with none of the background tasks it
+// launched itself (launches, by agent id) on it either.
+func (l *taskList) keep(open []BackgroundTask, launches map[string][]string) []BackgroundTask {
+	var out []BackgroundTask
+	for _, t := range open {
+		if t.StartedAt > l.ts || l.ids[t.ID] || (t.Kind == BackgroundAgent && l.anyOf(launches[t.ID])) {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+func (l *taskList) anyOf(ids []string) bool {
+	for _, id := range ids {
+		if l.ids[id] {
+			return true
+		}
+	}
+	return false
+}
+
+// newestTaskList is the background_tasks of the session's newest main-thread
+// Stop since a moment, nil when there is none or it carries no list. Only
+// the ids are taken out of the payload; a Stop's payload is never compressed
+// (only tool rows are), and json_valid guards the read. The kind IN repeats
+// idx_events_turn_bounds' own condition, which SQLite needs to use it.
+func newestTaskList(ctx context.Context, q Querier, sessionID string, since int64) (*taskList, error) {
+	var ts int64
+	var ids sql.NullString
+	err := q.QueryRowContext(ctx, `
+		SELECT e.ts, CASE WHEN json_valid(e.payload) AND json_type(e.payload, '$.background_tasks') = 'array'
+		         THEN (SELECT json_group_array(json_extract(t.value, '$.id')) FROM json_each(e.payload, '$.background_tasks') t) END
+		  FROM events e INDEXED BY idx_events_turn_bounds
+		 WHERE e.sid = (SELECT sid FROM sessions WHERE session_id = ?) AND e.ts >= ?
+		   AND e.source = 'hook' AND e.kind IN ('turn.user', 'agent.stop', 'throttle')
+		   AND e.kind = 'agent.stop' AND COALESCE(e.agent_id, '') = ''
+		 ORDER BY e.ts DESC LIMIT 1`, sessionID, since).Scan(&ts, &ids)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil || !ids.Valid {
+		return nil, err
+	}
+	var list []any
+	if err := json.Unmarshal([]byte(ids.String), &list); err != nil {
+		return nil, err // json_group_array's own output
+	}
+	l := &taskList{ts: ts, ids: make(map[string]bool, len(list))}
+	for _, v := range list {
+		if id, ok := v.(string); ok && id != "" {
+			l.ids[id] = true
+		}
+	}
+	return l, nil
+}
+
+// agentLaunches are the background tasks the given agents launched
+// themselves since a moment — a command's backgroundTaskId, a watch's
+// taskId, an agent's agentId — by agent id, read through idx_events_agent:
+// those agents' own rows alone.
+func agentLaunches(ctx context.Context, q Querier, sessionID string, since int64, agents []string) (map[string][]string, error) {
+	ids, err := json.Marshal(agents)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := q.QueryContext(ctx, `
+		SELECT e.agent_id, json_extract(`+ZPayloadE+`,
+		         '$.tool_response.backgroundTaskId', '$.tool_response.taskId', '$.tool_response.agentId')
+		  FROM events e INDEXED BY idx_events_agent
+		 WHERE e.sid = (SELECT sid FROM sessions WHERE session_id = ?)
+		   AND e.agent_id IN (SELECT value FROM json_each(?)) AND e.ts >= ?
+		   AND e.kind = 'tool.post' AND e.source = 'hook'
+		   AND e.tool IN ('Bash', 'Monitor', 'Agent', 'Task')`, sessionID, string(ids), since)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	out := map[string][]string{}
+	for rows.Next() {
+		var agent string
+		var f sql.NullString
+		if err := rows.Scan(&agent, &f); err != nil {
+			return nil, err
+		}
+		var v []any
+		if !f.Valid || json.Unmarshal([]byte(f.String), &v) != nil {
+			continue
+		}
+		for _, x := range v {
+			if id, ok := x.(string); ok && id != "" {
+				out[agent] = append(out[agent], id)
+			}
+		}
+	}
+	return out, rows.Err()
 }
 
 // clipLine is the first line of s, trimmed, at most n runes.
@@ -267,9 +401,10 @@ func backgroundCallRows(ctx context.Context, q Querier, sessionID string, since 
 
 // BackgroundWork lists the work a session's main thread started in the
 // background and has not heard the end of, oldest launch first (see the top
-// of this file). Two reads of the session's own rows since its newest
-// process start or BackgroundWorkWindow ago, whichever is later; nil for an
-// ended session.
+// of this file). Reads of the session's own rows since its newest process
+// start or BackgroundWorkWindow ago, whichever is later: its calls, its
+// notifications, its newest Stop's list and, only when an agent is missing
+// from that list, what that agent launched itself; nil for an ended session.
 func BackgroundWork(ctx context.Context, q Querier, sessionID string, now int64) ([]BackgroundTask, error) {
 	var status sql.NullString
 	err := q.QueryRowContext(ctx, `SELECT status FROM sessions WHERE session_id = ?`, sessionID).Scan(&status)
@@ -297,7 +432,24 @@ func BackgroundWork(ctx context.Context, q Querier, sessionID string, now int64)
 	all := make([]backgroundRow, 0, len(calls)+len(notes))
 	all = append(append(all, calls...), notes...)
 	sort.SliceStable(all, func(i, j int) bool { return all[i].ts < all[j].ts })
-	return foldBackground(all), nil
+	open := foldBackground(all)
+	if len(open) == 0 {
+		return nil, nil
+	}
+	list, err := newestTaskList(ctx, q, sessionID, since)
+	if err != nil || list == nil {
+		return capBackground(open), err
+	}
+	var launches map[string][]string
+	if quiet := list.quietAgents(open); len(quiet) > 0 {
+		if launches, err = agentLaunches(ctx, q, sessionID, since, quiet); err != nil {
+			return nil, err
+		}
+	}
+	if open = list.keep(open, launches); len(open) == 0 {
+		return nil, nil
+	}
+	return capBackground(open), nil
 }
 
 // BackgroundAgentIDs is the set of agents among tasks: a background subagent

@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -141,4 +142,102 @@ func TestBackgroundWorkReads(t *testing.T) {
 	if got, err := BackgroundWork(ctx, f.s.DB(), "nobody", now.UnixMilli()); err != nil || got != nil {
 		t.Fatalf("unknown session: %v %v", got, err)
 	}
+}
+
+// Claude Code's own list of what still runs, from the owner's session of
+// 2026-11-24 (ids and shapes as recorded, UTC, payloads trimmed): two
+// release scripts the lead stopped with pkill, and three agents whose last
+// word was "is waiting on its own background work", read open for 12 hours
+// because no notification ever named their end. Every Stop lists the
+// session's running background work in background_tasks.
+func TestBackgroundWorkTaskList(t *testing.T) {
+	ctx := context.Background()
+	f := &weekFixture{t: t, s: openTest(t), loc: time.UTC}
+	at := func(s string) time.Time {
+		ts, err := time.Parse("2006-01-02 15:04:05", s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ts
+	}
+	now := at("2026-11-24 08:30:00")
+	put := func(agent string, kind event.Kind, tool string, ts time.Time, payload string) {
+		f.put(event.Event{SessionID: "s", AgentID: agent, Source: event.SourceHook, Kind: kind, Tool: tool, Ts: ts, Payload: json.RawMessage(payload)})
+	}
+	shell := func(agent, id, desc, ts string) {
+		put(agent, event.KindToolPost, "Bash", at(ts),
+			`{"hook_event_name":"PostToolUse","tool_name":"Bash","tool_input":{"command":"/tmp/rel.sh","description":"`+desc+`","run_in_background":true},"tool_response":{"stdout":"","stderr":"","interrupted":false,"isImage":false,"noOutputExpected":false,"backgroundTaskId":"`+id+`"}}`)
+	}
+	launch := func(id, desc, ts string) {
+		put("", event.KindToolPost, "Agent", at(ts),
+			`{"hook_event_name":"PostToolUse","tool_name":"Agent","tool_input":{"description":"`+desc+`","prompt":"…","subagent_type":"general-purpose","run_in_background":true},"tool_response":{"isAsync":true,"status":"async_launched","agentId":"`+id+`","description":"`+desc+`"}}`)
+	}
+	waiting := func(id, desc, ts string) {
+		put("", event.KindTurnUser, "", at(ts), `{"hook_event_name":"UserPromptSubmit","prompt":"<task-notification>\n<task-id>`+id+`</task-id>\n<status>completed</status>\n<summary>Agent \"`+desc+`\" is waiting on its own background work</summary>\n<note>This agent stopped with background work of its own still running. It may resume on its own when that work completes or reports, and the same task-id notifies again if it does; the result below may be interim.</note>\n<result>Pushed.</result>\n</task-notification>"}`)
+	}
+	// stop is a Stop (a SubagentStop with an agent) listing what runs; an
+	// id's first letter gives its type, as Claude Code's ids do.
+	stop := func(agent, ts string, running ...string) {
+		var tasks []string
+		for _, id := range running {
+			typ := map[byte]string{'a': "subagent", 's': "monitor"}[id[0]]
+			if typ == "" {
+				typ = "shell"
+			}
+			tasks = append(tasks, `{"id":"`+id+`","type":"`+typ+`","status":"running","description":"x"}`)
+		}
+		put(agent, event.KindAgentStop, "", at(ts),
+			`{"hook_event_name":"Stop","stop_hook_active":false,"background_tasks":[`+strings.Join(tasks, ",")+`],"session_crons":[]}`)
+	}
+	expect := func(what string, want ...string) {
+		t.Helper()
+		got, err := BackgroundWork(ctx, f.s.DB(), "s", now.UnixMilli())
+		if err != nil {
+			t.Fatal(err)
+		}
+		var ids []string
+		for _, w := range got {
+			ids = append(ids, w.Kind+":"+w.ID)
+		}
+		if strings.Join(ids, " ") != strings.Join(want, " ") {
+			t.Fatalf("%s: got %v, want %v", what, ids, want)
+		}
+	}
+
+	// The release scripts, stopped with pkill: no notification, and gone
+	// from the next Stop's list.
+	shell("", "b56qabcki", "Merge remaining PRs and release 0.192.0", "2026-11-23 20:31:45")
+	stop("", "2026-11-23 20:32:22", "b56qabcki", "a5d2405293ee74d39")
+	expect("listed", "shell:b56qabcki")
+	shell("", "bq7wfzgvs", "Merge #1045, wait master CI, release 0.192.0", "2026-11-23 21:04:39")
+	stop("", "2026-11-23 21:04:45", "bq7wfzgvs")
+	expect("the first killed", "shell:bq7wfzgvs")
+	stop("", "2026-11-23 21:17:40", "bql6fmq5d")
+	expect("both killed")
+
+	// An agent waiting on its own work is off the list while what it
+	// launched itself is on it: still open.
+	launch("ad2f45955863f7dd0", "Checks popover clipped at bottom", "2026-11-23 22:05:33")
+	shell("ad2f45955863f7dd0", "bq28ppx7x", "Run full vitest suite", "2026-11-23 22:13:41")
+	put("ad2f45955863f7dd0", event.KindToolPost, "Monitor", at("2026-11-23 22:13:46"),
+		`{"tool_name":"Monitor","tool_input":{"description":"full vitest result","command":"until grep -q x; do sleep 5; done"},"tool_response":{"taskId":"bd2f3vrwc","timeoutMs":300000,"persistent":false}}`)
+	stop("ad2f45955863f7dd0", "2026-11-23 22:26:00", "ad2f45955863f7dd0", "bd2f3vrwc", "scay0ef18")
+	waiting("ad2f45955863f7dd0", "Checks popover clipped at bottom", "2026-11-23 22:26:00")
+	stop("", "2026-11-23 22:26:23", "bd2f3vrwc", "scay0ef18")
+	expect("waiting on its own watch", "agent:ad2f45955863f7dd0")
+
+	// Its watch ended and it never came back: neither it nor its work is
+	// listed, so it has ended. Another agent's own shell (an until-loop
+	// that never matched) is still listed, so that one still waits; and a
+	// launch after the newest Stop is believed until the next.
+	launch("ab08e246b3224f2a3", "Release groups: aligned counts, chevrons", "2026-11-23 22:22:10")
+	shell("ab08e246b3224f2a3", "badf1dbfl", "until grep", "2026-11-23 22:30:25")
+	waiting("ab08e246b3224f2a3", "Release groups: aligned counts, chevrons", "2026-11-23 22:56:25")
+	stop("", "2026-11-24 00:35:14", "badf1dbfl", "scay0ef18")
+	shell("", "b1vj1vsiq", "Merge #1050 and #1030, release 0.193.0", "2026-11-24 08:20:00")
+	expect("after the lists", "agent:ab08e246b3224f2a3", "shell:b1vj1vsiq")
+
+	// A Stop with no list (a Claude Code from before it) says nothing.
+	put("", event.KindAgentStop, "", at("2026-11-24 08:25:00"), `{"hook_event_name":"Stop","stop_hook_active":false}`)
+	expect("with no list", "shell:b56qabcki", "shell:bq7wfzgvs", "agent:ad2f45955863f7dd0", "agent:ab08e246b3224f2a3", "shell:b1vj1vsiq")
 }
