@@ -8,7 +8,7 @@
  * routes; the terminals stay mounted behind them, so switching back is one
  * click, never repaints from nothing and never drops a socket that was in use.
  */
-import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react'
+import { Activity, lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { api, ApiError, errText, isPairedDevice, type SessionSummary, type SpawnRequest } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { APP_ROUTE, isMacPlatform, isTauri, isWorkspaceHash } from '@/lib/appmode'
@@ -64,6 +64,8 @@ import { useDaemonVersion } from '@/lib/useDaemonVersion'
 import { HIDDEN_PROJECTS_EVENT, hideSessionRow, loadHiddenProjects, loadHiddenSessions, Sidebar } from '@/components/Sidebar'
 import { TabStrip, TerminalStack } from '@/components/TerminalTabs'
 import { Inspector } from '@/components/Inspector'
+import { KeptViews } from '@/components/KeptViews'
+import { warmSession } from '@/lib/sessionWarm'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { FeedbackDialog } from '@/components/Feedback'
 import { BugReportSheet } from '@/components/BugReportSheet'
@@ -417,6 +419,8 @@ export function AppShell() {
   }, [toast])
 
   const openSessions = useMemo(() => new Set(ws.tabs.flatMap((t) => leaves(t.root).map((l) => l.target.sessionId))), [ws.tabs])
+  // A kept view (components/KeptViews) goes with the last tab showing its session.
+  const keepView = useCallback((id: string) => openSessions.has(id), [openSessions])
   // The daemon is told which sessions have a tab here: none of them is ever
   // ended for sitting idle (lib/reportTabs.ts).
   const tabbedIds = useMemo(() => [...openSessions].filter((id): id is string => typeof id === 'string' && id !== ''), [openSessions])
@@ -438,6 +442,16 @@ export function AppShell() {
     [data.projects, data.sessions, data.permissions, data.costs, sidebarOpen, activity.data],
   )
   const sessionsById = useMemo(() => new Map(data.sessions.map((s) => [s.session_id, s])), [data.sessions])
+  // A tab under the pointer or the keyboard: what its inspector draws first
+  // is read ahead, so a click shows it on the first frame (lib/sessionWarm).
+  const onWarmTab = useCallback((tabId: string) => {
+    const t = ws.tabs.find((x) => x.id === tabId)
+    const target = t && focusedLeaf(t).target
+    if (!target || (target.kind !== 'session' && target.kind !== 'shell')) return
+    const s = sessionsById.get(target.sessionId)
+    if (!s || s.status === 'ended') return
+    warmSession(target.sessionId, s.kind !== 'shell')
+  }, [ws.tabs, sessionsById])
   // From the model, so Other folders resolves like a project.
   const projectsById = useMemo(() => new Map(model.projects.map((n) => [n.project.id, n.project])), [model.projects])
 
@@ -2328,6 +2342,7 @@ export function AppShell() {
               inspectorOpen={prefs.inspector}
               sidebarOpen={prefs.sidebar}
               onActivate={onActivateTab}
+              onWarm={onWarmTab}
               onDetach={onCloseTab}
               digits={stripDigits}
               onMove={onStripMove}
@@ -2365,6 +2380,10 @@ export function AppShell() {
                     onEndedResume={resumeEnded}
                     onEndedDismiss={onEndedDismiss}
                   />
+                  {/* The chats of the last few tabs shown as chats stay drawn,
+                    * hidden and asking nothing (components/KeptViews): back to
+                    * one, it is as it was left, not read again from the top. */}
+                  <KeptViews current={showChat && focused ? focused.sessionId : undefined} alive={keepView}>
                   {showChat && focused && (chatPanes.has(focused.sessionId) && current ? (
                     // A chat on its conversation (ADR-071): the way out above
                     // it, and the ended state over it, as its terminal had.
@@ -2409,6 +2428,7 @@ export function AppShell() {
                       className="app-slab absolute inset-0 z-10"
                     />
                   ))}
+                  </KeptViews>
                   {changesView && (
                     <ChangesView
                       key={`${changesView.projectId}:${changesView.worktree}`}
@@ -2547,7 +2567,10 @@ export function AppShell() {
                 </div>
               )}
             </div>
-            {workspaceShown && prefs.inspector && !focusedPage && !focusedFiles && (
+            {/* Hidden, not unmounted, behind the Dashboard or a page or
+              * files tab: its kept bodies wait there (components/KeptViews). */}
+            {prefs.inspector && (
+              <Activity mode={workspaceShown && !focusedPage && !focusedFiles ? 'visible' : 'hidden'}>
               <div className="h-full shrink-0" style={{ width: 'var(--app-inspector-w)' }}>
                 {/* The cockpit's Release rows open a session's tab, as the Pipeline's do. */}
                 <PipelineHostContext.Provider value={pipelineHost}>
@@ -2568,9 +2591,11 @@ export function AppShell() {
                   summary={data.summary}
                   onCompare={inspectedAgent?.attempt_group ? () => onCompare(inspectedAgent) : undefined}
                   onOpenPRs={inspectedAgent ? (pr?: number) => openPipeline(inspectedAgent, pr) : undefined}
+                  keep={keepView}
                 />
                 </PipelineHostContext.Provider>
               </div>
+              </Activity>
             )}
           </div>
         </main>

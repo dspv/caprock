@@ -11,6 +11,7 @@
  * makes a task call on the live socket it already follows.
  */
 import { useEffect, useRef, useState } from 'react'
+import { useOnChange } from '@/lib/useOnChange'
 import { api, type SessionTodos, type TodoItem } from '@/lib/api'
 import { live } from '@/lib/live'
 import { everyWhileVisible } from '@/lib/visible'
@@ -27,7 +28,7 @@ export function useSessionTodos(sessionId: string): SessionTodos | undefined {
   const [data, setData] = useState<SessionTodos | undefined>(undefined)
   const [tick, setTick] = useState(0)
   const pending = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  useEffect(() => { setData(undefined) }, [sessionId])
+  useOnChange(sessionId, () => setData(undefined))
   useEffect(() => {
     let alive = true
     api.todos(sessionId)
@@ -79,7 +80,7 @@ export function todoWindow(items: readonly TodoItem[], rows = TODO_ROWS): { star
 export function TodoBlock({ sessionId }: { sessionId: string }) {
   const todos = useSessionTodos(sessionId)
   const [all, setAll] = useState(false)
-  useEffect(() => { setAll(false) }, [sessionId])
+  useOnChange(sessionId, () => setAll(false))
   const items = todos?.items ?? []
   if (items.length === 0) return null
   const { done, total } = todoCount(items)

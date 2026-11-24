@@ -12,6 +12,7 @@
  * phone's keyboard does not drop.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useOnChange } from '@/lib/useOnChange'
 import { api, errText, type SlashCommand } from '@/lib/api'
 import { applyPick, matchCommands, matchFiles, pickerAt, type PickerQuery } from '@/lib/pickers'
 
@@ -96,7 +97,7 @@ export function useChatPicker(sessionId: string | undefined, enabled: boolean, s
     return () => { live = false }
   }, [q, sessionId, commands, files])
 
-  useEffect(() => { setCommands(null); setFiles(null); setQ(null) }, [sessionId])
+  useOnChange(sessionId, () => { setCommands(null); setFiles(null); setQ(null) })
 
   const rows = useMemo<Row[]>(() => {
     if (!q) return []

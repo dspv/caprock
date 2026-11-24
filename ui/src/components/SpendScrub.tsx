@@ -26,8 +26,10 @@
  * period's is the summary's sparks, summed by the caller.
  */
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
-import { api, type Event } from '@/lib/api'
-import { barLabel, barLabelShort, callsFromEvents, callsFromSeries, mergeCalls, stepText, timeBars, topTools, windowBars, type CallPoint, type TimeBar } from '@/lib/scrub'
+import { useOnChange } from '@/lib/useOnChange'
+import { keptCalls, readCalls } from '@/lib/sessionWarm'
+import type { Event } from '@/lib/api'
+import { barLabel, barLabelShort, callsFromEvents, mergeCalls, stepText, timeBars, topTools, windowBars, type CallPoint, type TimeBar } from '@/lib/scrub'
 import { GapMark } from './GapMark'
 import { CHART_METRICS, barCarries, barValue, chartValueText, periodBurn, type ChartMetric, type CostNote, type SpendBar } from '@/lib/spendview'
 import { barPace, paceLabel, paceOf, paceSentence, paceTitle, type Pace, type Usual } from '@/lib/usual'
@@ -119,7 +121,7 @@ export function SpendChart({ id, bars, step, now, total, scope, metric = 'cost',
   const lastSpent = values.reduce<number>((m, v, i) => ((v ?? 0) > 0 ? i : m), Math.max(0, bars.length - 1))
   // The stretch being read: under the pointer or stepped to; undefined at rest.
   const [cursor, setCursor] = useState<number | undefined>(undefined)
-  useEffect(() => { setCursor(undefined) }, [id])
+  useOnChange(id, () => setCursor(undefined))
   const at = cursor === undefined ? undefined : Math.min(cursor, Math.max(0, bars.length - 1))
   const bar = at === undefined ? undefined : bars[at]
 
@@ -250,14 +252,19 @@ function chartBars(bars: readonly TimeBar[]): ChartBar[] {
  */
 export function useSessionBars(sessionId: string, events: readonly Event[], metric: ChartMetric = 'cost', enabled = true, win?: BarWindow): { step: number; bars: ChartBar[]; burn?: number; calls: CallPoint[]; loaded: boolean } {
   const held = useMemo(() => (enabled ? callsFromEvents(events) : []), [events, enabled])
-  const [series, setSeries] = useState<{ id: string; calls?: CallPoint[] } | undefined>(undefined)
+  const [series, setSeries] = useState<{ id: string; calls?: CallPoint[] } | undefined>(() => keptCalls(sessionId))
+  // The series this mount read: a kept view shown again (components/
+  // KeptViews) has it, and the held events carry what came since.
+  const readFor = useRef<string | undefined>(undefined)
   useEffect(() => {
-    if (!enabled) return
+    if (!enabled || readFor.current === sessionId) return
     let alive = true
-    setSeries(undefined)
-    api.sessionCalls(sessionId)
-      .then((list) => { if (alive) setSeries({ id: sessionId, calls: Array.isArray(list) ? callsFromSeries(list) : undefined }) })
-      .catch(() => { if (alive) setSeries({ id: sessionId }) /* an older daemon: the held calls are what there is */ })
+    // A series kept from an earlier view of this session is drawn while it is read again.
+    const kept = keptCalls(sessionId)
+    setSeries(kept)
+    readCalls(sessionId)
+      .then((got) => { if (alive) { readFor.current = sessionId; setSeries(got) } })
+      .catch(() => { if (alive) setSeries(kept ?? { id: sessionId }) /* an older daemon: the held calls are what there is */ })
     return () => { alive = false }
   }, [sessionId, enabled])
   const own = series?.id === sessionId ? series : undefined

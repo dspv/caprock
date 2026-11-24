@@ -215,7 +215,14 @@ export function ChatView({ sessionId, earlier = NONE, canType, ended = false, cl
     }
   }, [sessionId, commit])
 
+  // A kept view shown again (components/KeptViews) mounts this effect once
+  // more for the same session: what it held stays and the newest page is
+  // merged in, as after a dropped connection — its live listener was off
+  // while it was hidden.
+  const loadedFor = useRef<string | undefined>(undefined)
   useEffect(() => {
+    if (loadedFor.current === sessionId) { void loadNewest(false); return }
+    loadedFor.current = sessionId
     eventsRef.current = []
     setEvents([])
     setLoaded(false)
