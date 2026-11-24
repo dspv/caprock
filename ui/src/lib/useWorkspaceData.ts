@@ -139,11 +139,22 @@ export function useWorkspaceData(): WorkspaceData {
   const sessionsRef = useRef(sessions)
   sessionsRef.current = sessions
 
-  // The full list, for projects nobody is working in right now.
+  // The full list, for projects nobody is working in right now. An answer
+  // the daemon said is unchanged comes back as the same array (api getTagged)
+  // and is not merged again: nothing in it is new, and the merge compares
+  // every row.
+  const lastFull = useRef<SessionSummary[] | null>(null)
+  const lastLive = useRef<SessionSummary[] | null>(null)
   useEffect(() => {
     let alive = true
     const load = () => api.sessions(false)
-      .then((list) => { if (alive) { setSessions((cur) => mergeSessions(cur, list)); setLoaded(true); setError(undefined) } })
+      .then((list) => {
+        if (!alive) return
+        if (list !== lastFull.current) setSessions((cur) => mergeSessions(cur, list))
+        lastFull.current = list
+        setLoaded(true)
+        setError(undefined)
+      })
       .catch((e: unknown) => { if (alive) { setLoaded(true); setError(e instanceof Error ? e.message : String(e)) } })
     void load()
     const stop = everyWhileVisible(load, FULL_LIST_MS)
@@ -169,7 +180,10 @@ export function useWorkspaceData(): WorkspaceData {
     f.busy = true
     f.again = false
     api.sessions(true)
-      .then((list) => { if (f.alive) setSessions((cur) => mergeSessions(cur, list)) })
+      .then((list) => {
+        if (f.alive && list !== lastLive.current) setSessions((cur) => mergeSessions(cur, list))
+        lastLive.current = list
+      })
       .catch(() => { /* the full list's error already speaks */ })
       .finally(() => {
         f.busy = false

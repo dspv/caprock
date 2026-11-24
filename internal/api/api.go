@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"io"
 	"io/fs"
 	"log/slog"
@@ -1689,7 +1690,35 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 	if total, err := store.CountSessionsQuery(ctx, s.d.Store.DB(), f); err == nil {
 		w.Header().Set("X-Total-Count", strconv.Itoa(total))
 	}
-	writeJSON(w, http.StatusOK, out)
+	writeJSONTagged(w, r, out)
+}
+
+// writeJSONTagged is writeJSON for a 200 that a client asks for again and
+// again: the answer carries an ETag, a hash of its body and its
+// X-Total-Count, and a request naming that tag in If-None-Match gets a 304
+// with no body. The answer is still built; what an unchanged one no longer
+// costs is the bytes and the client's parse of them. The session list is
+// asked for once a minute per window and was 424 KB on the owner's Mac
+// (2026-11-24 audit), the same list most minutes.
+func writeJSONTagged(w http.ResponseWriter, r *http.Request, v any) {
+	b, err := encodeJSON(v)
+	if err != nil {
+		writeJSON(w, http.StatusOK, v)
+		return
+	}
+	h := fnv.New64a()
+	_, _ = h.Write(b)
+	_, _ = io.WriteString(h, "\x00"+w.Header().Get("X-Total-Count"))
+	tag := `"` + strconv.FormatUint(h.Sum64(), 36) + `"`
+	w.Header().Set("ETag", tag)
+	w.Header().Set("Cache-Control", "no-cache")
+	if etagMatches(r.Header.Get("If-None-Match"), tag) {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(b)
 }
 
 func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {

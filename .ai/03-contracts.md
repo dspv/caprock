@@ -4323,6 +4323,18 @@ instead of leaving everything past the first page unreachable. `chats=exclude`
 leaves chats out (the Now list, the phone's Continue) and `chats=only` lists
 nothing else; absent, both are listed. `X-Total-Count` follows the same scope.
 
+**The list carries an `ETag`** (2026-11-24): a hash of the body and its
+`X-Total-Count`, with `Cache-Control: no-cache`. A request whose
+`If-None-Match` names it gets a **304 with no body**. The list is still
+built; what an unchanged one stops costing is the bytes and the client's
+parse. The dashboard keeps the last answer and tag per path and sends the
+tag itself (`ui/src/lib/api.ts` `getTagged`, `cache: 'no-store'` so the 304
+reaches it); on a 304 it returns the kept array, and the workspace skips
+merging a list it has already merged. Why: the workspace asks the full list
+once a minute and the live one on every tick, and the full list was 424 KB
+on the owner's Mac, 88% of a quiet workspace's polling bytes (2026-11-24
+audit). `?dir=` and `?machines=all` answers carry no tag.
+
 ### Chats (HTTP)
 
 A chat is a session Caprock started in one of its own chat folders,

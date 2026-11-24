@@ -1,6 +1,7 @@
 // Typed client for the daemon API (.ai/03-contracts.md § HTTP API). snake_case
 // on the wire, kept as-is in the types so the contract is visible in the code.
 import type { Gaps } from './gaps'
+import { onMemoryReset } from './memoryResets'
 import type { ReapResult, ResourceReport } from './resources'
 import type { EndIdleResult, MemoryReport, RestartEnd } from './memory'
 import type { ResourceHistory } from './resourceHistory'
@@ -2514,6 +2515,46 @@ async function get<T>(path: string): Promise<T> {
 }
 
 /**
+ * The last answer and its ETag per path, for the lists asked again and again
+ * (the session lists: the workspace's full one once a minute, the live one
+ * on every tick). The daemon answers a request naming the tag with a 304 and
+ * no body when the list is the same, and the kept answer is returned — the
+ * same object, so a caller can tell nothing changed and skip its work.
+ * Measured 2026-11-24: the full list was 424 KB on the owner's Mac, the same
+ * most minutes. Small on purpose: the newest TAGGED_KEPT paths.
+ */
+const tagged = new Map<string, { etag: string; value: unknown }>()
+const TAGGED_KEPT = 8
+onMemoryReset(() => tagged.clear())
+
+async function getTagged<T>(path: string, read: (res: Response) => Promise<T>): Promise<T> {
+  const kept = tagged.get(path)
+  const headers: Record<string, string> = { Accept: 'application/json' }
+  if (kept) headers['If-None-Match'] = kept.etag
+  // no-store: the tag is this function's to send, and a 304 must reach it
+  // rather than be turned into the browser's own cached 200.
+  const res = await fetch(path, { headers: withDevice(headers), cache: 'no-store' })
+  if (res.status === 304 && kept) {
+    tagged.delete(path)
+    tagged.set(path, kept)
+    return kept.value as T
+  }
+  if (!res.ok) {
+    let body: unknown
+    try { body = await res.json() } catch { /* ignore */ }
+    throw new ApiError(res.status, `${res.status} ${res.statusText}`, body)
+  }
+  const value = await read(res)
+  const etag = res.headers?.get('ETag')
+  tagged.delete(path)
+  if (etag) {
+    tagged.set(path, { etag, value })
+    while (tagged.size > TAGGED_KEPT) tagged.delete(tagged.keys().next().value as string)
+  }
+  return value
+}
+
+/**
  * The sessions list, with how many exist behind it.
  *
  * The list is capped server-side at 200. Without the total, a screen labels
@@ -2531,18 +2572,12 @@ async function sessionsWithTotal(activeOnly: boolean, search = '', limit = 0, ch
   // ignores the parameter, and the caller filters by `chat` too.
   if (chats) qs.set('chats', chats)
   const query = qs.toString()
-  const res = await fetch(`/v1/sessions${query ? `?${query}` : ''}`, {
-    headers: withDevice({ Accept: 'application/json' }),
+  return getTagged(`/v1/sessions${query ? `?${query}` : ''}`, async (res) => {
+    const items = (await res.json()) as SessionSummary[]
+    const n = Number(res.headers.get('X-Total-Count'))
+    // An older daemon sends no header; then the page is all we know of.
+    return { items, total: Number.isFinite(n) && n > 0 ? n : items.length }
   })
-  if (!res.ok) {
-    let body: unknown
-    try { body = await res.json() } catch { /* ignore */ }
-    throw new ApiError(res.status, `${res.status} ${res.statusText}`, body)
-  }
-  const items = (await res.json()) as SessionSummary[]
-  const n = Number(res.headers.get('X-Total-Count'))
-  // An older daemon sends no header; then the page is all we know of.
-  return { items, total: Number.isFinite(n) && n > 0 ? n : items.length }
 }
 
 /** A device that has been let in from the local network. */
@@ -2668,7 +2703,9 @@ export interface PairAddress {
 }
 
 export const api = {
-  sessions: (activeOnly = false) => get<SessionSummary[]>(`/v1/sessions${activeOnly ? '?active=true' : ''}`),
+  /** The sessions list; the same array as last time when the daemon says it is unchanged (getTagged). */
+  sessions: (activeOnly = false) =>
+    getTagged(`/v1/sessions${activeOnly ? '?active=true' : ''}`, async (res) => (await res.json()) as SessionSummary[]),
   sessionsWithTotal,
   /** One Projects row's sessions, newest first, each with whether it can be picked up. */
   sessionsInDir: (dir: string) => get<SessionSummary[]>(`/v1/sessions?dir=${encodeURIComponent(dir)}`),
