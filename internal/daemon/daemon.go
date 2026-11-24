@@ -169,6 +169,9 @@ type Daemon struct {
 	// eventCount keeps the stored-event count by session, so a status asked
 	// again counts only the sessions whose events moved (store.EventCounter).
 	eventCount store.EventCounter
+	// handoffMemo keeps each handed session's first edit, so the status
+	// refresh reads only the sessions that could have one now (store.HandoffEffect).
+	handoffMemo store.HandoffMemo
 	// subSpend keeps the Subscriptions answer's week of spend (subspend.go).
 	subSpend subSpendCache
 	// planShareC keeps GET /v1/plan-share's rates (planshare.go).

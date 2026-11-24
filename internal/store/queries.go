@@ -9,6 +9,7 @@ import (
 	"math"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -3356,30 +3357,31 @@ type HandoffGroup struct {
 // with sessions that could have been and were not. The measure is the first
 // edit: how long, and how many tool calls, a session spends finding its
 // footing before it changes anything. A handoff that works should shorten it.
-func HandoffEffect(ctx context.Context, q Querier) (served, withheld HandoffGroup, err error) {
+//
+// memo keeps what was found per session between calls; nil reads everything
+// again. The status refresh calls this once a minute, and it used to look for
+// every handed session's first edit and count the calls before it each time:
+// ~1 GB of disk reads an hour on the owner's machine (2026-11-24 audit).
+func HandoffEffect(ctx context.Context, q Querier, memo *HandoffMemo) (served, withheld HandoffGroup, err error) {
 	rows, err := q.QueryContext(ctx, `
-		SELECT s.handoff, s.started_at,
-		       (SELECT MIN(e.ts) FROM events e WHERE e.sid = s.sid
-		          AND e.kind = 'tool.pre' AND e.tool IN ('Edit','Write','MultiEdit','NotebookEdit')) AS first_edit,
-		       s.session_id
+		SELECT s.handoff, s.started_at, s.session_id, s.sid, COALESCE(s.last_event_at, 0)
 		FROM sessions s WHERE s.handoff IN (1, 2)`)
 	if err != nil {
 		return served, withheld, err
 	}
 	type row struct {
-		state        int
-		start, first int64
-		id           string
+		state       int
+		start, last int64
+		id          string
+		sid         int64
 	}
 	var all []row
 	for rows.Next() {
 		var r row
-		var fe sql.NullInt64
-		if err := rows.Scan(&r.state, &r.start, &fe, &r.id); err != nil {
+		if err := rows.Scan(&r.state, &r.start, &r.id, &r.sid, &r.last); err != nil {
 			_ = rows.Close()
 			return served, withheld, err
 		}
-		r.first = fe.Int64
 		all = append(all, r)
 	}
 	if err := rows.Err(); err != nil {
@@ -3387,6 +3389,7 @@ func HandoffEffect(ctx context.Context, q Querier) (served, withheld HandoffGrou
 		return served, withheld, err
 	}
 	_ = rows.Close()
+	seen := make(map[string]bool, len(all))
 	var mins, calls [3][]float64
 	for _, r := range all {
 		g := &served
@@ -3394,21 +3397,102 @@ func HandoffEffect(ctx context.Context, q Querier) (served, withheld HandoffGrou
 			g = &withheld
 		}
 		g.Sessions++
-		if r.first == 0 {
+		seen[r.id] = true
+		f, ok := memo.get(r.id, r.last)
+		if !ok {
+			if f, err = handoffFirstEdit(ctx, q, r.sid, r.last); err != nil {
+				return served, withheld, err
+			}
+			memo.put(r.id, f)
+		}
+		if f.first == 0 {
 			continue
 		}
-		var n int
-		if err := q.QueryRowContext(ctx,
-			`SELECT COUNT(*) FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND kind = 'tool.pre' AND ts < ?`, r.id, r.first).Scan(&n); err != nil {
-			return served, withheld, err
-		}
 		g.Reached++
-		mins[r.state] = append(mins[r.state], float64(r.first-r.start)/60000)
-		calls[r.state] = append(calls[r.state], float64(n))
+		mins[r.state] = append(mins[r.state], float64(f.first-r.start)/60000)
+		calls[r.state] = append(calls[r.state], float64(f.calls))
 	}
+	memo.keepOnly(seen)
 	served.MedianMin, served.MedianCall = median(mins[HandoffServed]), median(calls[HandoffServed])
 	withheld.MedianMin, withheld.MedianCall = median(mins[HandoffWithheld]), median(calls[HandoffWithheld])
 	return served, withheld, nil
+}
+
+// handoffFirst is one session's first edit (unix ms, 0 for none yet) and how
+// many tool calls came before it, as read when the session's newest event
+// was at `last`.
+type handoffFirst struct {
+	first int64
+	calls int
+	last  int64
+}
+
+func handoffFirstEdit(ctx context.Context, q Querier, sid, last int64) (handoffFirst, error) {
+	f := handoffFirst{last: last}
+	var fe sql.NullInt64
+	if err := q.QueryRowContext(ctx, `SELECT MIN(ts) FROM events WHERE sid = ?
+		AND kind = 'tool.pre' AND tool IN ('Edit','Write','MultiEdit','NotebookEdit')`, sid).Scan(&fe); err != nil {
+		return f, err
+	}
+	if !fe.Valid || fe.Int64 == 0 {
+		return f, nil
+	}
+	f.first = fe.Int64
+	if err := q.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM events WHERE sid = ? AND kind = 'tool.pre' AND ts < ?`, sid, f.first).Scan(&f.calls); err != nil {
+		return f, err
+	}
+	return f, nil
+}
+
+// HandoffMemo keeps each handed session's first edit between HandoffEffect
+// calls. A first edit once found is kept: an edit recorded later is almost
+// always a later one, and one imported out of order moves a median by a
+// single session at most. A session with none yet is read again only once its
+// newest event (sessions.last_event_at) has moved, which an ended session's
+// never does. Sessions no longer handed anything are dropped, so it holds at
+// most one small entry per handed session.
+type HandoffMemo struct {
+	mu sync.Mutex
+	m  map[string]handoffFirst
+}
+
+func (h *HandoffMemo) get(id string, last int64) (handoffFirst, bool) {
+	if h == nil {
+		return handoffFirst{}, false
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	f, ok := h.m[id]
+	if !ok || (f.first == 0 && f.last != last) {
+		return handoffFirst{}, false
+	}
+	return f, true
+}
+
+func (h *HandoffMemo) put(id string, f handoffFirst) {
+	if h == nil {
+		return
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.m == nil {
+		h.m = map[string]handoffFirst{}
+	}
+	h.m[id] = f
+}
+
+func (h *HandoffMemo) keepOnly(ids map[string]bool) {
+	if h == nil {
+		return
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for id := range h.m {
+		if !ids[id] {
+			delete(h.m, id)
+		}
+	}
 }
 
 func median(xs []float64) float64 {
