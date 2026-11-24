@@ -166,7 +166,12 @@ mid-frame, and the fake idle at its prompt redraws nothing on the attach's
 repaint (Claude Code clears its viewport on every resize), so an earlier
 test's rows and its `agents-done` line can still be on screen — on the CI
 runner, and on a Mac under a 6x CPU throttle (`REDRAW_THROTTLE=6`;
-`REDRAW_DEBUG=1` prints the screen). `ui/e2e/settings-windows.spec.ts` opens
+`REDRAW_DEBUG=1` prints the screen). `ui/e2e/tab-switch-kept.spec.ts`
+switches between two tabs with every read about either session held back by the
+page: the inspector must show the session's name and nothing "Reading…"
+on the second frame after each click, and each terminal must be the same
+xterm with nothing replayed into it (04-ui.md § The app workspace,
+*Switching tabs*). `ui/e2e/settings-windows.spec.ts` opens
 Settings in a page told it is Windows (`navigator.platform`, what
 `isMacPlatform` reads) at 1100, 1280 and 1700 px and measures what the
 browser laid out: the search field's Ctrl+Shift+F never over its

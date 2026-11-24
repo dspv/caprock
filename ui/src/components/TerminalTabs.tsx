@@ -89,6 +89,8 @@ export interface TabStripProps {
   inspectorOpen: boolean
   sidebarOpen: boolean
   onActivate: (id: string) => void
+  /** The pointer or the keyboard reached a tab not in front: what its inspector reads first is read ahead (lib/sessionWarm). */
+  onWarm?: (id: string) => void
   onDetach: (id: string) => void
   onMove: (id: string, toIndex: number) => void
   onNewAgent: () => void
@@ -529,6 +531,8 @@ export function TabStrip(props: TabStripProps) {
               onAuxClick={(e) => { if (e.button === 1) props.onDetach(t.id) }}
               onDoubleClick={rename ? () => setRenaming(t.id) : undefined}
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') props.onActivate(t.id) }}
+              onPointerEnter={active || !s ? undefined : () => props.onWarm?.(t.id)}
+              onFocus={active || !s ? undefined : () => props.onWarm?.(t.id)}
               title={tip}
               data-project={t.projectId}
               data-session-id={s?.session_id}

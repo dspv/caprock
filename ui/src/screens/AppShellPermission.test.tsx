@@ -77,7 +77,9 @@ async function openAgent() {
   await screen.findByRole('tab', { name: /Fix the login bug/ })
 }
 
-const cards = () => screen.queryAllByTestId('permission-card')
+/** Drawn and shown: a view kept hidden for a later switch (components/KeptViews) is display: none. */
+const shown = (el: Element) => { for (let e: Element | null = el; e; e = e.parentElement) if ((e as HTMLElement).style?.display === 'none' || (e as HTMLElement).hidden) return false; return true }
+const cards = () => screen.queryAllByTestId('permission-card').filter(shown)
 
 describe('the permission card in the app', () => {
   it('is drawn, once, under the session’s own terminal', async () => {

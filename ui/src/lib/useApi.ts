@@ -158,8 +158,17 @@ export function useApi<T>(fn: () => Promise<T>, deps: unknown[] = [], opts: ApiO
   }, [])
 
   // The first run is a dependency run too — it just has nothing to clear.
+  // The same question mounted again — a view kept hidden (components/
+  // KeptViews, React's Activity) shown once more — is a refetch, not a new
+  // question: what it held stays on screen while it is asked again.
+  const askedDeps = useRef<unknown[] | undefined>(undefined)
+  useEffect(() => {
+    const same = askedDeps.current !== undefined && askedDeps.current.length === deps.length && askedDeps.current.every((d, i) => Object.is(d, deps[i]))
+    askedDeps.current = deps
+    if (same && (state.loadedAt > 0 || state.error)) run()
+    else run(true)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => run(true), [run, ...deps])
+  }, [run, ...deps])
   // Only a tick that moved since mount: the first run already asked, and a
   // page that has seen any event mounted every hook with a tick above zero,
   // which asked each question twice on opening a screen.

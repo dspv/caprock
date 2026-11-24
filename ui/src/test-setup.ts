@@ -2,6 +2,7 @@ import '@testing-library/jest-dom/vitest'
 import { beforeEach } from 'vitest'
 import { clearShared } from './lib/refresh'
 import { resetPanelFolds } from './components/ui'
+import { resetMemory } from './lib/memoryResets'
 
 // jsdom implements neither ResizeObserver nor a canvas 2D context, and the
 // dashboard's canvas components (Pulse, the Projects sparkline) construct a
@@ -36,4 +37,6 @@ beforeEach(() => {
   // hooks shared (lib/refresh.ts) and the page's copy of the panel folds.
   clearShared()
   resetPanelFolds()
+  // And what a session's panels last read (lib/sessionEvents, lib/sessionWarm).
+  resetMemory()
 })

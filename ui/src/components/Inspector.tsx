@@ -17,7 +17,9 @@
  * panel is open, every 20 s; an agent's events once, then from the live
  * socket.
  */
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { KeptViews } from './KeptViews'
+import { keepDiff, keptDiff } from '@/lib/sessionWarm'
 import { api, errText, type DiffResult, type EditorList, type SessionSummary, type Summary } from '@/lib/api'
 import { firstChangedLine, joinPath, preferredName } from '@/lib/editors'
 import { sessionPlace, type Project } from '@/lib/projects'
@@ -61,6 +63,7 @@ export function Inspector({
   onOpenPRs,
   inside,
   shellName,
+  keep,
 }: {
   session?: SessionSummary
   /** The sidebar's project the session belongs to: its name heads the place line. */
@@ -92,11 +95,27 @@ export function Inspector({
   inside?: SessionSummary
   /** The shell's name in its tab, "Shell 1", for the line saying where the agent runs. */
   shellName?: string
+  /** False for a session whose kept body should go (no tab shows it any more). */
+  keep?: (sessionId: string) => boolean
 }) {
   const inner = sessionId && inside && inside.kind !== 'shell' ? inside : undefined
   const isAgent = !!sessionId && !!session && (session.kind !== 'shell' || !!inner)
+  const view = sessionId ? (inner ? `${sessionId}:${inner.session_id}` : sessionId) : undefined
+  const alive = useCallback((k: string) => !keep || keep(k.split(':')[0]!), [keep])
+  // Each kept body keeps its own scroll: the panel is one scroller, so the
+  // place is put back for the body brought in front.
+  const scroller = useRef<HTMLElement | null>(null)
+  const places = useRef(new Map<string, number>())
+  const shownView = useRef(view)
+  useLayoutEffect(() => {
+    const el = scroller.current
+    if (!el || shownView.current === view) return
+    if (shownView.current) places.current.set(shownView.current, el.scrollTop)
+    shownView.current = view
+    el.scrollTop = (view && places.current.get(view)) || 0
+  }, [view])
   return (
-    <aside aria-label="Inspector" className="app-scroll flex h-full min-h-0 flex-col overflow-y-auto overflow-x-hidden border-l border-[var(--app-hairline)] bg-[var(--app-chrome-bg)]">
+    <aside ref={scroller} aria-label="Inspector" className="app-scroll flex h-full min-h-0 flex-col overflow-y-auto overflow-x-hidden border-l border-[var(--app-hairline)] bg-[var(--app-chrome-bg)]">
       <div className="flex h-[40px] shrink-0 items-center gap-2 border-b border-[var(--app-hairline)] pl-4 pr-2">
         <h2 className="text-[11px] font-semibold uppercase tracking-[0.07em] text-fg-faint">{isAgent ? 'Agent' : 'Inspector'}</h2>
         <button type="button" onClick={onClose} aria-label={`Close the inspector (${keys('⌘I')})`} title={`Close (${keys('⌘I')})`} className="ml-auto flex h-[26px] w-[26px] items-center justify-center rounded-[6px] text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg">
@@ -105,10 +124,16 @@ export function Inspector({
       </div>
       {!sessionId ? (
         <p className="px-4 py-5 text-[12.5px] leading-relaxed text-fg-muted">Open a session to see what it costs, how full its context is, and what it changed.</p>
-      ) : (
-        <Body key={inner ? `${sessionId}:${inner.session_id}` : sessionId} session={inner ?? session} project={project} sessionId={inner?.session_id ?? sessionId} hasPermission={hasPermission} showPrompt={showPrompt} onDetach={onDetach} editor={editors && onOpenInEditor ? { name: preferredName(editors), open: onOpenInEditor } : undefined} onReviewChanges={onReviewChanges} onOpenFile={onOpenFile} summary={summary} onCompare={onCompare} onOpenPRs={onOpenPRs}
-          shell={inner ? { s: session, id: sessionId, name: shellName || 'the shell' } : undefined} />
-      )}
+      ) : null}
+      {/* The bodies of the last few sessions shown here stay drawn, hidden
+        * and asking nothing, so switching back draws one as it was left
+        * (components/KeptViews). */}
+      <KeptViews current={view} alive={alive}>
+        {sessionId && (
+          <Body session={inner ?? session} project={project} sessionId={inner?.session_id ?? sessionId} hasPermission={hasPermission} showPrompt={showPrompt} onDetach={onDetach} editor={editors && onOpenInEditor ? { name: preferredName(editors), open: onOpenInEditor } : undefined} onReviewChanges={onReviewChanges} onOpenFile={onOpenFile} summary={summary} onCompare={onCompare} onOpenPRs={onOpenPRs}
+            shell={inner ? { s: session, id: sessionId, name: shellName || 'the shell' } : undefined} />
+        )}
+      </KeptViews>
     </aside>
   )
 }
@@ -239,12 +264,12 @@ function Actions({ s, sessionId, isShell, ended, editor, onDetach, dashboard }: 
 }
 
 function Changes({ sessionId, editor, onReview, onOpenFile }: { sessionId: string; editor?: EditorAction; onReview?: () => void; onOpenFile?: (path: string) => void }) {
-  const [diff, setDiff] = useState<DiffResult | undefined>(undefined)
+  const [diff, setDiff] = useState<DiffResult | undefined>(() => keptDiff(sessionId))
   const [error, setError] = useState('')
   useEffect(() => {
     let alive = true
     const load = () => api.diff(sessionId)
-      .then((d) => { if (alive) { setDiff(d); setError('') } })
+      .then((d) => { keepDiff(sessionId, d); if (alive) { setDiff(d); setError('') } })
       .catch((e: unknown) => { if (alive) setError(errText(e)) })
     void load()
     const stop = everyWhileVisible(() => { void load() }, DIFF_REFRESH_MS)

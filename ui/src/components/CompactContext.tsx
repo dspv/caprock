@@ -12,6 +12,7 @@
  * Continue here.
  */
 import { useCallback, useEffect, useState, type CSSProperties } from 'react'
+import { useOnChange } from '@/lib/useOnChange'
 import { api, errText, type Compaction, type CompactionEstimate, type CompactionView, type SessionSummary } from '@/lib/api'
 import { everyWhileVisible } from '@/lib/visible'
 import { useCanControl } from '@/lib/useCanControl'
@@ -51,7 +52,7 @@ export function useCompact(s: SessionSummary): CompactState {
   const load = useCallback(() => {
     api.compaction(id).then((v) => { if (v && v.session_id === id) setView(v) }).catch(() => { /* the line stays as it was */ })
   }, [id])
-  useEffect(() => { setView(undefined); setPressed(undefined); setError('') }, [id])
+  useOnChange(id, () => { setView(undefined); setPressed(undefined); setError('') })
   // A compaction started anywhere — /compact typed in the terminal, or
   // Claude Code's own when it ran out of room — narrates as "compacting
   // context" from its PreCompact hook: read the view then, and the watch

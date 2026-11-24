@@ -73,7 +73,8 @@ test('an agent typed into a shell: its cockpit in the inspector, named in the cl
     const host = inspector.getByRole('region', { name: 'The shell: Shell 1' })
     await expect(host.getByRole('button', { name: 'Close the shell' })).toBeVisible()
     await expect(host.getByRole('button', { name: 'Stop the shell…' })).toBeVisible()
-    await expect(inspector).not.toContainText('Login shell')
+    // What is shown: the shell's own body stays drawn, hidden, for a switch back (components/KeptViews).
+    await expect.poll(() => inspector.innerText()).not.toContain('Login shell')
     if (shotsDir) {
       mkdirSync(shotsDir, { recursive: true })
       for (const t of ['dark', 'light'] as const) {

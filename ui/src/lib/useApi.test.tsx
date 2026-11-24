@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import { act, render, screen } from '@testing-library/react'
+import { Activity } from 'react'
 import { useApi } from './useApi'
 
 describe('useApi keepUnchanged', () => {
@@ -138,5 +139,27 @@ describe('useApi', () => {
     await act(async () => { releases[1]?.('second') })
     expect(screen.getByTestId('body').textContent).toBe('second')
     expect(fetcher).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('useApi in a kept view (components/KeptViews)', () => {
+  it('mounted again with the same question, it keeps its answer while it asks again', async () => {
+    let n = 0
+    let release: (v: string) => void = () => {}
+    const fetcher = vi.fn(() => (++n === 1 ? Promise.resolve('first') : new Promise<string>((res) => { release = res })))
+    const P = () => {
+      const q = useApi(fetcher, ['same'])
+      return <span data-testid="kept">{q.loading ? 'reading…' : q.data}</span>
+    }
+    const { rerender } = render(<Activity mode="visible"><P /></Activity>)
+    await act(async () => {})
+    expect(screen.getByTestId('kept').textContent).toBe('first')
+    rerender(<Activity mode="hidden"><P /></Activity>)
+    rerender(<Activity mode="visible"><P /></Activity>)
+    // Asked again, and the answer it held stays on screen meanwhile.
+    expect(fetcher).toHaveBeenCalledTimes(2)
+    expect(screen.getByTestId('kept').textContent).toBe('first')
+    await act(async () => { release('second') })
+    expect(screen.getByTestId('kept').textContent).toBe('second')
   })
 })

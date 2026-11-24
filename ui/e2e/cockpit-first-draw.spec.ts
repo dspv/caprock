@@ -84,7 +84,8 @@ test('a tab switch draws the folded CI line from the kept answer at once', async
     })
     await stub(page)
     await app.open()
-    const fold = page.locator('[data-cockpit-ci-fold]')
+    // The one shown: the bodies of tabs shown before stay drawn, hidden (components/KeptViews).
+    const fold = page.locator('[data-cockpit-ci-fold]').filter({ visible: true })
     await app.openSession('alpha').catch(async () => { await app.row(alpha.name).first().click() })
     await expect(fold).toHaveAttribute('data-cockpit-ci-fold', '942', { timeout: CHECKS_MS + 8_000 })
     // The other session of the same repository, never shown: timed from the click on its row.
@@ -205,7 +206,7 @@ test('the folded CI line shortens at narrow widths and never passes the edge', a
   const alpha = app.session('alpha')
   await app.openSession('alpha').catch(async () => { await app.row(alpha.name).first().click() })
   const inspector = page.getByRole('complementary', { name: 'Inspector' })
-  const fold = inspector.locator('[data-cockpit-ci-fold]')
+  const fold = inspector.locator('[data-cockpit-ci-fold]').filter({ visible: true })
   await expect(fold).toHaveAttribute('data-cockpit-ci-fold', '942')
   for (const w of [280, 300, 324, 360, 460]) {
     await page.evaluate((px) => document.documentElement.style.setProperty('--app-inspector-w', `${px}px`), w)

@@ -29,7 +29,8 @@ test('the view icon flips chat and terminal, and there is no session deck', asyn
   await expect(page.locator('[data-chat-view]')).toBeVisible()
   await expect(icon).toHaveAttribute('aria-label', 'Show as terminal')
   await icon.click()
-  await expect(page.locator('[data-chat-view]')).toHaveCount(0)
+  // Out of sight; it stays drawn, hidden, for the next switch (components/KeptViews).
+  await expect(page.locator('[data-chat-view]').filter({ visible: true })).toHaveCount(0)
   await expect(icon).toHaveAttribute('aria-label', 'Show as chat')
 
   await expect(page.locator('[data-deck-toggle]')).toHaveCount(0)
