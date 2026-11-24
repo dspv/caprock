@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"reflect"
 	"testing"
 	"time"
 
@@ -39,6 +40,41 @@ func TestWeekDefaultsToTheSevenDaysEndingToday(t *testing.T) {
 		if f == "cost_per_merged_pr" {
 			t.Fatal("cost_per_merged_pr listed with nothing merged")
 		}
+	}
+}
+
+// The Week screen's default and the share card's 7d are the same seven days,
+// counted once: the second ask is the first's answer with its own period.
+func TestWeekDefaultAndSevenDaysAreOneCount(t *testing.T) {
+	e := newEnv(t)
+	cost := 2.0
+	ev := event.Event{SessionID: "w1", Source: event.SourceTranscript, Kind: event.KindTurnAssistant,
+		Ts: e.now, Key: "t1", Model: "claude-opus-5", CostUSD: &cost, Tokens: &event.TokenDelta{In: 1, Out: 1}}
+	if _, err := store.InsertEvent(context.Background(), e.st.DB(), &ev); err != nil {
+		t.Fatal(err)
+	}
+	var plain, seven WeekResponse
+	if code := e.get(t, "/v1/week", &plain); code != 200 {
+		t.Fatalf("status %d", code)
+	}
+	if code := e.get(t, "/v1/week?period=7d", &seven); code != 200 {
+		t.Fatalf("status %d", code)
+	}
+	e.api.week.mu.Lock()
+	n := len(e.api.week.m)
+	e.api.week.mu.Unlock()
+	if n != 1 {
+		t.Fatalf("%d Weeks counted for one window", n)
+	}
+	if plain.Period != "" || seven.Period != "7d" {
+		t.Fatalf("periods %q and %q", plain.Period, seven.Period)
+	}
+	seven.Period = ""
+	if !reflect.DeepEqual(plain, seven) {
+		t.Fatalf("default %+v\n     7d %+v", plain, seven)
+	}
+	if plain.CostUSD != 2 {
+		t.Fatalf("cost %v", plain.CostUSD)
 	}
 }
 

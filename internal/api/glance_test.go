@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"math"
+	"reflect"
 	"testing"
 	"time"
 
@@ -131,5 +132,53 @@ func TestGlanceTrendSplitsTheLastTwoWeeks(t *testing.T) {
 	var r GlanceResponse
 	if code := e.get(t, "/v1/glance?range=7d", &r); code != 200 || r.Trend != nil {
 		t.Fatalf("ranged: status %d trend %+v", code, r.Trend)
+	}
+}
+
+// Warm counts the all-time glance at start, and what it keeps is the answer
+// a fresh count gives: the Now screen's first ask after a restart is served
+// from it (2.2–3.0 s cold on a copy of the owner's 2.4 GB database,
+// 2026-11-24) and carries the same figures it would have counted itself.
+func TestWarmKeepsTheGlanceAFreshCountGives(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	put := func(sid, agent, key, agentID string, ts time.Time) {
+		if err := store.UpsertSession(ctx, e.st.DB(), sid, store.SessionPatch{Agent: agent, StartedAt: ts.UnixMilli(), LastEventAt: ts.UnixMilli()}); err != nil {
+			t.Fatal(err)
+		}
+		c := 1.5
+		ev := event.Event{SessionID: sid, AgentID: agentID, Source: event.SourceTranscript, Kind: event.KindTurnAssistant,
+			Ts: ts, Key: key, Model: "claude-opus-5", CostUSD: &c, Tokens: &event.TokenDelta{In: 10, Out: 20, CacheRead: 300, CacheWrite: 40}}
+		if _, err := store.InsertEvent(ctx, e.st.DB(), &ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+	put("a", "claude", "a1", "", e.now.Add(-time.Hour))
+	put("a", "claude", "a2", "sub", e.now.Add(-time.Hour))
+	put("b", "codex", "b1", "", e.now.Add(-9*24*time.Hour))
+	put("c", "claude", "c1", "", e.now.Add(-40*24*time.Hour))
+
+	e.api.Warm(ctx)
+	e.api.glance.mu.Lock()
+	entry := e.api.glance.m["glance:all:0"]
+	e.api.glance.mu.Unlock()
+	if entry == nil {
+		t.Fatal("Warm did not count the all-time glance")
+	}
+	<-entry.done
+	fresh, err := e.api.buildGlance(ctx, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entry.err != nil || !reflect.DeepEqual(entry.val, fresh) {
+		t.Fatalf("warmed %+v (%v)\n fresh %+v", entry.val, entry.err, fresh)
+	}
+	// And the handler hands that answer back.
+	var g GlanceResponse
+	if code := e.get(t, "/v1/glance", &g); code != 200 {
+		t.Fatalf("status %d", code)
+	}
+	if len(g.Agents) != 3 || g.Trend == nil {
+		t.Fatalf("served %+v", g)
 	}
 }

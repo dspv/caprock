@@ -2596,9 +2596,10 @@ func (s *Server) handleLimits(w http.ResponseWriter, r *http.Request) {
 }
 
 // Warm computes the whole-history answers the dashboard asks for first — the
-// lifetime strip's /v1/history?range=all and the 7d, 30d and all-time
-// summaries the Cost screen and the share dialog open with — so the first
-// screen after a start finds them cached instead of paying for the scans.
+// lifetime strip's /v1/history?range=all, the 7d, 30d and all-time
+// summaries the Cost screen and the share dialog open with, and the Now
+// screen's all-time glance — so the first screen after a start finds them
+// cached instead of paying for the scans.
 //
 // It does not warm the share dialog's 30-day and all-time Weeks any more.
 // Those read the payload of every Bash, Edit and Write result in the window
@@ -2613,6 +2614,18 @@ func (s *Server) Warm(ctx context.Context) {
 	if ctx.Err() != nil {
 		return
 	}
+	// The Now screen's At a glance asks for all time on every open, and
+	// counting it reads every assistant turn's index entry and each session's
+	// first turn: 2.2–3.0 s on a cold copy of the owner's 2.4 GB database
+	// (2026-11-24). It reads none of the parts the history below builds, so
+	// it runs beside them rather than after, and the first ask finds it done
+	// or joins it.
+	glanceDone := make(chan struct{})
+	go func() {
+		defer close(glanceDone)
+		_, _ = s.glanceAnswer(ctx, 0, "all")
+	}()
+	defer func() { <-glanceDone }()
 	from, label := s.rangeFrom("all")
 	_, _ = s.histFor(from).get(ctx, label+"|"+strconv.FormatInt(from, 10), func() (any, error) {
 		return s.historyAnswer(ctx, from, label)

@@ -74,15 +74,21 @@ func (s *Server) handleGlance(w http.ResponseWriter, r *http.Request) {
 	if rng := r.URL.Query().Get("range"); rng != "" && rng != "all" {
 		from, label = s.rangeFrom(rng)
 	}
-	key := "glance:" + label + ":" + strconv.FormatInt(from, 10)
-	v, err := s.glance.get(r.Context(), key, func() (any, error) {
-		return s.buildGlance(context.WithoutCancel(r.Context()), from)
-	})
+	v, err := s.glanceAnswer(r.Context(), from, label)
 	if err != nil {
 		s.fail(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, v)
+}
+
+// glanceAnswer is the cached glance for a range: the handler's, and the one
+// Warm counts at start for all time (the Now screen asks it on every open).
+func (s *Server) glanceAnswer(ctx context.Context, from int64, label string) (any, error) {
+	key := "glance:" + label + ":" + strconv.FormatInt(from, 10)
+	return s.glance.get(ctx, key, func() (any, error) {
+		return s.buildGlance(context.WithoutCancel(ctx), from)
+	})
 }
 
 func (s *Server) buildGlance(ctx context.Context, from int64) (GlanceResponse, error) {

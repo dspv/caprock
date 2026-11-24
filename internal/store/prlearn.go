@@ -185,14 +185,35 @@ func learnRepo(ctx context.Context, q Querier, repoRoot, repo string) ([]learned
 	return out, nil
 }
 
+// learnMatchSQL is learnMatch's statement: the stamps as a JSON array, the
+// repository root and learnLookback.
+const learnMatchSQL = `
+		WITH a(i, at) AS MATERIALIZED (
+		  SELECT CAST(key AS INTEGER), CAST(value AS INTEGER) FROM json_each(?))
+		SELECT a.i, s.session_id, MIN(e.ts)
+		FROM a CROSS JOIN events p INDEXED BY idx_events_bash_pre
+		JOIN sessions s ON s.sid = p.sid AND s.repo_root = ?
+		JOIN events e INDEXED BY idx_events_tool_post ON e.sid = p.sid AND e.key = 'post:' || substr(p.key, 5) AND e.kind = 'tool.post'
+		WHERE p.kind = 'tool.pre' AND p.ts >= a.at - ? AND p.ts < a.at + 1000 AND p.tool = 'Bash' AND p.internal = 0
+		  AND p.key LIKE 'pre:%' AND e.ts >= a.at
+		GROUP BY a.i, p.sid`
+
 // learnMatch finds, for each stamp, the sessions of repoRoot with a Bash
 // call over it, in one statement: a call whose PreToolUse came before the
 // stamp's second ended (GitHub stamps whole seconds) and whose PostToolUse
 // came at or after it, paired by tool-use id. A stamp with exactly one such
 // session is that session's, at its earliest call's end. The stamps lead
-// (CROSS JOIN): each is one range of idx_events_tool_dist, where the planner
+// (CROSS JOIN): each is one range of idx_events_bash_pre, where the planner
 // left to itself walked every tool.pre row once per stamp (6.9 s for three
 // stamps on a copy of the owner's database, 6 ms in this order; 2026-10-25).
+// That index holds the Bash calls alone with their sid and key, and
+// idx_events_tool_post each result's ts by its key (migration 0094), so no
+// row is read from the table: on idx_events_tool_dist each call in a window
+// was fetched, payload and all, for its key, and each result for its ts —
+// 3.1 s for a thousand stamps on a cold copy of the owner's database, 0.26 s
+// on the two (2026-11-24). Every 'post:' key is a tool.post's (the hook and
+// the transcript reader both write it so), so naming the kind changes no
+// match; it is what lets SQLite use the partial index.
 func learnMatch(ctx context.Context, q Querier, repoRoot string, stamps []*prStamp) error {
 	if len(stamps) == 0 {
 		return nil
@@ -202,16 +223,7 @@ func learnMatch(ctx context.Context, q Querier, repoRoot string, stamps []*prSta
 		ats[i] = s.at
 	}
 	js, _ := json.Marshal(ats)
-	rows, err := q.QueryContext(ctx, `
-		WITH a(i, at) AS MATERIALIZED (
-		  SELECT CAST(key AS INTEGER), CAST(value AS INTEGER) FROM json_each(?))
-		SELECT a.i, s.session_id, MIN(e.ts)
-		FROM a CROSS JOIN events p INDEXED BY idx_events_tool_dist
-		JOIN sessions s ON s.sid = p.sid AND s.repo_root = ?
-		JOIN events e ON e.sid = p.sid AND e.key = 'post:' || substr(p.key, 5)
-		WHERE p.kind = 'tool.pre' AND p.ts >= a.at - ? AND p.ts < a.at + 1000 AND p.tool = 'Bash' AND p.internal = 0
-		  AND p.key LIKE 'pre:%' AND e.ts >= a.at
-		GROUP BY a.i, p.sid`, string(js), repoRoot, learnLookback)
+	rows, err := q.QueryContext(ctx, learnMatchSQL, string(js), repoRoot, learnLookback)
 	if err != nil {
 		return err
 	}

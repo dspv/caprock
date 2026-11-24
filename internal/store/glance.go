@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"sort"
 	"time"
@@ -16,13 +15,16 @@ import (
 // AgentSplit is the turns and cost of each agent's main threads and of its
 // subagents in [from, to). to <= 0 means no upper bound.
 //
-// It reads in two steps so the big one is covered (idx_events_turn_agent,
-// migration 0031): turns grouped by session and by whether they carry an agent
-// id, without touching a payload; then, for each session with main-thread
-// turns, one payload asks whether the session is a sidechain. That is the one
-// mark MainThreadWhere reads besides agent_id, and OpenCode writes it on every
-// turn of a child session, so one turn answers for the session. Reading it per
-// event cost 3.5 s on the owner's database (2026-10-04).
+// It is one statement, so the big read is covered (idx_events_turn_agent,
+// migration 0031): turns grouped by session and by whether they carry an
+// agent id, without touching a payload, and per group the session's id and
+// agent and, for main-thread turns, whether the session is a sidechain. That
+// is the one mark MainThreadWhere reads besides agent_id, and OpenCode writes
+// it on every turn of a child session, so the session's first main-thread
+// turn answers for it. Reading it per event cost 3.5 s on the owner's
+// database (2026-10-04); asking it, and the agent, in a statement of its own
+// per session was most of a cold /v1/glance, 2.2–3.0 s on his 2.4 GB copy
+// (2026-11-24): two round trips each for 10,000 sessions.
 func AgentSplit(ctx context.Context, q Querier, from, to int64) ([]WeekAgent, error) {
 	return agentSplit(ctx, q, from, to, "", "")
 }
@@ -37,27 +39,43 @@ func agentSplit(ctx context.Context, q Querier, from, to int64, skip, skipE stri
 	if to > 0 {
 		upper, args = " AND ts < ?", append(args, to)
 	}
+	// The subqueries run once per group, not per event. The sidechain read
+	// walks idx_events_session_ts, so "first" is the session's earliest
+	// main-thread turn, whatever the window.
 	rows, err := q.QueryContext(ctx, `
-		SELECT sid, (SELECT session_id FROM sessions WHERE sessions.sid = events.sid), COALESCE(agent_id,'') <> '', COUNT(*), COALESCE(SUM(cost_usd),0), COUNT(DISTINCT NULLIF(agent_id,''))
-		FROM events INDEXED BY idx_events_turn_agent
-		WHERE kind = 'turn.assistant' AND ts >= ?`+upper+nonInternalEvent+skip+`
-		GROUP BY sid, 3`, args...)
+		SELECT g.sid, s.session_id, COALESCE(NULLIF(s.agent,''),'claude'), g.sub, g.n, g.cost, g.threads,
+		       CASE WHEN g.sub THEN NULL ELSE (
+		         SELECT json_extract(payload, '$.sidechain') FROM events e2 INDEXED BY idx_events_session_ts
+		         WHERE e2.sid = g.sid AND e2.kind = 'turn.assistant' AND COALESCE(e2.agent_id,'') = '' LIMIT 1) END
+		FROM (
+		  SELECT sid, COALESCE(agent_id,'') <> '' AS sub, COUNT(*) AS n, COALESCE(SUM(cost_usd),0) AS cost, COUNT(DISTINCT NULLIF(agent_id,'')) AS threads
+		  FROM events INDEXED BY idx_events_turn_agent
+		  WHERE kind = 'turn.assistant' AND ts >= ?`+upper+nonInternalEvent+skip+`
+		  GROUP BY sid, 2) g
+		JOIN sessions s ON s.sid = g.sid`, args...)
 	if err != nil {
 		return nil, err
 	}
 	type part struct {
 		sid                      int64
-		session                  string
+		session, agent           string
 		sub                      bool
 		turns, threads, requests int64
 		cost                     float64
 	}
 	var parts []part
+	agentOf := map[string]string{}
+	sidechain := map[string]bool{}
 	for rows.Next() {
 		var p part
-		if err := rows.Scan(&p.sid, &p.session, &p.sub, &p.turns, &p.cost, &p.threads); err != nil {
+		var side sql.NullInt64
+		if err := rows.Scan(&p.sid, &p.session, &p.agent, &p.sub, &p.turns, &p.cost, &p.threads, &side); err != nil {
 			_ = rows.Close()
 			return nil, err
+		}
+		agentOf[p.session] = p.agent
+		if !p.sub {
+			sidechain[p.session] = side.Valid && side.Int64 == 1
 		}
 		parts = append(parts, p)
 	}
@@ -77,32 +95,6 @@ func agentSplit(ctx context.Context, q Querier, from, to int64, skip, skipE stri
 				parts[i].requests += c.Requests
 				break
 			}
-		}
-	}
-
-	agentOf := map[string]string{}
-	sidechain := map[string]bool{}
-	for _, p := range parts {
-		if _, ok := agentOf[p.session]; !ok {
-			var agent string
-			err := q.QueryRowContext(ctx, `SELECT COALESCE(agent,'claude') FROM sessions WHERE session_id = ?`, p.session).Scan(&agent)
-			if err != nil && !errors.Is(err, sql.ErrNoRows) {
-				return nil, err
-			}
-			if agent == "" {
-				agent = "claude"
-			}
-			agentOf[p.session] = agent
-		}
-		if !p.sub {
-			var side sql.NullInt64
-			err := q.QueryRowContext(ctx, `
-				SELECT json_extract(payload, '$.sidechain') FROM events INDEXED BY idx_events_session_ts
-				WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND kind = 'turn.assistant' AND COALESCE(agent_id,'') = '' LIMIT 1`, p.session).Scan(&side)
-			if err != nil && !errors.Is(err, sql.ErrNoRows) {
-				return nil, err
-			}
-			sidechain[p.session] = side.Valid && side.Int64 == 1
 		}
 	}
 
