@@ -12,6 +12,18 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.193.1] - 2026-11-24
+
+### Fixed
+
+- **now:** *Waiting on background work* no longer lists work that ended hours
+  ago. A background command stopped from outside (a `pkill` of its script) and
+  a background agent whose last word was that it was waiting on its own work
+  never got a notification of their end, so they stayed listed until the
+  12-hour window ran out. Caprock now also reads Claude Code's own list of
+  what still runs, which every Stop carries: what is off it has ended, and an
+  agent once nothing it started itself is on it either.
+
 ## [0.193.0] - 2026-11-24
 
 ### Added

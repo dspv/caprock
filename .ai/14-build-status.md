@@ -532,6 +532,14 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-11-24 — 0.193.1: background work ends when Claude Code says it has
+
+A patch release, #1053. Now's "Waiting on background work" no longer lists
+work that ended hours ago: a script killed from outside, which Claude Code
+never sends a notification for, and an agent whose last note said it was
+waiting on its own work. Caprock reads the list of running tasks Claude
+Code sends with every stop; what is missing from it has ended.
+
 ### 2026-11-24 — 0.193.0: voice input on Windows and Linux
 
 A minor release, #1030. The desktop app takes voice input on Windows and Linux,
