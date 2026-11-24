@@ -54,9 +54,9 @@ func TestKeptPartsEqualAFreshRead(t *testing.T) {
 		}
 		c.WaitSaved()
 	}
-	counts := func(c *PartsCache, from int64) (loaded, full, partial int) {
+	counts := func(c *PartsCache, from int64) (loaded, full int) {
 		kp := c.ranges[from]
-		return kp.loaded, kp.full, kp.partial
+		return kp.loaded, kp.full
 	}
 
 	first := run("v1")
@@ -77,7 +77,7 @@ func TestKeptPartsEqualAFreshRead(t *testing.T) {
 	second := run("v1")
 	exact(second, "after a restart")
 	for _, from := range ranges {
-		if loaded, full, _ := counts(second, from); loaded != 1 || full != 0 {
+		if loaded, full := counts(second, from); loaded != 1 || full != 0 {
 			t.Fatalf("from %d: loaded %d, full reads %d; want the kept row used and no full read", from, loaded, full)
 		}
 	}
@@ -90,13 +90,13 @@ func TestKeptPartsEqualAFreshRead(t *testing.T) {
 	// Another build's row, or one older than partsRebuild, is not used.
 	other := run("v2")
 	exact(other, "another build")
-	if loaded, full, _ := counts(other, 0); loaded != 0 || full != 1 {
+	if loaded, full := counts(other, 0); loaded != 0 || full != 1 {
 		t.Fatalf("another build: loaded %d, full %d; want 0 and 1", loaded, full)
 	}
 	at = at.Add(partsRebuild + time.Minute)
 	old := run("v2")
 	exact(old, "a row past partsRebuild")
-	if loaded, full, _ := counts(old, 0); loaded != 0 || full != 1 {
+	if loaded, full := counts(old, 0); loaded != 0 || full != 1 {
 		t.Fatalf("an old row: loaded %d, full %d; want 0 and 1", loaded, full)
 	}
 }
