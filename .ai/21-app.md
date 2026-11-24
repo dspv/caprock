@@ -1431,7 +1431,8 @@ Found, each measured on its own, and fixed:
   all nine terminal panes — committed 772 times in a 50 s typing run (722
   of them the whole `AppShell`). Now the tick is debounced before React sees
   it, the others read one field, session and project frames are applied
-  together at most every 300 ms, an unchanged refetch keeps the list it
+  together at most every 300 ms (every second since 2026-11-24, measured in
+  [04-ui.md](04-ui.md) beside the live list), an unchanged refetch keeps the list it
   had, a pane is redrawn only when its session, visibility or focus
   changes, and the tray's summary re-renders nothing when it is unchanged.
 - **Hidden tabs did terminal work.** xterm redraws every row of a hidden,

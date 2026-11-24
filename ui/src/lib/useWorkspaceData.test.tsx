@@ -98,7 +98,7 @@ describe('session updates that re-render nothing', () => {
 })
 
 describe('the live list', () => {
-  it('lands even when ticks come faster than it answers, and asks before the first tick', async () => {
+  it('lands even when frames come faster than it answers, and asks before the first frame', async () => {
     // Context recovery: started days ago in another terminal, so not among the
     // 200 most recent the full list returns; only the live list carries it.
     const old = { session_id: 'ctx', owned: false, status: 'idle', title: 'Context recovery' } as SessionSummary
@@ -109,16 +109,36 @@ describe('the live list', () => {
       const { result } = renderHook(() => useWorkspaceData())
       // Asked at mount, with no tick yet.
       await waitFor(() => expect(calls).toBe(1))
-      // An agent busy beside it: ticks keep coming while the answer is out.
+      // A session the list does not hold keeps sending events while the answer is out.
       for (let i = 0; i < 3; i++) {
-        act(() => live.handle({ type: 'event', data: {} as never }))
+        act(() => live.handle({ type: 'event', data: { session_id: 'newer' } as never }))
         await new Promise((r) => setTimeout(r, 1100))
       }
-      // One request at a time: the ticks queued one more, not three.
+      // One request at a time: the frames queued one more, not three.
       expect(calls).toBe(1)
       await act(async () => { answers[0]!([old]) })
       await waitFor(() => expect(result.current.sessions.some((x) => x.session_id === 'ctx')).toBe(true))
       await waitFor(() => expect(calls).toBe(2))
+    } finally {
+      pending.live = null
+    }
+  }, 10_000)
+})
+
+describe('the live list and frames of held sessions', () => {
+  it('is not asked again for a session it holds, however busy', async () => {
+    let calls = 0
+    pending.live = async () => { calls += 1; return [{ session_id: 'a', owned: true, status: 'active' }] }
+    try {
+      const { result } = renderHook(() => useWorkspaceData())
+      await waitFor(() => expect(result.current.sessions.some((x) => x.session_id === 'a')).toBe(true))
+      await waitFor(() => expect(calls).toBe(1))
+      for (let i = 0; i < 3; i++) {
+        act(() => live.handle({ type: 'event', data: { session_id: 'a' } as never }))
+        await new Promise((r) => setTimeout(r, 400))
+      }
+      await new Promise((r) => setTimeout(r, 1100))
+      expect(calls).toBe(1)
     } finally {
       pending.live = null
     }
