@@ -9433,6 +9433,50 @@ CREATE INDEX idx_events_attr_work ON events(
 
 The summaries are kept per session and only the sessions whose events moved are read again (`store.PartsCache`; the answer-cache notes under § Pricing table say how and why). That read seeks each moved session on this index, so it has to cover every column a summary sums: the model mix needs `model` and the tool distribution `tool_bytes`, which the index did not carry, and without them every row of a live session would be fetched from the table, payload and all. The two columns go on the end, so every query that pins the index by name keeps its plan. SQLite cannot add a column to an index in place, so it is dropped and created again under the same name; on a synthetic 680k-event database the index was 59 MB as inserts had grown it and is 57 MB rebuilt with the two columns (2026-11-21), the rebuild's packing outweighing them.
 
+### Kept parts DDL (migration 0093)
+
+[0093_parts_kept.sql](../internal/store/migrations/0093_parts_kept.sql):
+
+```sql
+CREATE TABLE IF NOT EXISTS parts_kept (
+  range_from INTEGER PRIMARY KEY,
+  built_at   INTEGER NOT NULL,
+  version    TEXT NOT NULL,
+  format     INTEGER NOT NULL,
+  parts      BLOB NOT NULL
+);
+```
+
+A range's per-session parts (`store.PartsCache`, § Session parts DDL)
+across restarts (`internal/store/keptparts.go`, 2026-11-24). `range_from` is
+the range's start in ms (the key the cache keeps it by), `built_at` when its
+events were last read whole, `version` the daemon build that wrote it,
+`format` the encoding (`keptPartsFormat`), and `parts` the parts with the
+`store.EventsMark` they were read at, gob-encoded and zstd-compressed. The
+daemon writes a range after each whole read and at most every 10 minutes
+after partial ones, in the background; a write that fails is made again on
+the next refresh. A range not yet read in this run starts from its row and
+reads only the sessions that moved since the row's mark, by the same rules
+as between two asks in one run. The mark is the database's own (newest
+event id, the moved counter, `session_gen`), so it holds across a restart.
+A row is used only when this build wrote it in this format and it is younger
+than the 6-hour full rebuild; otherwise, and when more than 256 sessions
+moved, the range is read whole as before. Rows older than that are deleted
+on the next write. A cache only: deleting any row costs one whole read.
+`TestKeptPartsEqualAFreshRead` holds a range started from its row after
+more turns, a new session, a session's events deleted and a restart to the
+range counted afresh, figure by figure.
+
+Measured on a read-only copy of the owner's database (2.4 GB, with tool
+output compression on, as his is), a restart 150 s after a first start, in
+two runs in each order: the parts' start-up reads (`scanEventParts`,
+`readAgentParts`, about 255 MB) are gone, the rows are 2.7 MB for all time,
+30 and 7 days, and the first-minute reads went 1,586 → 1,212 MB in the
+second pair (1,247 → 1,498 MB in the first, where other start-up readers
+varied more than that). The first `/v1/history?range=7d` after a start was
+already 30–90 ms both ways (Warm builds it); `/v1/week` and `/v1/glance`,
+which do not read the parts, stay at 2.7–3.2 s and 2.2–2.9 s cold.
+
 ### Permission mode DDL (migration 0088)
 
 ```sql

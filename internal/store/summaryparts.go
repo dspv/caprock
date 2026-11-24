@@ -1095,6 +1095,11 @@ type PartsCache struct {
 	// hurry counts Hurry calls; a range that has not seen the newest reads
 	// what moved on its next ask whatever the throttle says. Guarded by mu.
 	hurry uint64
+	// keep is set by Keep: ranges are started from and written to
+	// parts_kept (keptparts.go), stamped with version.
+	keep    bool
+	version string
+	saving  sync.WaitGroup
 }
 
 // partsMaxChanged is how many moved sessions are read one by one before a
@@ -1153,6 +1158,15 @@ type keptParts struct {
 	hurry uint64
 	// reads counts the reads made (for tests): full scans and partial ones.
 	full, partial int
+	// tried is set once parts_kept was looked at for this range; saved is
+	// when the parts were last written there.
+	tried bool
+	saved time.Time
+	// unsaved is set when a write to parts_kept failed (a writer held the
+	// database past the busy timeout): the next refresh writes again.
+	unsaved atomic.Bool
+	// loaded counts ranges started from parts_kept (for tests).
+	loaded int
 }
 
 // NewPartsCache returns an empty cache.
@@ -1169,6 +1183,26 @@ func (c *PartsCache) Hurry() {
 	c.mu.Lock()
 	c.hurry++
 	c.mu.Unlock()
+}
+
+// Keep makes the cache start each range from what parts_kept holds for it
+// and write the parts there (keptparts.go). version is the build's: a row
+// another build wrote is not used.
+func (c *PartsCache) Keep(version string) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	c.keep, c.version = true, version
+	c.mu.Unlock()
+}
+
+// WaitSaved waits for the writes to parts_kept under way. For tests and
+// shutdown.
+func (c *PartsCache) WaitSaved() {
+	if c != nil {
+		c.saving.Wait()
+	}
 }
 
 // SetThrottle replaces partsThrottle; 0 reads every move on the next ask.
@@ -1241,11 +1275,15 @@ func (c *PartsCache) with(ctx context.Context, q Querier, from int64, fn func(ra
 	}
 	kp.used = now
 	throttle, hurry := c.throttle, c.hurry
+	var k *keeper
+	if c.keep {
+		k = &keeper{version: c.version, wg: &c.saving}
+	}
 	c.mu.Unlock()
 
 	kp.mu.Lock()
 	defer kp.mu.Unlock()
-	behind, err := kp.refresh(ctx, q, from, now, throttle, hurry)
+	behind, err := kp.refresh(ctx, q, from, now, throttle, hurry, k)
 	if err != nil {
 		return err
 	}
@@ -1268,7 +1306,16 @@ func (c *PartsCache) with(ctx context.Context, q Querier, from int64, fn func(ra
 // where it was, so the first read past the window reads every session that
 // moved in it, once. hurry is the cache's Hurry count: one this range has
 // not seen lifts the throttle for this ask.
-func (kp *keptParts) refresh(ctx context.Context, q Querier, from int64, now time.Time, throttle time.Duration, hurry uint64) (behind bool, err error) {
+func (kp *keptParts) refresh(ctx context.Context, q Querier, from int64, now time.Time, throttle time.Duration, hurry uint64, k *keeper) (behind bool, err error) {
+	if k != nil && !kp.ok && !kp.tried {
+		// The first ask of this run: start from the parts a run before
+		// wrote, and read below only what moved since their mark.
+		kp.tried = true
+		if rp, mark, built, ok := loadKept(ctx, q, from, k.version, now); ok {
+			kp.parts, kp.mark, kp.ok, kp.built, kp.saved, kp.hurry = rp, mark, true, built, now, hurry
+			kp.loaded++
+		}
+	}
 	mark, err := ReadEventsMark(ctx, q)
 	if err != nil {
 		return false, err
@@ -1296,6 +1343,7 @@ func (kp *keptParts) refresh(ctx context.Context, q Querier, from int64, now tim
 		}
 		kp.parts, kp.mark, kp.ok, kp.built, kp.read, kp.hurry = rp, mark, true, now, now, hurry
 		kp.full++
+		kp.save(q, from, now, k)
 		return false, nil
 	}
 	if len(changed) > 0 {
@@ -1314,5 +1362,41 @@ func (kp *keptParts) refresh(ctx context.Context, q Querier, from int64, now tim
 	}
 	kp.mark, kp.hurry = mark, hurry
 	kp.partial++
+	if now.Sub(kp.saved) >= partsSaveEvery || kp.unsaved.Load() {
+		kp.save(q, from, now, k)
+	}
 	return false, nil
+}
+
+// keeper is how a refresh reaches parts_kept: the build's version and the
+// cache's count of writes under way.
+type keeper struct {
+	version string
+	wg      *sync.WaitGroup
+}
+
+// save writes the parts as they are now to parts_kept, encoded while they
+// are held and written in the background: a writer waiting on the database
+// must not hold up the answer. A write that fails is tried again at the
+// next refresh; a restart then reads more of what moved, never less.
+func (kp *keptParts) save(q Querier, from int64, now time.Time, k *keeper) {
+	if k == nil {
+		return
+	}
+	blob, err := encodeKept(kp.parts, kp.mark)
+	if err != nil {
+		return
+	}
+	kp.saved = now
+	kp.unsaved.Store(false)
+	built := kp.built
+	k.wg.Add(1)
+	go func() {
+		defer k.wg.Done()
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := saveKept(ctx, q, from, k.version, built, blob); err != nil {
+			kp.unsaved.Store(true)
+		}
+	}()
 }

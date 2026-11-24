@@ -95,6 +95,10 @@ type Deps struct {
 	PhoneLink PhoneLinkSender
 	UI        fs.FS // embedded dashboard (index.html at root); nil ⇒ placeholder
 	Version   string
+	// KeepParts keeps the summaries' per-session parts in the database
+	// across restarts (store.PartsCache.Keep, migration 0093). The daemon
+	// sets it; a test server keeps them in memory only.
+	KeepParts bool
 	// Status returns daemon/ingest/hooks status for /v1/status.
 	Status func(ctx context.Context) any
 	// InstallHooks registers the shim in Claude Code's settings, as
@@ -727,6 +731,9 @@ func New(d Deps) *Server {
 		week: newAnswerCache(weekTTL, answerMaxStale, time.Now), weekLong: newAnswerCache(weekLongTTL, answerMaxStale, time.Now), glance: newAnswerCache(glanceTTL, answerMaxStale, time.Now),
 		drill: newAnswerCache(drillTTL, answerMaxStale, time.Now), deck: newDeckCache(time.Now), repos: newRepoCache(),
 		parts: store.NewPartsCache()}
+	if d.KeepParts {
+		s.parts.Keep(d.Version)
+	}
 	s.ws.hold = s.holdSocket
 	s.sizes = newPTYSizes(func(id string, cols, rows int) {
 		if s.d.Agents != nil {
@@ -1118,7 +1125,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // Close shuts down live connections.
-func (s *Server) Close() { s.ws.Close() }
+func (s *Server) Close() {
+	s.ws.Close()
+	s.parts.WaitSaved() // before the daemon closes the store
+}
 
 // isLoopbackOrigin reports whether an Origin header names this machine.
 //

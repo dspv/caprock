@@ -3125,6 +3125,10 @@ SELECT id, session_id, text, created_at, updated_at, via, undelivered_at FROM qu
 SELECT id, session_id, text, created_at, updated_at, via, undelivered_at FROM queued_messages WHERE session_id = ? AND undelivered_at > 0 ORDER BY id
     SEARCH queued_messages USING INDEX idx_queued_messages_session (session_id=?)
 
+## store.loadKept
+SELECT built_at, version, format, parts FROM parts_kept WHERE range_from = ?
+    SEARCH parts_kept USING INTEGER PRIMARY KEY (rowid=?)
+
 ## store.markBrainVaults
 SELECT EXISTS (SELECT 1 FROM brain_vault_notes)
     SCAN CONSTANT ROW
@@ -3413,6 +3417,13 @@ SELECT (SELECT MIN(id) FROM events), (SELECT MAX(id) FROM events)
 ## store.sampleCompression
 SELECT payload FROM events WHERE id = ? AND kind IN ('tool.pre', 'tool.post') AND typeof(payload) = 'text' AND ts < ?
     SEARCH events USING INTEGER PRIMARY KEY (rowid=?)
+
+## store.saveKept
+DELETE FROM parts_kept WHERE built_at < ?
+    SCAN parts_kept
+
+## store.saveKept
+INSERT INTO parts_kept (range_from, built_at, version, format, parts) VALUES (?, ?, ?, ?, ?) ON CONFLICT(range_from) DO UPDATE SET built_at = excluded.built_at, version = excluded.version, format = excluded.format, parts = excluded.parts
 
 ## store.scanEventParts
 SELECT sid, kind, internal, COALESCE(model,''), COALESCE(msg_id,''), COALESCE(touch_dir,''), COALESCE(inner_tool, tool, ''), COALESCE(tool,''), COALESCE(tool_bytes,0), tokens_in, tokens_out, cache_read, cache_write, cost_usd, ts FROM events INDEXED BY idx_events_attr_work WHERE sid IN (SELECT DISTINCT sid FROM events INDEXED BY idx_events_ts_cover WHERE ts >= ?) AND ts >= ? ORDER BY sid, ts, id
