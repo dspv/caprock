@@ -6,6 +6,22 @@ used to list them by hand and stopped being true three releases later, which is
 what [rule 9](../CLAUDE.md) is for. Phase 3 (Delight) has no plan by design.
 This doc is the runbook:
 
+## How often to release (2026-11-24)
+
+About once a day, and no more. Green pull requests merge to `master` as they
+come, but a release bundles everything merged since the last one into one
+update: every release is an update prompt each user has to act on, and five
+in one day (0.193.0 to 0.195.0, 2026-11-24) wore them out (a user's
+complaint, relayed by the owner: they were tired of updating Caprock).
+
+- **The daily release** is one version for the whole batch: a minor when any
+  of it is a feature, a patch when all of it is fixes.
+- **An out-of-band patch** only when something is broken for users: data
+  lost, a crash, or a screen they cannot work in. A cosmetic fix waits for
+  the next daily release.
+- **Nothing is held back from the daily release** for a hand check that can
+  only happen on a released build: it ships, and is checked live.
+
 ## Before you tag
 
 ```bash

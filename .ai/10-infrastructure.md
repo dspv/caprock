@@ -297,6 +297,8 @@ collection (a sampled figure):
 
 ## Release checklist
 
+Cadence: about one release a day bundling every merged pull request, an out-of-band patch only for breakage ([docs/RELEASING.md § How often to release](../docs/RELEASING.md#how-often-to-release-2026-11-24)).
+
 1. `14-build-status.md` and README progress bars updated; changelog assembled from its fragments (`python3 scripts/changelog.py assemble X.Y.Z YYYY-MM-DD`, see [docs/RELEASING.md](../docs/RELEASING.md)).
 2. `ci.yml` green on `master` including all Windows jobs.
 3. `git tag vX.Y.Z && git push --tags` → `release.yml` builds and publishes the release and pushes the Homebrew formula.
