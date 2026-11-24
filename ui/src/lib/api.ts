@@ -2738,9 +2738,10 @@ export const api = {
   /** The newest events for a session, for anything showing recent activity. */
   recentEvents: (id: string, limit = 2000) => get<Event[]>(`/v1/sessions/${encodeURIComponent(id)}/events?newest=1&limit=${limit}`),
   /** The main thread's newest events of these kinds, filtered before the
-   *  limit: a parent's own calls, however busy its subagents are. */
+   *  limit: a parent's own calls, however busy its subagents are. `slim=1`:
+   *  each tool.post without its body, as cockpit slimToolResult keeps it. */
   recentMainEvents: (id: string, kinds: readonly string[], limit = 400) =>
-    get<Event[]>(`/v1/sessions/${encodeURIComponent(id)}/events?newest=1&main=1&kind=${encodeURIComponent(kinds.join(','))}&limit=${limit}`),
+    get<Event[]>(`/v1/sessions/${encodeURIComponent(id)}/events?newest=1&main=1&kind=${encodeURIComponent(kinds.join(','))}&limit=${limit}&slim=1`),
   /** Every priced model call of the session's main thread, oldest first (the spend scrubber). */
   sessionCalls: (id: string) => get<SessionCall[]>(`/v1/sessions/${encodeURIComponent(id)}/calls`),
   /** The subagents working in a session now, and how many finished lately. */

@@ -1819,6 +1819,13 @@ func (s *Server) handleSessionEvents(w http.ResponseWriter, r *http.Request) {
 	if evs == nil {
 		evs = []event.Event{}
 	}
+	// `slim=1` sends each tool.post without its body (slimevents.go): what
+	// the inspector keeps of it, cut before the wire rather than after.
+	if r.URL.Query().Get("slim") == "1" {
+		for i := range evs {
+			evs[i] = slimToolPost(evs[i])
+		}
+	}
 	writeJSON(w, http.StatusOK, evs)
 }
 
