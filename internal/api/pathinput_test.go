@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -37,8 +38,8 @@ func TestAgentInputPaths(t *testing.T) {
 		t.Fatalf("status %d", c)
 	}
 	want := []string{
-		"\x1b[200~\"/a b/1.jpg\"\x1b[201~",
-		"\x1b[200~\"/x/\\\"q\\\".PNG\"\x1b[201~",
+		"\x1b[200~ \"/a b/1.jpg\"\x1b[201~",
+		"\x1b[200~ \"/x/\\\"q\\\".PNG\"\x1b[201~",
 		"\"/x/notes.txt\" ",
 		"look",
 	}
@@ -62,5 +63,25 @@ func TestAgentInputPaths(t *testing.T) {
 	}
 	if want := []string{"\"/p.png\" ", "x"}; !reflect.DeepEqual(plain.inputs, want) {
 		t.Fatalf("no PasteMode: got %q want %q", plain.inputs, want)
+	}
+}
+
+// Two image pastes Claude Code keeps as text (it refused the read) must not
+// glue into `"/a.png""/b.png"`: each paste leads with a space, which Claude
+// Code trims away when it does attach the image.
+func TestPathInputImagesNeverGlue(t *testing.T) {
+	a, imgA := pathInput("/p/a.png", true)
+	b, imgB := pathInput("/p/b.png", true)
+	if !imgA || !imgB {
+		t.Fatal("not sent as image pastes")
+	}
+	if want := "\x1b[200~ \"/p/a.png\"\x1b[201~"; a != want {
+		t.Fatalf("got %q want %q", a, want)
+	}
+	strip := func(s string) string {
+		return strings.TrimSuffix(strings.TrimPrefix(s, "\x1b[200~"), "\x1b[201~")
+	}
+	if got := strip(a) + strip(b); got != ` "/p/a.png" "/p/b.png"` {
+		t.Fatalf("as text: %q", got)
 	}
 }

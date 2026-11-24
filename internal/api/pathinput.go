@@ -13,7 +13,10 @@ import (
 // Claude Code turns an image path into `[Image #N]` only when the path
 // arrives as a bracketed paste of its own; typed, it stays a path. So an
 // image goes in as one paste per path when the session asked for bracketed
-// paste, anything else typed, quoted and followed by a space. The browser
+// paste, anything else typed, quoted and followed by a space. The paste
+// leads with a space: Claude Code trims it when it attaches the image, and
+// when it refuses the read (it gives its check one second, which a loaded
+// Mac missed) the path it keeps as text stays apart from the one before. The browser
 // writes these itself where it has a terminal and knows the mode; the chat
 // has no terminal, and the daemon knows the mode (PasteMode), so it is done
 // here.
@@ -42,7 +45,7 @@ func quotePath(p string) string {
 // it went as an image paste.
 func pathInput(p string, bracketed bool) (data string, image bool) {
 	if bracketed && imageExt.MatchString(p) {
-		return "\x1b[200~" + quotePath(p) + "\x1b[201~", true
+		return "\x1b[200~ " + quotePath(p) + "\x1b[201~", true
 	}
 	return quotePath(p) + " ", false
 }

@@ -192,7 +192,19 @@ export function quotePath(p: string): string {
 //
 // So each image is its own paste of the same quoted path a file gets, which
 // holds for spaces ("Application Support") and Windows backslashes alike.
-// Claude Code adds the space after `[Image #N]` itself, so none is sent.
+// Claude Code adds the space after `[Image #N]` itself, so none is sent
+// after the paste.
+//
+// One space goes *inside* the paste, before the path. When Claude Code
+// attaches the image it trims the paste and the space is gone; when it does
+// not — its check of the path is held to one second, and on a Mac under
+// heavy load the read was refused and the paste kept as text (Claude Code
+// 2.1.312, owner, 2026-11-23, once in ~40 drops that day) — the space keeps
+// that path apart from the one before it. Without it two refused drops
+// arrived glued, `"/a.png""/b.png"`. Read in Claude Code 2.1.325–2.1.331's
+// paste handler (it splits a paste on a space before a path, drops the empty
+// piece and trims each path); not a live run.
+//
 // The extensions are the ones its image reader takes (png, jpeg, gif, webp).
 //
 // Only when the process asked for bracketed paste: a shell that did not
@@ -206,11 +218,11 @@ export function isImagePath(p: string): boolean {
 
 /**
  * What goes into the session for one file path: an image as its own
- * bracketed paste when the process accepts one, anything else typed, quoted
- * and followed by a space.
+ * bracketed paste, led by a space, when the process accepts one; anything
+ * else typed, quoted and followed by a space.
  */
 export function pathInput(p: string, bracketedPaste: boolean): string {
-  if (bracketedPaste && isImagePath(p)) return `\x1b[200~${quotePath(p)}\x1b[201~`
+  if (bracketedPaste && isImagePath(p)) return `\x1b[200~ ${quotePath(p)}\x1b[201~`
   return `${quotePath(p)} `
 }
 

@@ -565,7 +565,7 @@ describe('ChatView', () => {
     fireEvent.change(field, { target: { value: 'what is wrong here?' } })
     fireEvent.click(screen.getByRole('button', { name: 'Send' }))
     // The paste the desktop terminal writes for a dropped image, then the words and Enter.
-    await waitFor(() => expect(store.inputs).toEqual(['\x1b[200~"/data/paste/IMG_0001.png"\x1b[201~', 'what is wrong here?', '\r']), { timeout: 1000 })
+    await waitFor(() => expect(store.inputs).toEqual(['\x1b[200~ "/data/paste/IMG_0001.png"\x1b[201~', 'what is wrong here?', '\r']), { timeout: 1000 })
   })
 
   // Owner, 2026-10-23: a Markdown file from the phone, typed in by its path
@@ -865,7 +865,7 @@ describe('ChatView: a file dropped on the chat', () => {
     expect(await screen.findByRole('button', { name: 'Remove Image 1' })).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('Type to the session'), { target: { value: 'look' } })
     fireEvent.click(screen.getByRole('button', { name: 'Send' }))
-    await waitFor(() => expect(store.inputs).toEqual(['"/data/paste/plan.md" ', '\x1b[200~"/data/paste/IMG_0001.png"\x1b[201~', 'look', '\r']), { timeout: 1000 })
+    await waitFor(() => expect(store.inputs).toEqual(['"/data/paste/plan.md" ', '\x1b[200~ "/data/paste/IMG_0001.png"\x1b[201~', 'look', '\r']), { timeout: 1000 })
   })
 
   it('in a browser, a refused file gets the line Attach gives it', async () => {
@@ -887,7 +887,7 @@ describe('ChatView: a file dropped on the chat', () => {
     expect((await screen.findByRole('alert')).textContent).toBe(EXE)
     fireEvent.click(screen.getByRole('button', { name: 'Send' }))
     // Both saved by the daemon, as a picked file is: never the absolute path.
-    await waitFor(() => expect(store.inputs).toEqual(['"/data/paste/plan.md" ', '\x1b[200~"/data/paste/shot.png"\x1b[201~', '\r']), { timeout: 1000 })
+    await waitFor(() => expect(store.inputs).toEqual(['"/data/paste/plan.md" ', '\x1b[200~ "/data/paste/shot.png"\x1b[201~', '\r']), { timeout: 1000 })
     read.mockRestore()
     readFile.mockRestore()
   })
@@ -913,7 +913,7 @@ describe('ChatView: a file dropped on the chat', () => {
     expect((await screen.findByRole('alert')).textContent).toBe(EXE)
     fireEvent.click(screen.getByRole('button', { name: 'Send' }))
     // The document as the app's terminal types it; the image as Attach saves it.
-    await waitFor(() => expect(store.inputs).toEqual(['"/Users/u/plan.md" ', '\x1b[200~"/data/paste/shot.png"\x1b[201~', '\r']), { timeout: 1000 })
+    await waitFor(() => expect(store.inputs).toEqual(['"/Users/u/plan.md" ', '\x1b[200~ "/data/paste/shot.png"\x1b[201~', '\r']), { timeout: 1000 })
     read.mockRestore()
     readFile.mockRestore()
   })
