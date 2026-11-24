@@ -279,8 +279,8 @@ collection (a sampled figure):
   times its live heap under this load (the collector's goal is twice what is
   live, and the polled summaries allocate megabytes a second). SQLite's
   memory follows the database (100 MB at minute ten): page caches and
-  sorters, bounded per connection by `cache_size` (16 MiB, eight
-  connections; internal/store/store.go). It kept growing after the writes
+  sorters, bounded per connection by `cache_size` (16 MiB then, 4 MiB
+  since 2026-11-24; eight connections; internal/store/store.go). It kept growing after the writes
   stopped, while the viewers' queries scanned the larger database. RSS
   jumped to 350–470 MB in the same minutes: clean pages of the mapped
   database, which the system takes back first and the footprint does not
@@ -294,6 +294,27 @@ collection (a sampled figure):
   within one run's noise. What was fixed grows over days (answer caches kept
   each past day's keys) or with crashed sessions (their kept tool inputs),
   which this run does not exercise; the unit tests do.
+
+**SQLite's page cache, 2026-11-24.** The same kind of stand at the owner's
+scale (`TestSeedLargeDB`, 1,180,119 events, 2.8 GB; eight fake `claude`
+sessions, four hook-driven agents, a four-tab window in Playwright's
+headless shell; sampled every 30 s for 9.5 minutes; steady = samples at
+300 s and after). `cache_size` 16 → 4 MiB per connection:
+
+- **Footprint:** 518 → 276 MB steady; SQLite's allocator 366 → 100 MB; Go
+  mapped 199 → 203 MB (unchanged).
+- **CPU:** 58.6 s over 573 s → 61.0 s over 572 s (10.2% → 10.7% of a core).
+- **Endpoints,** 90 s after a fresh start, first call then warm:
+  `/v1/sessions` 132/22 → 130/22 ms, `/v1/stats/summary?range=today` 205/1
+  → 260/1, `/v1/history?range=7d` 3,671/1 → 4,171/1 (a cold read while the
+  start-up jobs run), `/v1/week` 1,057/1 → 1,096/1, `/v1/glance` 1,677/0 →
+  1,675/0, `/v1/work` 111/9 → 102/9; slow queries logged 25 → 24 there,
+  21 → 28 over the 9.5-minute run (the extra ones writers waiting on the
+  start-up jobs, `rollup writeTx` 3 → 7).
+- **Reads:** the seed's one-time repairs read more with the smaller cache
+  (`RepairForkedTurns` 0.1 → 1.7 GB, sorts spilling); they run once per
+  database, and a database that has run them, as the owner's has, skips
+  them. The last minute of the run read 253 MB before and 152 MB after.
 
 ## Release checklist
 
