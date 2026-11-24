@@ -432,7 +432,9 @@ extern "C" fn is_focusable(this: &Object, _: Sel) -> Bool {
 }
 
 extern "C" fn send_event(this: &Object, _sel: Sel, event: &NSEvent) {
-  unsafe {
+  // CAPROCK PATCH (app/src-tauri/patched, .ai/21-app.md § An exception in
+  // AppKit): as in `TaoApp`'s `sendEvent:` (app.rs).
+  util::catch_objc_exception("TaoWindow sendEvent:", || unsafe {
     let event_type = event.r#type();
     if event_type == NSEventType::LeftMouseDown {
       // When wkwebview is set on NSWindow, `WindowBuilder::with_movable_by_window_background` is not working.
@@ -444,7 +446,7 @@ extern "C" fn send_event(this: &Object, _sel: Sel, event: &NSEvent) {
     }
     let superclass = util::superclass(this);
     let _: () = msg_send![super(this, superclass), sendEvent: event];
-  }
+  });
 }
 
 #[derive(Default)]

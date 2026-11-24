@@ -110,6 +110,57 @@ pub unsafe fn superclass<'a>(this: &'a Object) -> &'a Class {
   &*superclass
 }
 
+/// CAPROCK PATCH (app/src-tauri/patched, .ai/21-app.md § An exception in
+/// AppKit): the log target the app writes to `app.log`.
+pub const OBJC_EXCEPTION_TARGET: &str = "caprock::objc_exception";
+
+/// CAPROCK PATCH (app/src-tauri/patched, .ai/21-app.md § An exception in
+/// AppKit): runs `f`, which hands an event on to AppKit, and catches an
+/// Objective-C exception thrown under it. Tao's `sendEvent:` overrides are
+/// `extern "C"`: an exception AppKit raises while handling the event (an
+/// internal assertion, say) unwinds into them, and an unwind into an
+/// `extern "C"` Rust frame aborts the process ("panic in a function that
+/// cannot unwind"). AppKit's own run loop catches such an exception, logs
+/// it and carries on; this does the same, logging the exception's name,
+/// reason and the stack it was raised on under `OBJC_EXCEPTION_TARGET`.
+/// Catching needs an unwinding build (`panic = "unwind"`).
+pub fn catch_objc_exception(place: &str, f: impl FnOnce()) {
+  // Asserted: after an exception nothing `f` touched is looked at again;
+  // the event is dropped, as AppKit's own catch drops it.
+  if let Err(exc) = objc2::exception::catch(std::panic::AssertUnwindSafe(f)) {
+    log::error!(
+      target: OBJC_EXCEPTION_TARGET,
+      "{place}: {}",
+      describe_objc_exception(exc.as_deref())
+    );
+  }
+}
+
+/// `<NSException: 0x…> 'name' reason: …`, then the stack it was raised on,
+/// one frame a line.
+pub fn describe_objc_exception(exc: Option<&objc2::exception::Exception>) -> String {
+  let Some(exc) = exc else {
+    return "a nil exception".into();
+  };
+  let mut text = format!("{exc:?}");
+  let obj: &Object = exc.as_ref();
+  // SAFETY: `respondsToSelector:` is NSObject's; `callStackSymbols` returns
+  // an NSArray of NSString, and is sent only to an object that answers it.
+  unsafe {
+    let responds: bool = msg_send![obj, respondsToSelector: sel!(callStackSymbols)];
+    if responds {
+      let symbols: Option<
+        objc2::rc::Retained<objc2_foundation::NSArray<objc2_foundation::NSString>>,
+      > = msg_send![obj, callStackSymbols];
+      for s in symbols.iter().flat_map(|a| a.iter()) {
+        text.push('\n');
+        text.push_str(&s.to_string());
+      }
+    }
+  }
+  text
+}
+
 pub unsafe fn create_input_context(view: &NSView) -> IdRef {
   let input_context: id = msg_send![class!(NSTextInputContext), alloc];
   let input_context: id = msg_send![input_context, initWithClient: view];

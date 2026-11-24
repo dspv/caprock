@@ -84,7 +84,11 @@ offline-voice = ["dep:whisper-rs", "dep:cpal", "dep:num_cpus"]
 # with Approve and Deny through UNUserNotificationCenter (src/notify_macos.rs),
 # which the official notification plugin does not offer on desktop.
 [target.'cfg(target_os = "macos")'.dependencies]
-objc2 = "0.6"
+# `exception`: the tests raise an NSException (src/applog.rs); patched tao
+# catches them in its sendEvent: overrides. `log` (already in the tree)
+# carries tao's caught exceptions to app.log.
+objc2 = { version = "0.6", features = ["exception"] }
+log = "0.4"
 # NSPanel: the menu bar popover is a non-activating panel (src/popover.rs),
 # so opening it never activates the app or raises the main window.
 objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSPanel", "NSWindow", "NSResponder", "NSBitmapImageRep", "NSImageRep", "NSGraphics", "NSImage", "NSEvent", "block2"] }
@@ -113,12 +117,20 @@ codegen-units = 1
 lto = true
 opt-level = "s"
 strip = true
-panic = "abort"
+# Unwind, not abort: under "abort" an Objective-C exception cannot be caught
+# from Rust at all (objc2::exception::catch aborts instead), so an exception
+# AppKit raised and would itself have logged and survived killed the app
+# with "panic in a function that cannot unwind" (four times from 2026-10-31
+# to 0.195.0 on the owner's Mac). Unwinding also makes the catch_unwind guards around our own
+# callbacks effective. .ai/21-app.md § An exception in AppKit.
+panic = "unwind"
 
 # wry and tao with macOS drag handlers that cannot panic: upstream unwraps
 # the dragged file names, a Finder item in iCloud that is not downloaded can
 # yield none, and with panic = "abort" (and inside an Objective-C method in
-# any case) that panic killed the app (0.141.0 and 0.147.0). Each patched
+# any case) that panic killed the app (0.141.0 and 0.147.0). Tao's
+# sendEvent: overrides also catch an Objective-C exception AppKit raises
+# under an event (.ai/21-app.md § An exception in AppKit). Each patched
 # spot is marked CAPROCK PATCH; the shell's tests fail if one goes missing.
 # To bump either crate, copy the new release here and carry the patch over,
 # or drop this once upstream stops unwrapping. .ai/21-app.md § Dropping a file.

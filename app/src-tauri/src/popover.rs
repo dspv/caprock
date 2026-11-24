@@ -150,23 +150,25 @@ fn build<R: Runtime>(app: &AppHandle<R>) -> Option<tauri::WebviewWindow<R>> {
         }
     }
     let handle = app.clone();
-    w.on_window_event(move |e| match e {
-        // Clicked into: a peek becomes an ordinary popover, which hides on blur.
-        tauri::WindowEvent::Focused(true) => {
-            peeker(&handle).touch();
-            #[cfg(target_os = "macos")]
-            panel::unwatch_clicks();
-        }
-        tauri::WindowEvent::Focused(false) => {
-            *handle
-                .state::<Popover>()
-                .blurred
-                .lock()
-                .unwrap_or_else(|e| e.into_inner()) = Some(Instant::now());
-            peeker(&handle).dismiss(Instant::now());
-            hide(&handle);
-        }
-        _ => {}
+    w.on_window_event(move |e| {
+        crate::applog::guard("popover window event", || match e {
+            // Clicked into: a peek becomes an ordinary popover, which hides on blur.
+            tauri::WindowEvent::Focused(true) => {
+                peeker(&handle).touch();
+                #[cfg(target_os = "macos")]
+                panel::unwatch_clicks();
+            }
+            tauri::WindowEvent::Focused(false) => {
+                *handle
+                    .state::<Popover>()
+                    .blurred
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner()) = Some(Instant::now());
+                peeker(&handle).dismiss(Instant::now());
+                hide(&handle);
+            }
+            _ => {}
+        });
     });
     Some(w)
 }
@@ -495,7 +497,10 @@ pub mod panel {
     pub fn watch_clicks(on_click: impl Fn() + 'static) {
         use objc2_app_kit::{NSEvent, NSEventMask};
         unwatch_clicks();
-        let block = block2::RcBlock::new(move |_: std::ptr::NonNull<NSEvent>| on_click());
+        // Guarded: the block runs inside AppKit's event monitor.
+        let block = block2::RcBlock::new(move |_: std::ptr::NonNull<NSEvent>| {
+            crate::applog::guard("click in another app", &on_click);
+        });
         let monitor = NSEvent::addGlobalMonitorForEventsMatchingMask_handler(
             NSEventMask::LeftMouseDown | NSEventMask::RightMouseDown | NSEventMask::OtherMouseDown,
             &block,

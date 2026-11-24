@@ -29,7 +29,12 @@ pub static APP_CLASS: LazyLock<AppClass> = LazyLock::new(|| unsafe {
 // Overriding `sendEvent:` like this fixes that. (https://stackoverflow.com/a/15294196)
 // Fun fact: Firefox still has this bug! (https://bugzilla.mozilla.org/show_bug.cgi?id=1299553)
 extern "C" fn send_event(this: &NSApplication, _sel: Sel, event: &NSEvent) {
-  unsafe {
+  // CAPROCK PATCH (app/src-tauri/patched, .ai/21-app.md § An exception in
+  // AppKit): an exception AppKit raises under the event is logged, not left
+  // to unwind into this extern "C" frame, which aborts. 0.195.0 aborted
+  // here on an NSCampoLightweightUIController assertion while a display was
+  // being reconfigured.
+  util::catch_objc_exception("TaoApp sendEvent:", || unsafe {
     // For posterity, there are some undocumented event types
     // (https://github.com/servo/cocoa-rs/issues/155)
     // but that doesn't really matter here.
@@ -48,7 +53,7 @@ extern "C" fn send_event(this: &NSApplication, _sel: Sel, event: &NSEvent) {
       let superclass = util::superclass(this);
       let _: () = msg_send![super(this, superclass), sendEvent: event];
     }
-  }
+  });
 }
 
 unsafe fn maybe_dispatch_device_event(event: &NSEvent) {

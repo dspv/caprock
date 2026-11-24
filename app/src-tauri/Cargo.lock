@@ -469,6 +469,7 @@ dependencies = [
  "cpal",
  "dirs 6.0.0",
  "libc",
+ "log",
  "notify-rust",
  "num_cpus",
  "objc2",

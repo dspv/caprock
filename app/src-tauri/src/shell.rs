@@ -166,29 +166,36 @@ pub fn build(
         // notification would wait for the app to come forward (WP-09).
         .background_throttling(tauri::utils::config::BackgroundThrottlingPolicy::Disabled)
         .initialization_script(INIT_SCRIPT)
-        .on_navigation(move |url| allow_navigation(&opener, &sup, url))
+        // Guarded (applog::guard): these run inside WebKit's delegate
+        // methods; a panic is logged and the navigation refused.
+        .on_navigation(move |url| {
+            crate::applog::guard("main navigation", || allow_navigation(&opener, &sup, url))
+                .unwrap_or(false)
+        })
         .on_new_window(move |url, _| {
-            open_link(&opener2, &url);
+            crate::applog::guard("main new window", || open_link(&opener2, &url));
             NewWindowResponse::Deny
         })
         .on_download(save_download)
         .on_page_load(move |w, p| {
-            if !matches!(p.event(), tauri::webview::PageLoadEvent::Finished) {
-                // A new dashboard page (a reload, a daemon swap, the
-                // fallback page) starts with no browser tab's page over it
-                // (browser.rs, ADR-075): hidden, never closed here.
-                crate::browser::hide_all(w.app_handle());
-                return;
-            }
-            #[cfg(all(feature = "snapshot", target_os = "macos"))]
-            crate::snapshot::loaded(p.url());
-            MAIN_LOADED.store(true, Ordering::Relaxed);
-            LOADS.fetch_add(1, Ordering::Relaxed);
-            // Shown once, when the first page is ready (no white flash); a
-            // later reload must not pull the window forward.
-            if !shown.swap(true, Ordering::Relaxed) {
-                let _ = w.show();
-            }
+            crate::applog::guard("main page load", || {
+                if !matches!(p.event(), tauri::webview::PageLoadEvent::Finished) {
+                    // A new dashboard page (a reload, a daemon swap, the
+                    // fallback page) starts with no browser tab's page over it
+                    // (browser.rs, ADR-075): hidden, never closed here.
+                    crate::browser::hide_all(w.app_handle());
+                    return;
+                }
+                #[cfg(all(feature = "snapshot", target_os = "macos"))]
+                crate::snapshot::loaded(p.url());
+                MAIN_LOADED.store(true, Ordering::Relaxed);
+                LOADS.fetch_add(1, Ordering::Relaxed);
+                // Shown once, when the first page is ready (no white flash); a
+                // later reload must not pull the window forward.
+                if !shown.swap(true, Ordering::Relaxed) {
+                    let _ = w.show();
+                }
+            });
         });
     // `--features snapshot` only: bench/ (WP-16) runs its page hook before
     // the page's own scripts, from `$CAPROCK_APP_SNAPSHOT_DIR/init.js`.
@@ -234,7 +241,9 @@ pub fn build(
             }
             // You came to the window: a peek nobody touched goes.
             tauri::WindowEvent::Focused(true) => {
-                crate::popover::main_focused(hidden.app_handle());
+                crate::applog::guard("main focused", || {
+                    crate::popover::main_focused(hidden.app_handle())
+                });
             }
             _ => {}
         });

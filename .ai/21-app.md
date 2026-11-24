@@ -2291,10 +2291,10 @@ tells a page where a file lives.
   `the_patched_drag_handlers_never_unwrap` fails a bump that loses it. The
   shell's own handler passes every path on as it is — any script, emoji,
   iCloud paths and `.icloud` placeholders; a non-UTF-8 path is recorded but
-  not typed — and wraps its body in `catch_unwind` (effective in builds
-  that unwind). A release build still aborts on any panic, so the app
-  installs a panic hook that writes `panic at <file>:<line>: <message>` to
-  `app.log` first: the next crash report is answered from that line.
+  not typed — and wraps its body in `catch_unwind`. The app installs a
+  panic hook that writes `panic at <file>:<line>: <message>`, the thread
+  and a backtrace to `app.log` first: the next crash report is answered
+  from those lines (§ An exception in AppKit).
 - **Why not turn the handler off.** With it off the page gets an HTML5 drop
   and the upload path works unchanged, which is the smaller fix. It was the
   worse behaviour: the upload copies the bytes into the data directory, so
@@ -2351,6 +2351,46 @@ Page tab and listens for both. The in-app browser that came back (ADR-075)
 puts each page in a window of its own, so the main window's drops are what
 they were; a file dropped on a page is the page's (its window's own drop
 handler is off).
+
+## An exception in AppKit
+
+0.195.0 and the builds before it aborted (SIGABRT on the main thread) about
+once a week on the owner's Mac; `app.log` held only `panic at
+…/core/src/panicking.rs:225: panic in a function that cannot unwind`, on
+2026-10-31, 11-06, 11-23 and 11-24. There was no first panic to log: the
+unwind was an Objective-C exception. The 11-24 crash report's app frames
+are the abort-on-unwind landing pad of tao's `TaoApp` `sendEvent:`
+override (an `extern "C"` method), called straight from `-[NSApplication
+_handleEvent:]`; the system log a moment before reads `*** Assertion
+failure in …, NSCampoLightweightUIController.m:1429` after `Mouse entered`,
+while a display was being reconfigured. AppKit asserted (it raises an
+NSException), and AppKit's run loop, which would have caught it, logged it
+and carried on, never got it: the unwind reached the Rust frame between
+them first.
+
+- **Caught where it happens.** Both tao `sendEvent:` overrides (`TaoApp`,
+  `TaoWindow`) hand the event on inside `objc2::exception::catch`
+  (`patched/tao`, `CAPROCK PATCH`, `util::catch_objc_exception`). An
+  exception is written to `app.log` as `objc exception, caught; the app
+  carries on: <where>: <name> reason: <reason>` with the stack it was
+  raised on below, at most 20 a run, and the event is dropped — what AppKit
+  does itself. `applog.rs`'s test fails a tao bump that loses the patch.
+- **Release builds unwind.** `panic = "unwind"` in `[profile.release]`:
+  under `abort` an Objective-C exception cannot be caught from Rust at all
+  (`catch` aborts instead), and `catch_unwind` catches nothing. The cost,
+  measured 2026-11-24 on the arm64 binary built from the same source:
+  9.2 MB against 7.0 MB with `abort` (unwind tables and landing pads).
+- **Our callbacks carry on.** The menu, tray, Dock reopen, window events,
+  page loads, navigation, notification responses and the click monitor run
+  through `applog::guard`: a panic is written by the hook, then `<where>:
+  carried on after the panic above`, and the app goes on (a navigation is
+  refused).
+- **Whatever still aborts says why.** The runtime's exception preprocessor
+  keeps the last exception raised (retained, not formatted). The panic
+  hook writes, under every panic, the thread and a backtrace — on macOS
+  each frame as `<image> +0x<offset>`, the crash report's form, since the
+  release binary is stripped — and under `panic in a function that cannot
+  unwind` also that last exception's name, reason and stack.
 
 ## Notifications
 

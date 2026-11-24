@@ -109,7 +109,9 @@ pub fn install<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     let b = TrayIconBuilder::with_id(ID)
         .tooltip(&view.tooltip)
         .menu(&menu(app, &view)?)
-        .on_menu_event(|app, event| on_menu(app, event.id().as_ref()));
+        .on_menu_event(|app, event| {
+            crate::applog::guard("tray menu", || on_menu(app, event.id().as_ref()));
+        });
     // macOS: a left click opens the popover (popover.rs); the menu stays on
     // a right click. Elsewhere the menu is the whole tray.
     #[cfg(target_os = "macos")]
@@ -124,7 +126,9 @@ pub fn install<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
                 ..
             } = event
             {
-                crate::popover::toggle(tray.app_handle(), rect);
+                crate::applog::guard("tray click", || {
+                    crate::popover::toggle(tray.app_handle(), rect)
+                });
             }
         });
     #[cfg(not(target_os = "macos"))]
