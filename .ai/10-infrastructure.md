@@ -316,6 +316,21 @@ headless shell; sampled every 30 s for 9.5 minutes; steady = samples at
   database, and a database that has run them, as the owner's has, skips
   them. The last minute of the run read 253 MB before and 152 MB after.
 
+**The Work board's cache, 2026-11-24.** `GET /v1/work` keeps each listed
+session's newest 40 turn events and 30 main-thread events between reads
+(`internal/daemon/workevents.go`), and kept them whole: written files, edit
+strings, command output. It now keeps what its two readers look at (the
+turn reading: a payload's `source` and `trigger`; the narration: tool
+inputs without file bodies, and of a result only whether it failed —
+`TestWorkEventsKeptReadTheSame` holds both to the whole events), and drops
+a session the last read did not list instead of waiting for 256. On the
+stand's database, 256 sessions: 18.3 → 0.02 MB (turn events) and 12.2 →
+2.35 MB (main-thread events) of payload held. Releasing the Go heap after
+start-up (`debug.FreeOSMemory` at 2, 6 and 15 minutes) was tried on the
+same stand and dropped: the footprint fell 25 MB for a minute or two and
+was back as soon as the live heap's churn under load (70–127 MB) refilled
+it.
+
 ## Release checklist
 
 Cadence: about one release a day bundling every merged pull request, an out-of-band patch only for breakage ([docs/RELEASING.md § How often to release](../docs/RELEASING.md#how-often-to-release-2026-11-24)).

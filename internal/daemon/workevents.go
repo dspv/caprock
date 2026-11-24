@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"encoding/json"
 	"sync"
 
 	"github.com/dspv/caprock/internal/api"
@@ -133,14 +134,96 @@ func (c *workEvents) entry(id string, gen store.EventsGen) *workEventsEntry {
 	return e
 }
 
-// sweep forgets which entries the last read used, so the next full map drops
-// those of sessions that have since ended.
+// sweep drops the entries the last read did not use — sessions that have
+// since ended or left the board — and forgets which the last read used.
+// Entries used to stay until the map was full (256 sessions), each holding
+// its events (2026-11-24 audit: 21–34 MB of the daemon's live heap).
 func (c *workEvents) sweep() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	for _, e := range c.m {
+	for id, e := range c.m {
+		if !e.live {
+			delete(c.m, id)
+			continue
+		}
 		e.live = false
 	}
+}
+
+// What the board keeps of the events it reads. Its two readers look at a
+// few fields of a payload, and the events came with whole tool inputs and
+// results (a file written, a command's output): kept for up to 256
+// sessions, that was most of the cache.
+//
+//   - turnsKept (handWaiting, turnWaiting) reads only `source` and
+//     `trigger` of a payload.
+//   - stateKept (narrate.Summarize) reads tool inputs for the phrase (a
+//     path, a command, a pattern, the todo list) and of a result only
+//     whether it failed: a written file's content, an edit's strings and a
+//     result's body go; `is_error: true` stands for a result that said it
+//     failed (narrate isError).
+//
+// TestWorkEventsKeptReadTheSame holds both to what the whole events give.
+
+func turnsKept(evs []event.Event) []event.Event {
+	out := make([]event.Event, len(evs))
+	for i, e := range evs {
+		var p map[string]json.RawMessage
+		if json.Unmarshal(e.Payload, &p) == nil {
+			keep := map[string]json.RawMessage{}
+			for _, k := range []string{"source", "trigger"} {
+				if v, ok := p[k]; ok {
+					keep[k] = v
+				}
+			}
+			if b, err := json.Marshal(keep); err == nil {
+				e.Payload = b
+			}
+		}
+		out[i] = e
+	}
+	return out
+}
+
+// toolBodies are tool_input fields no phrase reads: what a Write, an Edit,
+// a MultiEdit or a NotebookEdit puts in the file.
+var toolBodies = []string{"content", "new_string", "old_string", "edits", "new_source"}
+
+func stateKept(evs []event.Event) []event.Event {
+	out := make([]event.Event, len(evs))
+	for i, e := range evs {
+		out[i] = e
+		if e.Kind != event.KindToolPre && e.Kind != event.KindToolPost {
+			continue
+		}
+		var p map[string]json.RawMessage
+		if json.Unmarshal(e.Payload, &p) != nil || p == nil {
+			continue
+		}
+		var in map[string]json.RawMessage
+		if json.Unmarshal(p["tool_input"], &in) == nil && in != nil {
+			for _, k := range toolBodies {
+				delete(in, k)
+			}
+			if b, err := json.Marshal(in); err == nil {
+				p["tool_input"] = b
+			}
+		}
+		if r, ok := p["tool_response"]; ok {
+			delete(p, "tool_response")
+			var tr struct {
+				IsError bool   `json:"is_error"`
+				Error   string `json:"error"`
+			}
+			if json.Unmarshal(r, &tr) == nil && (tr.IsError || tr.Error != "") {
+				p["tool_response"] = json.RawMessage(`{"is_error":true}`)
+			}
+		}
+		if b, err := json.Marshal(p); err == nil {
+			out[i].Payload = b
+		}
+	}
+	return out
 }
 
 // read returns *slot, loading it the first time. The load runs outside the
