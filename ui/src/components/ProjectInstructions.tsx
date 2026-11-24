@@ -15,6 +15,10 @@
  *    API, one at a time.
  *
  * Shown where an agent is started (New agent) and on the project's page.
+ * New agent passes `compact`: the same card, frame, dots and buttons, without
+ * the explanation line under each row, which becomes the row's and its
+ * buttons' hover text, so the sheet fits one screen (owner, 2026-11-24). The
+ * one line kept there is the warning that this agent is not given them.
  */
 import { useEffect, useState } from 'react'
 import { errText } from '@/lib/api'
@@ -27,11 +31,13 @@ export const INSTRUCTIONS_HINT = 'given to every Claude Code, Codex and Grok ses
 /** The agents Caprock hands its instructions to. */
 const TAKES_INSTRUCTIONS = new Set(['claude', 'codex', 'grok'])
 
-export function ProjectInstructions({ project, agent, onSaved }: {
+export function ProjectInstructions({ project, agent, onSaved, compact = false }: {
   project: Project
   /** The agent about to start, when there is one: another agent is told it gets none of Caprock's. */
   agent?: string
   onSaved?: (p: Project) => void
+  /** No explanation lines: they are the hover text instead (New agent). */
+  compact?: boolean
 }) {
   const saved = project.defaults?.system_prompt ?? ''
   const state = instructionsState(saved)
@@ -43,6 +49,11 @@ export function ProjectInstructions({ project, agent, onSaved }: {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const takes = !agent || TAKES_INSTRUCTIONS.has(agent)
+  const ownWhy = takes ? `Claude Code · Codex · Grok${!state.set ? ' — set them once, and every new session here starts with them.' : ''}` : 'Not given to this agent: Claude Code, Codex and Grok only'
+  const filesWhy = files.length ? 'Read by the agents themselves, whoever starts them' : 'Nothing in the repository itself tells agents what to do'
+  // Compact, the explanation is each row's and button's hover text.
+  const ownTip = compact ? ownWhy : undefined
+  const filesTip = compact ? filesWhy : undefined
 
   const save = async () => {
     setBusy(true)
@@ -63,21 +74,26 @@ export function ProjectInstructions({ project, agent, onSaved }: {
       <div className="grid min-w-0 gap-1.5 px-3.5 py-3">
         <div className="flex min-w-0 items-center gap-2.5">
           <StateDot on={state.set} />
-          <span className="text-[13.5px] font-medium text-fg">Project instructions</span>
+          <span className="text-[13.5px] font-medium text-fg" title={ownTip}>Project instructions</span>
           <span aria-label="Project instructions state" className={`text-[13.5px] tabular-nums ${state.set ? 'text-fg' : 'text-fg-muted'}`}>{state.label}</span>
           <span className="ml-auto flex shrink-0 items-center gap-1">
             {state.set && !editing && (
-              <PanelButton label={`${showOwn ? 'Hide' : 'Show'} project instructions`} onClick={() => setShowOwn((v) => !v)} expanded={showOwn}>{showOwn ? 'Hide' : 'Show'}</PanelButton>
+              <PanelButton label={`${showOwn ? 'Hide' : 'Show'} project instructions`} tip={ownTip} onClick={() => setShowOwn((v) => !v)} expanded={showOwn}>{showOwn ? 'Hide' : 'Show'}</PanelButton>
             )}
             {!editing && (
-              <PanelButton label={`${state.set ? 'Edit' : 'Add'} project instructions`} onClick={() => { setText(saved); setEditing(true); setShowOwn(false) }}>{state.set ? 'Edit' : 'Add'}</PanelButton>
+              <PanelButton label={`${state.set ? 'Edit' : 'Add'} project instructions`} tip={ownTip} onClick={() => { setText(saved); setEditing(true); setShowOwn(false) }}>{state.set ? 'Edit' : 'Add'}</PanelButton>
             )}
           </span>
         </div>
-        <p className="pl-[18px] text-[12.5px] leading-snug text-fg-muted">
-          {takes ? 'Claude Code · Codex · Grok' : 'Not given to this agent: Claude Code, Codex and Grok only'}
-          {!state.set && !editing && <span className="text-fg-faint"> — set them once, and every new session here starts with them.</span>}
-        </p>
+        {!compact ? (
+          <p className="pl-[18px] text-[12.5px] leading-snug text-fg-muted">
+            {takes ? 'Claude Code · Codex · Grok' : 'Not given to this agent: Claude Code, Codex and Grok only'}
+            {!state.set && !editing && <span className="text-fg-faint"> — set them once, and every new session here starts with them.</span>}
+          </p>
+        ) : !takes ? (
+          // The one line compact keeps: what is set here will not reach this agent.
+          <p className="pl-[18px] text-[12.5px] leading-snug text-fg-muted">Not given to this agent: Claude Code, Codex and Grok only</p>
+        ) : null}
         {state.set && !editing && !showOwn && (
           <p className="line-clamp-2 whitespace-pre-wrap pl-[18px] text-[13px] leading-snug text-fg" title={saved}>{saved}</p>
         )}
@@ -113,19 +129,17 @@ export function ProjectInstructions({ project, agent, onSaved }: {
       <div className="grid min-w-0 gap-1.5 border-t border-[var(--app-hairline)] px-3.5 py-3">
         <div className="flex min-w-0 items-center gap-2.5">
           <StateDot on={files.length > 0} />
-          <span className="shrink-0 text-[13.5px] font-medium text-fg">Repository’s own</span>
+          <span className="shrink-0 text-[13.5px] font-medium text-fg" title={filesTip}>Repository’s own</span>
           <span aria-label="Repository instruction files" className={`mono min-w-0 truncate text-[12.5px] ${files.length ? 'text-fg' : 'text-fg-muted'}`} title={files.join(', ')}>
             {files.length ? repoFilesLabel(files) : 'no CLAUDE.md or AGENTS.md'}
           </span>
           {files.length > 0 && (
             <span className="ml-auto shrink-0">
-              <PanelButton label={`${showFiles ? 'Hide' : 'Show'} the repository’s files`} onClick={() => setShowFiles((v) => !v)} expanded={showFiles}>{showFiles ? 'Hide' : 'Show'}</PanelButton>
+              <PanelButton label={`${showFiles ? 'Hide' : 'Show'} the repository’s files`} tip={filesTip} onClick={() => setShowFiles((v) => !v)} expanded={showFiles}>{showFiles ? 'Hide' : 'Show'}</PanelButton>
             </span>
           )}
         </div>
-        <p className="pl-[18px] text-[12.5px] leading-snug text-fg-muted">
-          {files.length ? 'Read by the agents themselves, whoever starts them' : 'Nothing in the repository itself tells agents what to do'}
-        </p>
+        {!compact && <p className="pl-[18px] text-[12.5px] leading-snug text-fg-muted">{filesWhy}</p>}
         {showFiles && files.length > 0 && <RepoFiles projectId={project.id} files={files} />}
       </div>
     </section>
@@ -136,12 +150,12 @@ function StateDot({ on }: { on: boolean }) {
   return <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${on ? 'bg-ok' : 'border border-[var(--app-hairline-strong)]'}`} />
 }
 
-function PanelButton({ label, onClick, expanded, children }: { label: string; onClick: () => void; expanded?: boolean; children: React.ReactNode }) {
+function PanelButton({ label, tip, onClick, expanded, children }: { label: string; tip?: string; onClick: () => void; expanded?: boolean; children: React.ReactNode }) {
   return (
     <button
       type="button"
       aria-label={label}
-      title={label}
+      title={tip ? `${label}: ${tip}` : label}
       onClick={onClick}
       aria-expanded={expanded}
       className="h-[28px] rounded-[7px] border border-[var(--app-hairline)] px-3 text-[13px] text-fg hover:bg-[var(--app-row-hover)]"

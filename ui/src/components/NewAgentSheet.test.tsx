@@ -725,3 +725,42 @@ describe('the New agent sheet, Effort', () => {
     }
   })
 })
+
+/** One screen (owner, 2026-11-24): the same controls, two to a row, the lone links in label rows, the card's explanations as hover text. */
+describe('the New agent sheet on one screen', () => {
+  /** The row (a two-column grid) an element stands in. */
+  const rowOf = (el: Element) => el.closest('.sm\\:grid-cols-2')
+
+  it('puts Model beside Effort, and Add subscription at the end of the Agent label row, outside its name', async () => {
+    catalogExtra.agents = [{ id: 'codex', label: 'Codex', installed: true, ready: true, observed: true, prompt: true, default: 'gpt-6-astra', models: [{ id: 'gpt-6-astra', label: 'GPT-6-Astra' }, { id: 'gpt-6-sol', label: 'GPT-6-Sol' }], efforts: ['low', 'medium', 'high'] }]
+    subsState.value = { licensed: false, free_per_agent: 3, agents: [{ agent: 'claude', label: 'Claude Code', installed: true, subscriptions: [{ id: 'default', agent: 'claude', label: 'Own', default: true, dir: '/d', signed_in: true, login_command: '', windows: [], sessions_7d: 0, cost_7d_usd: 0, running: 0 }] }] }
+    try {
+      open()
+      const agentSelect = await screen.findByRole('combobox', { name: 'Agent' })
+      const add = await screen.findByRole('button', { name: 'Add subscription' })
+      // In the Agent field's frame, not inside its <label>.
+      expect(agentSelect.closest('label')!.contains(add)).toBe(false)
+      expect(agentSelect.closest('label')!.parentElement!.contains(add)).toBe(true)
+      // Codex takes an effort at launch: Effort stands beside Model.
+      fireEvent.change(agentSelect, { target: { value: 'codex' } })
+      const effort = await screen.findByRole('radiogroup', { name: 'Effort' })
+      const model = screen.getByRole('combobox', { name: 'Model' })
+      expect(rowOf(model)).not.toBeNull()
+      expect(rowOf(model)).toBe(rowOf(effort))
+      // Where shares its row with Agent only when Machine takes the first one.
+      expect(rowOf(screen.getByRole('combobox', { name: 'Where' }))).toBe(rowOf(screen.getByRole('combobox', { name: 'Project' })))
+    } finally {
+      catalogExtra.agents = []
+      subsState.value = undefined
+    }
+  })
+
+  it('shows the instructions card without its explanation lines, which are its hover text', async () => {
+    open()
+    const add = await screen.findByRole('button', { name: 'Add project instructions' })
+    expect(screen.queryByText(/set them once/)).toBeNull()
+    expect(screen.queryByText('Nothing in the repository itself tells agents what to do')).toBeNull()
+    expect(add.title).toMatch(/Claude Code · Codex · Grok — set them once/)
+    expect(screen.getByText('Repository’s own').title).toBe('Nothing in the repository itself tells agents what to do')
+  })
+})

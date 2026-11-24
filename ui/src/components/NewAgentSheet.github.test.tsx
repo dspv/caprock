@@ -102,6 +102,15 @@ describe('New agent from GitHub', () => {
     expect(req.worktree_pull).toBeUndefined()
   })
 
+  it('is a short link at the end of the Where label row, its full words its name', async () => {
+    render(<NewAgentSheet projects={onGitHub} projectId="1" onClose={vi.fn()} onStarted={vi.fn()} />)
+    const link = await screen.findByRole('button', { name: 'From a GitHub issue or pull request…' })
+    expect(link).toHaveTextContent('From an issue or PR…')
+    const where = screen.getByRole('combobox', { name: 'Where' })
+    expect(where.closest('label')!.contains(link)).toBe(false)
+    expect(where.closest('label')!.parentElement!.contains(link)).toBe(true)
+  })
+
   it('is not offered for a project off GitHub, nor while GitHub is not connected', async () => {
     const { unmount } = render(<NewAgentSheet projects={[{ ...onGitHub[0]!, remote_url: 'https://gitlab.com/a/b.git' }]} projectId="1" onClose={vi.fn()} onStarted={vi.fn()} />)
     await screen.findByLabelText('Model')

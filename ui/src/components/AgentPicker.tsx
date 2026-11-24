@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { api, type CatalogEntry, type Status } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 
@@ -172,6 +172,7 @@ export function AgentPicker({
   onChange,
   className = 'input',
   dflt,
+  action,
 }: {
   value: SpawnAgent
   agents: SpawnAgent[]
@@ -180,6 +181,8 @@ export function AgentPicker({
   className?: string
   /** Shows "default" beside the label, or a *Make default* link when the choice is another agent. */
   dflt?: { isDefault: boolean; makeDefault: () => void }
+  /** A quiet link at the right end of the label row (New agent's *Add subscription*). */
+  action?: ReactNode
 }) {
   const options: { key: string; label: string }[] = entries
     ? [
@@ -188,7 +191,7 @@ export function AgentPicker({
       ]
     : SPAWN_AGENTS.filter((a) => agents.includes(a.key))
   if (options.length < 2) return null
-  return (
+  const field = (
     <label className="grid min-w-0 gap-1">
       <span className="flex items-baseline gap-2 text-[13px] font-medium text-fg-muted">
         Agent
@@ -208,5 +211,13 @@ export function AgentPicker({
         ))}
       </select>
     </label>
+  )
+  if (!action) return field
+  // Outside the <label>, so its words are not the select's name.
+  return (
+    <div className="relative grid min-w-0">
+      {field}
+      <span className="absolute right-0 top-0 max-w-[60%] truncate text-[13px]">{action}</span>
+    </div>
   )
 }
