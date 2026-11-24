@@ -12,6 +12,14 @@ folder, which is how every CI-built .dmg shipped until 2026-11-02 (Tauri's
 bundler skips its Finder step when CI=true). `check` reads the file with the
 ds_store library and fails unless it carries the layout bundle.macOS.dmg in
 the config asks for, and the picture it names is the one in the repository.
+When the picture has an @2x sibling (background@2x.png beside
+background.png), dmgbuild ships both as one multi-resolution TIFF
+(`tiffutil -cathidpicheck`), so Finder draws the sharp one on Retina; the
+check makes the same TIFF from the repository's PNGs and compares that.
+
+It also checks the volume's own icon: `.VolumeIcon.icns` at the root, the
+same bytes as the bundle's .icns, and the custom-icon flag on the volume's
+root folder, without which Finder shows a generic disk.
 
 Run it with the interpreter scripts/app-dmg.sh sets up (`app-dmg.sh check`),
 which has ds_store and mac_alias installed. `problems()` itself takes plain
@@ -23,7 +31,13 @@ import json
 import os
 import plistlib
 import re
+import subprocess
 import sys
+import tempfile
+
+VOLUME_ICON = ".VolumeIcon.icns"
+# kHasCustomIcon in a folder's Finder flags.
+HAS_CUSTOM_ICON = 0x0400
 
 BOUNDS = re.compile(r"\{\{\s*(-?\d+),\s*(-?\d+)\s*\},\s*\{\s*(\d+),\s*(\d+)\s*\}\}")
 
@@ -41,7 +55,11 @@ def problems(window, conf, app_name, files):
              picture's alias names (or None), "iloc": {name: (x, y)}}
     conf:   bundle.macOS.dmg from tauri.conf.json
     files:  {"background": sha256 of the picture on the volume (None when
-             missing), "expected_background": sha256 of the repository's}
+             missing), "expected_background": sha256 of the repository's,
+             "volume_icon": sha256 of .VolumeIcon.icns on the volume (None
+             when missing), "expected_volume_icon": sha256 of the bundle's
+             .icns (None: not checked), "custom_icon": whether the volume's
+             root folder has the custom-icon flag}
     """
     out = []
     bwsp = window.get("bwsp") or {}
@@ -72,6 +90,13 @@ def problems(window, conf, app_name, files):
             out.append(f"the background alias names {window['background']}, which is not on the volume")
         elif files["background"] != files.get("expected_background"):
             out.append(f"{window['background']} is not {conf['background']}")
+    if files.get("expected_volume_icon"):
+        if files.get("volume_icon") is None:
+            out.append(f"no {VOLUME_ICON} on the volume: Finder shows a generic disk")
+        elif files["volume_icon"] != files["expected_volume_icon"]:
+            out.append(f"{VOLUME_ICON} is not the app's .icns")
+        if not files.get("custom_icon"):
+            out.append(f"the volume's custom-icon flag is not set: Finder ignores {VOLUME_ICON}")
     iloc = window.get("iloc") or {}
     for name, key in ((app_name, "appPosition"), ("Applications", "applicationFolderPosition")):
         want = (conf[key]["x"], conf[key]["y"])
@@ -118,6 +143,60 @@ def sha256(path):
         return None
 
 
+def scaled_backgrounds(path):
+    """The picture and its @Nx siblings in scale order, as dmgbuild hands
+    them to tiffutil; just [path] when there are none."""
+    name, ext = os.path.splitext(os.path.basename(path))
+    folder = os.path.dirname(path) or "."
+    ordered = [path]
+    for cand in sorted(os.listdir(folder)):
+        m = re.match(r"^(?P<name>.+)@(?P<scale>\d+)x(?P<ext>\.\w+)$", cand)
+        if m and m.group("name") == name and m.group("ext") == ext:
+            scale = int(m.group("scale"))
+            ordered += [None] * max(0, scale - len(ordered))
+            ordered[scale - 1] = os.path.join(folder, cand)
+    return [p for p in ordered if p]
+
+
+def expected_background_sha(path):
+    """sha256 of the picture dmgbuild puts on the volume for `path`: the file
+    itself, or the multi-resolution TIFF tiffutil makes of it and its @2x."""
+    images = scaled_backgrounds(path)
+    if len(images) == 1:
+        return sha256(path)
+    with tempfile.TemporaryDirectory() as tmp:
+        out = os.path.join(tmp, "background.tiff")
+        subprocess.run(
+            ["/usr/bin/tiffutil", "-cathidpicheck", *images, "-out", out],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return sha256(out)
+
+
+def finder_flags(path):
+    """The Finder flags of `path` (bytes 8-9 of com.apple.FinderInfo, big
+    endian), 0 when it has none."""
+    import ctypes  # noqa: PLC0415 (macOS only)
+
+    libc = ctypes.CDLL(None, use_errno=True)
+    libc.getxattr.argtypes = [
+        ctypes.c_char_p,
+        ctypes.c_char_p,
+        ctypes.c_void_p,
+        ctypes.c_size_t,
+        ctypes.c_uint32,
+        ctypes.c_int,
+    ]
+    libc.getxattr.restype = ctypes.c_ssize_t
+    buf = ctypes.create_string_buffer(32)
+    n = libc.getxattr(os.fsencode(path), b"com.apple.FinderInfo", buf, 32, 0, 0)
+    if n < 10:
+        return 0
+    return int.from_bytes(buf.raw[8:10], "big")
+
+
 def main(argv):
     if len(argv) < 2 or argv[0] not in ("check", "dump"):
         print(__doc__, file=sys.stderr)
@@ -135,11 +214,19 @@ def main(argv):
         return 0
     conf_path = argv[2]
     with open(conf_path, encoding="utf-8") as fp:
-        dmg = json.load(fp)["bundle"]["macOS"]["dmg"]
+        bundle = json.load(fp)["bundle"]
+    dmg = bundle["macOS"]["dmg"]
     src_tauri = os.path.dirname(os.path.abspath(conf_path))
+    # The volume icon scripts/dmg-settings.py gives dmgbuild: the bundle's .icns.
+    icns = next((p for p in bundle.get("icon", []) if p.endswith(".icns")), None)
     files = {
         "background": sha256(os.path.join(mount, window["background"])) if window["background"] else None,
-        "expected_background": sha256(os.path.join(src_tauri, dmg["background"])) if dmg.get("background") else None,
+        "expected_background": expected_background_sha(os.path.join(src_tauri, dmg["background"]))
+        if dmg.get("background")
+        else None,
+        "volume_icon": sha256(os.path.join(mount, VOLUME_ICON)),
+        "expected_volume_icon": sha256(os.path.join(src_tauri, icns)) if icns else None,
+        "custom_icon": bool(finder_flags(mount) & HAS_CUSTOM_ICON),
     }
     found = problems(window, dmg, "Caprock.app", files)
     for p in found:
@@ -150,6 +237,7 @@ def main(argv):
     print(
         f"  ok: .DS_Store window {b[2]}x{b[3]}, background {window['background']}, "
         + ", ".join(f"{k} at {v}" for k, v in sorted(window["iloc"].items()))
+        + (f", volume icon {VOLUME_ICON}" if files["expected_volume_icon"] else "")
     )
     return 0
 
