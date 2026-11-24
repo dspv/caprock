@@ -623,6 +623,8 @@ type Server struct {
 	// machAll is each other computer's answer for a ?machines=all view
 	// (machinesall.go).
 	machAll machinesAllCache
+	// modList keeps module document list pages by their tag (modulelistcache.go).
+	modList *moduleListCache
 	lanURL  string
 	// altURLs are the other addresses network access answers on, beside
 	// lanURL: the Tailscale one when lanURL is the LAN one, or the reverse,
@@ -719,7 +721,7 @@ func New(d Deps) *Server {
 			lanHost = u.Hostname()
 		}
 	}
-	s := &Server{d: d, replaced: map[string]string{}, mux: http.NewServeMux(), ws: newWSHub(d.Bus, d.Log, lanHost), hist: newAnswerCache(historyTTL, answerMaxStale, time.Now), histWide: newAnswerCache(historyWideTTL, answerMaxStale, time.Now), summ: newAnswerCache(summaryTTL, answerMaxStale, time.Now), usual: newAnswerCache(usualTTL, usualMaxStale, time.Now),
+	s := &Server{d: d, replaced: map[string]string{}, modList: newModuleListCache(moduleListCacheBytes), mux: http.NewServeMux(), ws: newWSHub(d.Bus, d.Log, lanHost), hist: newAnswerCache(historyTTL, answerMaxStale, time.Now), histWide: newAnswerCache(historyWideTTL, answerMaxStale, time.Now), summ: newAnswerCache(summaryTTL, answerMaxStale, time.Now), usual: newAnswerCache(usualTTL, usualMaxStale, time.Now),
 		trends: newAnswerCache(trendsTTL, trendsMaxStale, time.Now), pipeAgents: newAnswerCache(pipeAgentsTTL, trendsMaxStale, time.Now), pipeAgentsPast: newAnswerCache(pipeAgentsPastTTL, trendsMaxStale, time.Now),
 		week: newAnswerCache(weekTTL, answerMaxStale, time.Now), weekLong: newAnswerCache(weekLongTTL, answerMaxStale, time.Now), glance: newAnswerCache(glanceTTL, answerMaxStale, time.Now),
 		drill: newAnswerCache(drillTTL, answerMaxStale, time.Now), deck: newDeckCache(time.Now), repos: newRepoCache(),
@@ -3567,10 +3569,8 @@ func (s *Server) handleTestMorning(w http.ResponseWriter, r *http.Request) {
 // failure was invisible in the logs. A failure here is now an honest 500.
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(v); err != nil {
+	b, err := encodeJSON(v)
+	if err != nil {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte(`{"error":"response could not be serialized"}` + "\n"))
@@ -3578,7 +3578,18 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(code)
-	_, _ = w.Write(buf.Bytes())
+	_, _ = w.Write(b)
+}
+
+// encodeJSON is the body writeJSON sends for v.
+func encodeJSON(v any) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }
 
 func (s *Server) fail(w http.ResponseWriter, err error) {

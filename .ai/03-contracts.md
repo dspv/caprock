@@ -7069,7 +7069,25 @@ machine's alone (`403` from any device).
   from **25,194 to 360 calls an hour** — the 360 are the pages a write
   really changed — and its disk reads from 56 to 20 MB/hour, the collection
   being in the page cache on that machine. A browser revalidates on its
-  own; a module that sends `If-None-Match` itself gets the 304. `GET|PUT|PATCH|DELETE
+  own; a module that sends `If-None-Match` itself gets the 304. **A client
+  that sends no tag is answered from memory** (2026-11-24): each page is kept
+  with the tag it was read at, and while the collection's tag is unchanged
+  the same bytes go out with nothing read — 32 MiB at most (the owner's
+  Ops module lists ~26 MB in all, its biggest collection 21 MB in twelve
+  pages), least recently answered first out, a page over 8 MiB never kept,
+  nothing at all on a machine with no module, a page whose tag moved
+  on dropped when next asked (`internal/api/modulelistcache.go`). Listing a
+  21 MB collection of twelve pages with no tag took 62 ms and twelve reads,
+  and takes 11 ms and none; with four such listings and one write a minute,
+  720 reads became 180 (in-process, 2026-11-24). After the
+  ETag shipped the owner's Mac still read ~7,100 lists an hour, 37% of the
+  daemon's disk reads (744 MB in 11 minutes, 2026-11-24 audit); the Ops
+  module's scheduled scripts start as a new process, with no tag, every
+  minute to every hour (four of them every minute). Who asks is logged at debug
+  level, once per client and collection per 10 minutes (`module list
+  asked`: the user agent's first word, local or a device, with or without a
+  tag, and whether it was read, answered from memory or not modified).
+  `GET|PUT|PATCH|DELETE
   /v1/x/<id>/docs/{collection}/{docId}`: `PUT` writes a JSON object whole
   (`created_at` kept), `PATCH` merges top-level fields into an existing one
   (null removes a field; 404 when absent), `DELETE` → `{deleted}`. Bodies are
