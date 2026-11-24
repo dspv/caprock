@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { assembleHeard, joinDictation, speechHint, speechSupport, startDictation } from './speech'
+import { assembleHeard, joinDictation, speechHint, speechSupport, startDictation, startsOver } from './speech'
 
 type Handler = ((e: unknown) => void) | null
 
@@ -146,5 +146,72 @@ describe('speech', () => {
       FakeRecognition.last!.onend?.()
     }
     expect(onEnd2).toHaveBeenCalledWith(undefined)
+  })
+
+  it('tells a new phrase from a revision of the one shown', () => {
+    // New segments (Apple's recogniser after a pause).
+    expect(startsOver('How are you?', 'Fine', 0)).toBe(true)
+    expect(startsOver('Okay', 'Fine', 2000)).toBe(true)
+    expect(startsOver('I want coffee', 'I', 2000)).toBe(true)
+    expect(startsOver('We should deploy it now', 'We need', 1500)).toBe(true)
+    // Revisions and more words.
+    expect(startsOver('turn of', 'Turn off the', 2000)).toBe(false)
+    expect(startsOver('how are you', 'How are you?', 2000)).toBe(false)
+    expect(startsOver('I scream', 'Ice cream is', 0)).toBe(false)
+    expect(startsOver('I want coffee', 'I', 100)).toBe(false)
+    expect(startsOver('clean up the warning now', 'clean up the bug', 2000)).toBe(false)
+    expect(startsOver('Hello there', 'Hello', 2000)).toBe(false)
+    expect(startsOver('well-known', 'well known fact', 0)).toBe(false)
+    expect(startsOver('', 'anything', 5000)).toBe(false)
+    expect(startsOver('kept', '', 5000)).toBe(false)
+    // Not only Latin script.
+    expect(startsOver('Καλημέρα κόσμε', 'Γεια', 0)).toBe(true)
+    expect(startsOver('καλημέρα', 'Καλημέρα κόσμε.', 0)).toBe(false)
+  })
+
+  describe('a guess that becomes a new phrase', () => {
+    afterEach(() => vi.useRealTimers())
+
+    it('keeps the phrase before (Safari on iOS, one non-final result that starts over)', () => {
+      vi.useFakeTimers()
+      w.webkitSpeechRecognition = FakeRecognition
+      const onText = vi.fn()
+      startDictation({ onText, onEnd: () => {} })
+      const r = FakeRecognition.last!
+      const say = (t: string, ms = 150) => { vi.advanceTimersByTime(ms); r.onresult?.({ results: [result(false, t)] }) }
+      say('Run')
+      say('Run the tests')
+      say('Run the tests.', 300)
+      say('Then', 1800)
+      say('Then push')
+      say('Push', 2000)
+      expect(onText).toHaveBeenLastCalledWith('Run the tests. Then push Push')
+    })
+
+    it('keeps an interim-only list when a new list starts (Chrome on Android)', () => {
+      vi.useFakeTimers()
+      w.webkitSpeechRecognition = FakeRecognition
+      const onText = vi.fn()
+      startDictation({ onText, onEnd: () => {} })
+      const r = FakeRecognition.last!
+      r.onresult?.({ results: [result(false, 'turn on the lights')] })
+      vi.advanceTimersByTime(1500)
+      r.onresult?.({ results: [result(false, 'and')] })
+      r.onresult?.({ results: [result(true, 'and'), result(true, 'and the fan')] })
+      expect(onText).toHaveBeenLastCalledWith('turn on the lights and the fan')
+    })
+
+    it('does not repeat words when Chrome rewrites an interim after a pause', () => {
+      vi.useFakeTimers()
+      w.webkitSpeechRecognition = FakeRecognition
+      const onText = vi.fn()
+      startDictation({ onText, onEnd: () => {} })
+      const r = FakeRecognition.last!
+      r.onresult?.({ results: [result(true, 'clean up the'), result(false, 'warning now')] })
+      vi.advanceTimersByTime(1500)
+      r.onresult?.({ results: [result(true, 'clean up the'), result(false, 'bug')] })
+      r.onresult?.({ results: [result(true, 'clean up the'), result(true, ' bug today')] })
+      expect(onText).toHaveBeenLastCalledWith('clean up the bug today')
+    })
   })
 })

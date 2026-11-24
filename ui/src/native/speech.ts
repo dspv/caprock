@@ -13,7 +13,7 @@
  */
 import { SpeechRecognition } from '@capgo/capacitor-speech-recognition'
 import type { PluginListenerHandle } from '@capacitor/core'
-import { joinDictation, type Dictation } from '@/lib/speech'
+import { joinDictation, startsOver, type Dictation } from '@/lib/speech'
 
 /** How many times one dictation starts the recogniser again. */
 const MAX_RESTARTS = 40
@@ -71,6 +71,8 @@ export function startNativeDictation({ lang, onText, onEnd }: {
   let restarts = 0
   let empty = 0
   let heard = false
+  // When the result before arrived, to tell a pause from a quick revision.
+  let lastAt = Date.now()
   let error: string | undefined
   const handles: PluginListenerHandle[] = []
 
@@ -113,8 +115,17 @@ export function startNativeDictation({ lang, onText, onEnd }: {
       await SpeechRecognition.addListener('partialResults', (e) => {
         if (ended) return
         const t = e.matches?.[0] ?? ''
+        const at = Date.now()
+        const paused = at - lastAt
+        lastAt = at
         // Never wipe words already shown with an empty result.
         if (!t.trim() && current.trim()) return
+        // Apple's recogniser starts a new segment after a pause within one
+        // run, and its partial then holds only the words since: keep the
+        // phrase before rather than let the new one replace it. The plugin
+        // passes no final or segment flag for this (it forwards
+        // bestTranscription.formattedString as it comes).
+        if (startsOver(current, t, paused)) commit()
         current = t
         if (t.trim()) heard = true
         onText(joinDictation(committed, current))
