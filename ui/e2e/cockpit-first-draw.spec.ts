@@ -352,11 +352,12 @@ test('the folded released line: a green pill and the agent cost, inside the edge
 })
 
 // Owner, 2026-11-24, translated, of the unfolded section after a release:
-// "is it supposed to be like this? where is it" — the pill and the cost were
-// only folded, and *released · 23 min ago* stood twice. Unfolded, the
-// heading is the folded line's pill, age and cost, the steps alone under it;
-// the burst plays once per tag whichever way it is first seen.
-test('the unfolded released heading: the pill and the cost, said once, one burst', async ({ app, page }) => {
+// "is it supposed to be like this? where is it", then "this could be
+// prettier" (variant A). Unfolded, the heading is a green seal with *0.183.0
+// is out* over its age and cost, the five steps folded into a thin finished
+// track under it; the burst plays once per tag whichever way it is first
+// seen, unfolded from the seal.
+test('the unfolded released heading: a seal, the version, age and cost, a finished track, one burst', async ({ app, page }) => {
   await stubReleased(page, 23 * 60_000)
   // Folded on the first load only: the fold the viewer picks then is kept.
   await page.addInitScript(() => {
@@ -370,26 +371,38 @@ test('the unfolded released heading: the pill and the cost, said once, one burst
   const sec = inspector.locator('section[aria-label="Release"]')
   const toggle = sec.locator('[data-section-head] > button')
   const burstKept = () => page.evaluate(() => localStorage.getItem('caprock.release-burst'))
-  // Folded first: it bursts there, and unfolding does not burst again.
+  // Folded first: the folded line is as it was, it bursts there, and unfolding does not burst again.
   await expect(sec.locator('[data-release-fold] [data-release-pill]')).toHaveText('0.183.0 released')
   await expect.poll(burstKept).toMatch(/"v0\.183\.0"/)
   await expect(page.locator('[data-release-burst]')).toHaveCount(0, { timeout: 3_000 })
   await toggle.click()
   const head = sec.locator('[data-release-head="out"]')
-  await expect(head.locator('h3')).toHaveAttribute('aria-label', '0.183.0 released · 23 min ago · $17.25')
-  await expect(head.locator('[data-release-pill]')).toHaveText('0.183.0 released')
-  await expect(head.locator('[data-release-fold-cost]')).toHaveText(/\$17\.25$/)
+  await expect(head.locator('h3')).toHaveText('0.183.0 is out')
+  await expect(head.locator('h3')).toHaveAttribute('aria-label', '0.183.0 is out · 23 min ago · $17.25 on 3 pull requests')
+  await expect(head.locator('[data-release-seal]')).toBeVisible()
+  await expect(head.locator('[data-release-fold-cost]')).toHaveText('$17.25')
+  await expect(head.locator('[data-release-pill]')).toHaveCount(0)
   await page.waitForTimeout(150)
   await expect(page.locator('[data-release-burst]')).toHaveCount(0)
-  // Said once: the steps, Out current and green, and no words under them.
-  await expect(sec.locator('[data-strip-step="published"]')).toHaveAttribute('aria-current', 'step')
+  // Said once: no stepper, no words; the track names the steps on hover.
+  await expect(sec.locator('[data-release-strip]')).toHaveCount(0)
   await expect(sec.locator('[data-release-stage-words]')).toHaveCount(0)
-  await expect(sec.locator('[data-release-group="head"]')).not.toContainText(/Released ·/)
-  // A fresh viewer unfolded: it bursts in the heading, and folding does not burst again.
+  const track = head.locator('[data-release-track]')
+  await expect(track).toHaveAttribute('title', /^Release 0\.183\.0: Merged: done · Release PR: done · Tagged: done, .+ · Building: done · Published: done, .+$/)
+  await track.focus()
+  await expect(track).toBeFocused()
+  // A fresh viewer unfolded: it bursts from the seal, and folding does not burst again.
   await page.evaluate(() => localStorage.removeItem('caprock.release-burst'))
   await page.reload()
-  await expect(head.locator('[data-release-pill]')).toHaveText('0.183.0 released')
+  await expect(head.locator('[data-release-seal]')).toBeVisible()
   await expect(page.locator('[data-release-burst]')).toHaveCount(1)
+  const from = await page.evaluate(() => {
+    const b = document.querySelector('[data-release-burst]') as HTMLElement
+    const s = document.querySelector('[data-release-seal]')!.getBoundingClientRect()
+    return { dx: Math.abs(parseFloat(b.style.left) - (s.left + s.width / 2)), dy: Math.abs(parseFloat(b.style.top) - (s.top + s.height / 2)) }
+  })
+  expect(from.dx, 'the burst from the seal').toBeLessThan(2)
+  expect(from.dy, 'the burst from the seal').toBeLessThan(2)
   await expect.poll(burstKept).toMatch(/"v0\.183\.0"/)
   await expect(page.locator('[data-release-burst]')).toHaveCount(0, { timeout: 3_000 })
   await toggle.click()
@@ -397,46 +410,57 @@ test('the unfolded released heading: the pill and the cost, said once, one burst
   await page.waitForTimeout(150)
   await expect(page.locator('[data-release-burst]')).toHaveCount(0)
   await toggle.click()
-  await expect(head.locator('[data-release-pill]')).toBeVisible()
+  await expect(head.locator('[data-release-seal]')).toBeVisible()
   const shot = async (name: string) => {
     if (!shotsDir) return
     await page.waitForTimeout(100)
     const b = (await inspector.locator('[data-section-frame="release"]').boundingBox())!
     await page.screenshot({ path: path.join(shotsDir, `${name}.png`), clip: { x: b.x - 12, y: b.y - 12, width: b.width + 24, height: b.height + 24 } })
   }
-  for (const w of [280, 300, 330, 360, 460]) {
+  // 190 and 150 past the panel's range: the drop order, not a width it takes.
+  for (const w of [280, 300, 330, 360, 460, 190, 150]) {
     await page.evaluate((px) => document.documentElement.style.setProperty('--app-inspector-w', `${px}px`), w)
     await page.waitForTimeout(200)
     const got = await page.evaluate(() => {
       const sec = document.querySelector('section[aria-label="Release"]') as HTMLElement
       const h = sec.querySelector('[data-release-head="out"] h3') as HTMLElement
+      const line = sec.querySelector('[data-release-seal-line]') as HTMLElement
+      const seal = sec.querySelector('[data-release-seal]') as HTMLElement
       const edge = sec.getBoundingClientRect().right + 0.5
-      const top = h.getBoundingClientRect().top
       const out: string[] = []
-      if (Math.round(h.getBoundingClientRect().height) !== 16) out.push(`the heading is ${h.getBoundingClientRect().height}px high`)
+      if (Math.round(line.getBoundingClientRect().height) !== 16) out.push(`line 2 is ${line.getBoundingClientRect().height}px high`)
+      if (Math.round(seal.getBoundingClientRect().width) !== 30) out.push(`the seal is ${seal.getBoundingClientRect().width}px wide`)
+      if (h.scrollWidth > h.clientWidth + 0.5) out.push('the version is cut')
       for (const el of sec.querySelectorAll<HTMLElement>('[data-release-plan] *')) {
         if (el.offsetWidth === 0) continue
         const r = el.getBoundingClientRect()
         if (r.right > edge) out.push(`"${(el.textContent ?? '').slice(0, 40)}" ends at ${Math.round(r.right)} > ${Math.round(edge)}`)
       }
+      // Line 2's parts on view, each whole and inside the line.
+      const lineR = line.getBoundingClientRect().right + 0.5
       const shown: string[] = []
-      for (const el of h.querySelectorAll<HTMLElement>('[data-release-fold-part]')) {
-        if (el.offsetWidth === 0 || el.getBoundingClientRect().top - top > 4) continue
-        shown.push((el.textContent ?? '').replace(/^·\s*/, ''))
+      for (const el of line.querySelectorAll<HTMLElement>(':scope > span')) {
+        if (el.offsetWidth === 0) continue
+        if (el.scrollWidth > el.clientWidth + 0.5) out.push(`"${el.textContent}" is cut`)
+        if (el.getBoundingClientRect().right > lineR) out.push(`"${el.textContent}" passes line 2's end`)
+        shown.push((el.textContent ?? '').replace(/\s*·$/, ''))
       }
-      const steps = sec.querySelector('[data-release-steps]') as HTMLElement
-      if (steps.getBoundingClientRect().height > 34) out.push(`the stepper wraps: ${steps.getBoundingClientRect().height}px`)
-      const t = h.querySelector('[data-release-pill] span') as HTMLElement
-      return { out, shown, pillCut: t.scrollWidth > t.clientWidth + 0.5 }
+      const steps = [...sec.querySelectorAll<HTMLElement>('[data-track-step]')].map((e) => e.getBoundingClientRect())
+      if (steps.length !== 5 || steps.some((r) => r.width < 10 || Math.round(r.height) !== 3)) out.push(`the track: ${steps.map((r) => `${r.width}x${r.height}`).join(', ')}`)
+      return { out, shown, h1: parseFloat(getComputedStyle(h).fontSize) }
     })
-    expect(got.out, `at ${w}px`).toEqual([])
-    expect(got.pillCut, `the pill cut at ${w}px`).toBe(false)
-    expect([['0.183.0 released', '23 min ago', '$17.25'], ['0.183.0 released', '$17.25']].map((x) => x.join('|')), `at ${w}px`).toContain(got.shown.join('|'))
-    if (w === 460) expect(got.shown, 'at 460px').toEqual(['0.183.0 released', '23 min ago', '$17.25'])
+    // Below the panel's 280px the version may truncate; nothing else may.
+    expect(got.out.filter((x) => w >= 280 || x !== 'the version is cut'), `at ${w}px`).toEqual([])
+    expect(got.h1, 'the version, the largest text').toBe(15)
+    // *on N pull requests* goes first, then the age; the cost stays.
+    expect([['23 min ago', '$17.25', 'on 3 pull requests'], ['23 min ago', '$17.25'], ['$17.25']].map((x) => x.join('|')), `at ${w}px`).toContain(got.shown.join('|'))
+    if (w === 460) expect(got.shown, 'at 460px').toEqual(['23 min ago', '$17.25', 'on 3 pull requests'])
+    if (w === 190) expect(got.shown, 'at 190px').toEqual(['23 min ago', '$17.25'])
+    if (w === 150) expect(got.shown, 'at 150px').toEqual(['$17.25'])
     if (shotsDir && (w === 280 || w === 460)) {
       for (const th of ['dark', 'light'] as const) {
         await theme(page, th)
-        await shot(`expanded-${w}-${th}`)
+        await shot(`seal-${w}-${th}`)
       }
     }
   }
