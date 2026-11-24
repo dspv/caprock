@@ -4327,10 +4327,14 @@ nothing else; absent, both are listed. `X-Total-Count` follows the same scope.
 `X-Total-Count`, with `Cache-Control: no-cache`. A request whose
 `If-None-Match` names it gets a **304 with no body**. The list is still
 built; what an unchanged one stops costing is the bytes and the client's
-parse. The dashboard keeps the last answer and tag per path and sends the
-tag itself (`ui/src/lib/api.ts` `getTagged`, `cache: 'no-store'` so the 304
-reaches it); on a 304 it returns the kept array, and the workspace skips
-merging a list it has already merged. Why: the workspace asks the full list
+parse. The workspace's two lists (`api.sessions`) keep the last answer and
+tag per path and send the tag themselves (`ui/src/lib/api.ts` `getTagged`,
+`cache: 'no-store'` so the 304 reaches it); on a 304 a copy of the kept
+array comes back (`structuredClone`: handed the kept array itself, readers
+that change their rows changed the next answer too, and the phone lost its
+rows' actions in e2e `phone.spec`) and is merged as any answer. The counted
+lists (`sessionsWithTotal`: the phone's Home, the browser Home, Now) are
+plain fetches the browser's own cache revalidates by the same tag. Why: the workspace asks the full list
 once a minute and the live one on every tick, and the full list was 424 KB
 on the owner's Mac, 88% of a quiet workspace's polling bytes (2026-11-24
 audit). `?dir=` and `?machines=all` answers carry no tag.

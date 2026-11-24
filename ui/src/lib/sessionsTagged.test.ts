@@ -29,7 +29,8 @@ describe('session lists by ETag', () => {
     next = () => new Response(null, { status: 304, headers: { ETag: '"t1"' } })
     const again = await api.sessions(false)
     expect(asked[1]!.tag).toBe('"t1"')
-    expect(again).toBe(first)
+    expect(again).toEqual(first)
+    expect(again).not.toBe(first)
 
     // The live list is another path with its own tag.
     next = () => new Response(list('b'), { status: 200, headers: { ETag: '"t2"' } })
@@ -45,14 +46,11 @@ describe('session lists by ETag', () => {
     expect(asked[4]!.tag).toBe('"t3"')
   })
 
-  it('keeps the total with the list', async () => {
+  it('leaves the counted lists to the browser: no tag of its own', async () => {
     next = () => new Response(list('a'), { status: 200, headers: { ETag: '"t1"', 'X-Total-Count': '42' } })
-    const first = await api.sessionsWithTotal(false, '', 0, 'exclude')
-    expect(first.total).toBe(42)
-    next = () => new Response(null, { status: 304 })
-    const again = await api.sessionsWithTotal(false, '', 0, 'exclude')
-    expect(again).toBe(first)
-    expect(asked[1]).toMatchObject({ url: '/v1/sessions?chats=exclude', tag: '"t1"' })
+    expect((await api.sessionsWithTotal(false, '', 0, 'exclude')).total).toBe(42)
+    await api.sessionsWithTotal(false, '', 0, 'exclude')
+    expect(asked[1]).toMatchObject({ url: '/v1/sessions?chats=exclude', tag: null })
   })
 
   it('keeps nothing from an answer without a tag', async () => {

@@ -2518,8 +2518,8 @@ async function get<T>(path: string): Promise<T> {
  * The last answer and its ETag per path, for the lists asked again and again
  * (the session lists: the workspace's full one once a minute, the live one
  * on every tick). The daemon answers a request naming the tag with a 304 and
- * no body when the list is the same, and the kept answer is returned — the
- * same object, so a caller can tell nothing changed and skip its work.
+ * no body when the list is the same, and a copy of the kept answer is
+ * returned (readers change the rows they are handed).
  * Measured 2026-11-24: the full list was 424 KB on the owner's Mac, the same
  * most minutes. Small on purpose: the newest TAGGED_KEPT paths.
  */
@@ -2537,7 +2537,9 @@ async function getTagged<T>(path: string, read: (res: Response) => Promise<T>): 
   if (res.status === 304 && kept) {
     tagged.delete(path)
     tagged.set(path, kept)
-    return kept.value as T
+    // A copy: a reader that changes what it was handed (the workspace's
+    // rows) must not change the kept answer the next 304 hands back.
+    return structuredClone(kept.value) as T
   }
   if (!res.ok) {
     let body: unknown
@@ -2572,12 +2574,21 @@ async function sessionsWithTotal(activeOnly: boolean, search = '', limit = 0, ch
   // ignores the parameter, and the caller filters by `chat` too.
   if (chats) qs.set('chats', chats)
   const query = qs.toString()
-  return getTagged(`/v1/sessions${query ? `?${query}` : ''}`, async (res) => {
-    const items = (await res.json()) as SessionSummary[]
-    const n = Number(res.headers.get('X-Total-Count'))
-    // An older daemon sends no header; then the page is all we know of.
-    return { items, total: Number.isFinite(n) && n > 0 ? n : items.length }
+  // A plain fetch, which the browser's own cache revalidates by the list's
+  // ETag (Cache-Control: no-cache); only the workspace's two lists keep
+  // their own (getTagged).
+  const res = await fetch(`/v1/sessions${query ? `?${query}` : ''}`, {
+    headers: withDevice({ Accept: 'application/json' }),
   })
+  if (!res.ok) {
+    let body: unknown
+    try { body = await res.json() } catch { /* ignore */ }
+    throw new ApiError(res.status, `${res.status} ${res.statusText}`, body)
+  }
+  const items = (await res.json()) as SessionSummary[]
+  const n = Number(res.headers.get('X-Total-Count'))
+  // An older daemon sends no header; then the page is all we know of.
+  return { items, total: Number.isFinite(n) && n > 0 ? n : items.length }
 }
 
 /** A device that has been let in from the local network. */
