@@ -324,61 +324,88 @@ describe('the cockpit’s Release section', () => {
     expect(document.querySelector('[data-release-via]')).toBeNull()
   })
 
-  it('unfolded within the hour of a release: released, green, with that release’s own notes', () => {
+  it('unfolded within the hour of a release: the seal, with that release’s own notes', () => {
     writeDeck(`stats:${ROOT}`, stats([], [], [rel('v0.183.1', 300_000, 23), rel('v0.183.0', 8 * 3_600_000, 23)]))
     writeDeck(workRepoKey(ROOT), { ...repo('v0.183.1', 0), tags: { last: { name: 'v0.183.1', at: now - 600_000 }, gaps: 0 },
       released: { version: '0.183.1', count: 1, entries: [{ text: 'PR from another repo no longer shows as this one’s', scope: 'ui', kind: 'Fixed' }] } })
     draw(false)
     const head = document.querySelector('[data-release-head]')!
     expect(head).toHaveAttribute('data-release-head', 'out')
-    expect(head).toHaveTextContent(/^0\.183\.1 released\s?5 min ago$/)
-    expect(head.querySelector('[data-release-pill]')).toHaveTextContent(/^0\.183\.1 released$/)
+    expect(head.querySelector('h3')).toHaveTextContent(/^0\.183\.1 is out$/)
+    expect(head.querySelector('[data-release-seal-line]')).toHaveTextContent(/^5 min ago$/)
     expect(document.querySelector('[data-release-entries]')).toHaveTextContent('Fixed1•PR from another repo no longer shows as this one’s')
-    expect(document.querySelector('[data-release-strip]')).toHaveAttribute('data-release-current', 'published')
-    // The heading says it: no *Released · 5 min ago* under the steps.
+    // The steps fold into the track: no stepper, no words under it.
+    expect(document.querySelector('[data-release-strip]')).toBeNull()
     expect(document.querySelector('[data-release-stage-words]')).toBeNull()
-    expect(document.querySelector('[data-release-strip]')).not.toHaveTextContent(/released/i)
-    expect([...document.querySelectorAll('[data-strip-stage]')].map((e) => e.getAttribute('data-step-state'))).toEqual(['done', 'done', 'done', 'done', 'current'])
+    expect([...document.querySelectorAll('[data-track-step]')].map((e) => e.getAttribute('data-step-state'))).toEqual(['done', 'done', 'done', 'done', 'done'])
   })
 
-  // Owner, 2026-11-24, translated: "is it supposed to be like this? where is
-  // it" — unfolded, the pill and the cost were gone and *released · 23 min
-  // ago* stood twice.
-  it('unfolded within the hour of a release: the folded line’s pill, age and cost as the heading, said once', () => {
+  // Owner, 2026-11-24, variant A, translated: "this could be prettier" — a
+  // pill over five done dots that only said *released* again.
+  it('unfolded within the hour of a release: a seal, the version as the biggest line, age and cost on 3 pull requests, a finished track', () => {
     const out = { ...rel('v0.183.0', 23 * 60_000, 23), cost_usd: 17.25, prs: [942, 940, 939], sessions: 2 }
     writeDeck(`stats:${ROOT}`, stats([pr(942, 'chore(release): 0.183.0', 'merged', now - 30 * 60_000)], [{ number: 942, stage: 'released', spend: SPEND }], [out, rel('v0.182.4', 86_400_000, 23)]))
-    writeDeck(workRepoKey(ROOT), repo('v0.183.0', 0))
+    writeDeck(workRepoKey(ROOT), { ...repo('v0.183.0', 0), tags: { last: { name: 'v0.183.0', at: now - 25 * 60_000 }, gaps: 0 } })
     draw(false)
     const head = document.querySelector('[data-release-head]')!
     expect(head).toHaveAttribute('data-release-head', 'out')
+    const seal = head.querySelector('[data-release-seal]')!
+    expect(seal).toHaveClass('size-[30px]', 'rounded-full', 'border-ok', 'row-span-2')
+    expect(seal.querySelector('svg')).not.toBeNull()
     const h3 = head.querySelector('h3')!
-    expect(h3).toHaveAttribute('aria-label', '0.183.0 released · 23 min ago · $17.25')
-    expect(h3).toHaveClass('text-ok', 'h-[16px]')
-    const pill = head.querySelector('[data-release-pill]')!
-    expect(pill).toHaveTextContent(/^0\.183\.0 released$/)
-    expect(pill).toHaveClass('rounded-full', 'text-ok', 'font-semibold')
-    expect(head.querySelector('[data-release-fold-age]')).toHaveTextContent(/^23 min ago$/)
-    const cost = head.querySelector('[data-release-fold-cost]')!
-    expect(cost).toHaveTextContent(/^·\s?\$17\.25$/)
+    expect(h3).toHaveTextContent(/^0\.183\.0 is out$/)
+    expect(h3).toHaveClass('text-[15px]', 'font-semibold', 'tabular-nums')
+    expect(h3).toHaveAttribute('aria-label', '0.183.0 is out · 23 min ago · $17.25 on 3 pull requests')
+    const line = head.querySelector('[data-release-seal-line]')!
+    expect(line).toHaveClass('text-[12px]', 'text-fg-muted')
+    expect(line).toHaveTextContent(/^23 min ago\s?·\s?\$17\.25\s?on 3 pull requests$/)
+    const cost = line.querySelector('[data-release-fold-cost]')!
+    expect(cost).toHaveTextContent(/^\$17\.25$/)
+    expect(cost).toHaveClass('font-semibold', 'text-fg')
     expect(cost.getAttribute('title')).toMatch(/^\$17\.25 agents spent on 3 pull requests, 2 sessions/)
-    // Said once: the steps alone under it, *Out* green and current.
-    expect(document.querySelector('[data-release-stage-words]')).toBeNull()
-    expect(document.querySelectorAll('[data-release-pill]')).toHaveLength(1)
-    expect(document.querySelector('[data-strip-step="published"]')).toHaveAttribute('aria-current', 'step')
-    expect(document.querySelector('[data-release-strip]')).toHaveAttribute('data-release-tone', 'ok')
-    // No other release text beside the heading says *released* again.
-    expect(document.querySelector('[data-release-group="head"]')!.textContent!.match(/released/gi)).toHaveLength(1)
+    // No pill, no stepper: one *is out*, the steps a finished track.
+    expect(document.querySelector('[data-release-pill]')).toBeNull()
+    expect(document.querySelector('[data-release-strip]')).toBeNull()
+    expect(document.querySelector('[data-release-group="head"]')!.textContent!.match(/released/gi)).toBeNull()
+    const track = head.querySelector('[data-release-track]')!
+    expect(track.querySelectorAll('[data-track-step]')).toHaveLength(5)
+    expect([...track.querySelectorAll('[data-track-step]')].every((e) => e.classList.contains('bg-ok/85'))).toBe(true)
+    expect(track).toHaveTextContent(/^MergedOut$/)
+    expect(track).toHaveAttribute('tabindex', '0')
+    const said = track.getAttribute('aria-label')!
+    expect(track.getAttribute('title')).toBe(said)
+    expect(said).toMatch(/^Release 0\.183\.0: Merged: done · Release PR: done · Tagged: done, \d+ \w+ \d\d:\d\d · Building: done · Published: done, \d+ \w+ \d\d:\d\d$/)
+    // Not on view in a test's DOM: no burst, the tag not taken as seen.
+    expect(document.querySelector('[data-release-burst]')).toBeNull()
+    expect(localStorage.getItem('caprock.release-burst')).toBeNull()
   })
 
-  it('unfolded within the hour of a release with no recorded cost: the pill and its age, never $0', () => {
+  it('unfolded within the hour of a release: one pull request is singular; none listed says no count', () => {
+    const one = { ...rel('v0.183.0', 4 * 60_000, 23), cost_usd: 3.81, prs: [942], sessions: 1 }
+    writeDeck(`stats:${ROOT}`, stats([], [], [one, rel('v0.182.4', 86_400_000, 23)]))
+    writeDeck(workRepoKey(ROOT), repo('v0.183.0', 0))
+    const { unmount } = draw(false)
+    expect(document.querySelector('[data-release-seal-line]')).toHaveTextContent(/^4 min ago\s?·\s?\$3\.81\s?on 1 pull request$/)
+    unmount()
+    forgetDeckAnswers()
+    writeDeck(`stats:${ROOT}`, stats([], [], [{ ...one, prs: [] }, rel('v0.182.4', 86_400_000, 23)]))
+    writeDeck(workRepoKey(ROOT), repo('v0.183.0', 0))
+    draw(false)
+    expect(document.querySelector('[data-release-seal-line]')).toHaveTextContent(/^4 min ago\s?·\s?\$3\.81$/)
+    expect(document.querySelector('[data-release-seal-prs]')).toBeNull()
+  })
+
+  it('unfolded within the hour of a release with no recorded cost: the seal and its age, never $0', () => {
     writeDeck(`stats:${ROOT}`, stats([], [], [rel('v0.183.0', 4 * 60_000, 23), rel('v0.182.4', 86_400_000, 23)]))
     writeDeck(workRepoKey(ROOT), repo('v0.183.0', 0))
     draw(false)
     const head = document.querySelector('[data-release-head]')!
-    expect(head.querySelector('h3')).toHaveAttribute('aria-label', '0.183.0 released · 4 min ago')
-    expect(head.querySelector('[data-release-pill]')).not.toBeNull()
+    expect(head.querySelector('h3')).toHaveAttribute('aria-label', '0.183.0 is out · 4 min ago')
+    expect(head.querySelector('[data-release-seal]')).not.toBeNull()
+    expect(head.querySelector('[data-release-seal-line]')).toHaveTextContent(/^4 min ago$/)
     expect(head.querySelector('[data-release-fold-cost]')).toBeNull()
     expect(head).not.toHaveTextContent('$')
+    expect(head).not.toHaveTextContent('pull request')
   })
 
   it('unfolded past the hour of a release: nothing new, no steps, nothing said twice', () => {

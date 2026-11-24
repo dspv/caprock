@@ -30,13 +30,14 @@
  * *state · extra · age* (CompactRows).
  */
 import { OSGlyph } from './OSGlyph'
-import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import type { ReleaseCI, SessionCIStats, SessionRepoCI, Work, WorkEntry, WorkRepo } from '@/lib/api'
 import { asBoard, type ShipsBy } from '@/lib/prboard'
 import { HINT_ROWS, mainChecks, nextHint, OUT_RECENT_MS, prKind, releaseFold, releaseStatus, STATUS_TEXT, tagUnpublished, type BatchPR, type NextHint, type ReleaseFold, type ReleaseStatus } from '@/lib/releasestatus'
 import { batchOf, groupNotes, notesHeading, notesOf, notInIt, viaLine, type NotesHeading, type NotInIt, type ViaLine } from '@/lib/releasenotes'
-import { stageWords, stripStages } from '@/lib/releasestatus'
+import { stageWords, stripStages, type StripStage } from '@/lib/releasestatus'
+import { fmtWhen } from '@/lib/format'
 import { LastRelease, ReleaseInFlight, ReleaseStages, ReleaseStrip, ReleaseWhy } from './ReleaseStatus'
 import { ageText, BLOCKS, onMaster, planForRepo, planSections, shownRows, type OSDot, type OSSquare, type LinePart, type PlanRow, type ReleasePlanData, type Wait } from '@/lib/releaseplan'
 import { api } from '@/lib/api'
@@ -807,6 +808,10 @@ export function CockpitRelease({ sessionId, repoRoot }: { sessionId: string; rep
   // (ReleasedHead), so the words under the steps would say *Released · 5 min
   // ago* a second time (owner, 2026-11-24): the green *Out* step says it.
   const outFold = out && fold?.kind === 'out' ? fold : undefined
+  // Read, the heading is the seal with the steps folded into a finished
+  // track under it (ReleasedHead; owner, 2026-11-24, variant A): five done
+  // dots only said *released* again.
+  const sealed = outFold && (repo || work.data) ? outFold : undefined
   const words = head.state !== 'idle' ? stageWords(status, stripStages(status, { out }), { cards: board?.cards, out, now, batch, main }) : undefined
   const viaInWords = !!via && words?.key === 'merged'
   // The pull request the words wait for is always on view (owner,
@@ -827,9 +832,10 @@ export function CockpitRelease({ sessionId, repoRoot }: { sessionId: string; rep
       <div data-release-plan={plan.name} className="grid min-w-0 gap-[10px]">
         <div data-release-group="head" className="grid min-w-0 gap-1.5">
           {!repo && !work.data ? <p className="text-[12px] text-fg-muted">Reading…</p>
-            : outFold ? <ReleasedHead fold={outFold} tag={status.last?.tag ?? outFold.text} repo={repoRoot ?? ''} title={head.title} />
+            : sealed ? <ReleasedHead fold={sealed} status={status} tag={status.last?.tag ?? sealed.text} repo={repoRoot ?? ''} title={head.title}
+              tagged={repo?.tags?.last && repo.tags.last.name === status.last?.tag ? repo.tags.last.at : undefined} kept={keptText ? `${keptText}, being read again` : undefined} />
             : <NotesHead head={head} />}
-          {head.state !== 'idle' && <ReleaseStrip status={status} out={out} words={!outFold} cards={board?.cards} batch={batch} main={main} now={now}
+          {head.state !== 'idle' && !sealed && <ReleaseStrip status={status} out={out} words={!outFold} cards={board?.cards} batch={batch} main={main} now={now}
             href={wordsHref} kept={keptText ? `${keptText}, being read again` : undefined} />}
           {hint && <NextHintLine hint={hint} rows={hintRows} root={plan.root} waited={waitedInRows ? waited : undefined} />}
         </div>
@@ -880,6 +886,26 @@ function burstKeep(repo: string, tag: string) {
  */
 function ReleasedPill({ text, tag, repo }: { text: string; tag: string; repo: string }) {
   const ref = useRef<HTMLSpanElement>(null)
+  const burst = useReleaseBurst(ref, repo, tag, 'start')
+  return (
+    <span ref={ref} data-release-fold-part data-release-pill
+      className="inline-flex h-[16px] min-w-0 items-center gap-1 rounded-full border border-ok/45 bg-ok/12 pl-1 pr-1.5 font-semibold leading-[14px] text-ok">
+      <svg aria-hidden viewBox="0 0 12 12" className="size-[10px] shrink-0" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M2.5 6.3 5 8.6 9.5 3.6" /></svg>
+      <span className="min-w-0 truncate">{text}</span>
+      {burst}
+    </span>
+  )
+}
+
+/**
+ * The one-time burst of a release just out (ReleasedPill folded, the seal
+ * unfolded): once per tag and repository whichever is seen first, kept under
+ * BURST_KEY, only when the element is on view and motion is not reduced. The
+ * squares fly from the element's start (`start`, 8px in: the pill's check)
+ * or its centre (`center`: the seal), following it while they fly, in a
+ * portal over the page. Returns the portal while it plays.
+ */
+function useReleaseBurst(ref: RefObject<HTMLElement | null>, repo: string, tag: string, from: 'start' | 'center'): ReactNode {
   const burst = useRef<HTMLSpanElement>(null)
   const [on, setOn] = useState(false)
   useEffect(() => {
@@ -890,39 +916,34 @@ function ReleasedPill({ text, tag, repo }: { text: string; tag: string; repo: st
     let still = false
     try { still = window.matchMedia('(prefers-reduced-motion: reduce)').matches } catch { /* no matchMedia */ }
     if (!still) setOn(true)
-  }, [repo, tag])
-  // The squares follow the pill while they fly: the line settles (its age
-  // may go in a narrow panel) after the first frame.
+  }, [ref, repo, tag])
+  // The squares follow their origin while they fly: the line settles (its
+  // age may go in a narrow panel) after the first frame.
   useLayoutEffect(() => {
     if (!on) return
     let raf = 0
     const place = () => {
       const r = ref.current?.getBoundingClientRect()
       const b = burst.current
-      if (r && b) { b.style.left = `${r.left + 8}px`; b.style.top = `${r.top + r.height / 2}px` }
+      if (r && b) { b.style.left = `${from === 'center' ? r.left + r.width / 2 : r.left + 8}px`; b.style.top = `${r.top + r.height / 2}px` }
       raf = requestAnimationFrame(place)
     }
     place()
     const t = window.setTimeout(() => setOn(false), BURST_MS + 300)
     return () => { cancelAnimationFrame(raf); window.clearTimeout(t) }
-  }, [on])
-  return (
-    <span ref={ref} data-release-fold-part data-release-pill
-      className="inline-flex h-[16px] min-w-0 items-center gap-1 rounded-full border border-ok/45 bg-ok/12 pl-1 pr-1.5 font-semibold leading-[14px] text-ok">
-      <svg aria-hidden viewBox="0 0 12 12" className="size-[10px] shrink-0" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M2.5 6.3 5 8.6 9.5 3.6" /></svg>
-      <span className="min-w-0 truncate">{text}</span>
-      {on && createPortal(
-        <span ref={burst} aria-hidden data-release-burst className="release-burst pointer-events-none fixed z-50 size-0">
-          {Array.from({ length: BURST_N }, (_, i) => {
-            const a = (i / BURST_N) * Math.PI * 2
-            // A fixed scatter rather than Math.random: the same burst each time.
-            const d = 16 + ((i * 7) % 12)
-            return <i key={i} style={{ '--x': `${(Math.cos(a) * d).toFixed(1)}px`, '--y': `${(Math.sin(a) * d * 0.7).toFixed(1)}px`, background: BURST_COLORS[i % 3], animationDelay: `${((i * 5) % 12) / 100}s` } as CSSProperties} />
-          })}
-        </span>,
-        document.body,
-      )}
-    </span>
+  }, [on, ref, from])
+  if (!on) return null
+  return createPortal(
+    <span ref={burst} aria-hidden data-release-burst className="release-burst pointer-events-none fixed z-50 size-0">
+      {Array.from({ length: BURST_N }, (_, i) => {
+        const a = (i / BURST_N) * Math.PI * 2
+        // A fixed scatter rather than Math.random: the same burst each time.
+        // From the seal's centre the squares start past its edge.
+        const d = (from === 'center' ? 20 : 16) + ((i * 7) % 12)
+        return <i key={i} style={{ '--x': `${(Math.cos(a) * d).toFixed(1)}px`, '--y': `${(Math.sin(a) * d * 0.7).toFixed(1)}px`, background: BURST_COLORS[i % 3], animationDelay: `${((i * 5) % 12) / 100}s` } as CSSProperties} />
+      })}
+    </span>,
+    document.body,
   )
 }
 
@@ -982,20 +1003,96 @@ function ReleasedParts({ fold, tag, repo }: { fold: ReleaseFold; tag: string; re
   )
 }
 
+/** A finished step's state on the track's hover: *Tagged: done, 24 Nov 10:41*. */
+function trackStep(x: StripStage, at: number | undefined, now: number): string {
+  const state = x.state === 'done' || (x.state === 'current' && x.tone === 'ok') ? 'done' : x.unknown ? 'not known' : 'not started'
+  return `${x.text}: ${state}${at ? `, ${fmtWhen(at, now)}` : ''}`
+}
+
 /**
  * The unfolded heading for the hour after a release (owner, 2026-11-24,
- * translated: "where is it?" — the pill and the cost were only folded, and
- * *released · 23 min ago* stood twice): the folded line's own parts
- * (ReleasedParts) on one 16px line, the pill bursting only if it has not
- * already for this tag, folded or here.
+ * variant A, translated: "this could be prettier" — the pill sat over five
+ * done dots that only said *released* again): a 30px green seal with a
+ * check at the left of two lines, *0.195.0 is out* (the largest text in the
+ * section) over *31 min ago · $3.81 on 2 pull requests* muted, the cost in
+ * the text colour only when one above zero was recorded (releaseCost). Where
+ * the second line does not fit, *on N pull requests* goes first, then the
+ * age, never a word cut. Under it the five steps fold into a thin finished
+ * track — five 3px segments, *Merged* at its left end and *Out* at its
+ * right — whose hover and accessible name list each step with its time
+ * where known. The one-time burst flies from the seal (one key with the
+ * folded pill: whichever is seen first).
  */
-function ReleasedHead({ fold, tag, repo, title }: { fold: ReleaseFold; tag: string; repo: string; title: string }) {
+function ReleasedHead({ fold, status, tag, repo, title, tagged, kept }: {
+  fold: ReleaseFold; status: ReleaseStatus; tag: string; repo: string; title: string
+  /** When git says the tag was made, if it is this release's. */
+  tagged?: number
+  /** Drawn from a kept copy being read again: the track faint, as the stepper was. */
+  kept?: string
+}) {
+  const seal = useRef<HTMLSpanElement>(null)
+  const burst = useReleaseBurst(seal, repo, tag, 'center')
+  const line = useRef<HTMLParagraphElement>(null)
+  const widths = useRef({ age: 0, prs: 0 })
+  // 0 all, 1 without *on N pull requests*, 2 the cost alone.
+  const [drop, setDrop] = useState(0)
+  const version = fold.out?.version ?? fold.text.split(' · ')[0]!.replace(/ released$/, '')
+  const ago = fold.out?.ago ?? fold.text.split(' · ')[1] ?? ''
+  const cost = fold.cost
+  const prs = cost && cost.prs > 0 ? `on ${cost.prs} pull request${cost.prs === 1 ? '' : 's'}` : ''
+  useLayoutEffect(() => {
+    const el = line.current
+    if (!cost || !el) { setDrop(0); return }
+    const measure = () => {
+      const age = el.querySelector<HTMLElement>('[data-release-seal-age]')
+      const on = el.querySelector<HTMLElement>('[data-release-seal-prs]')
+      const c = el.querySelector<HTMLElement>('[data-release-fold-cost]')
+      if (age && age.offsetWidth > 0) widths.current.age = age.offsetWidth
+      if (on && on.offsetWidth > 0) widths.current.prs = on.offsetWidth
+      const gap = parseFloat(getComputedStyle(el).columnGap) || 0
+      const avail = el.clientWidth
+      if (avail <= 0) return
+      const w = widths.current, cw = c?.offsetWidth ?? 0
+      const all = w.age + gap + cw + (prs ? gap + w.prs : 0)
+      setDrop(all <= avail + 0.5 ? 0 : w.age + gap + cw <= avail + 0.5 ? 1 : 2)
+    }
+    measure()
+    if (typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [cost, prs, ago])
+  const said = [`${version} is out`, ago, cost ? `${cost.text}${prs ? ` ${prs}` : ''}` : ''].filter(Boolean).join(' · ')
+  const stages = stripStages(status, { out: true })
+  const times: Partial<Record<StripStage['key'], number>> = { tag: tagged, published: status.last?.at }
+  const now = Date.now()
+  const track = `Release ${version}: ${stages.map((x) => trackStep(x, times[x.key], now)).join(' · ')}`
   return (
-    <header data-release-head="out" className="min-w-0">
-      <h3 data-release-version data-release-released title={`${title}${fold.cost ? `\n${fold.cost.title}` : ''}`} aria-label={fold.text}
-        className="flex h-[16px] min-w-0 cursor-help flex-wrap items-center gap-x-1 overflow-hidden text-[11.5px] leading-[16px] tabular-nums text-ok">
-        <ReleasedParts fold={fold} tag={tag} repo={repo} />
-      </h3>
+    <header data-release-head="out" className="grid min-w-0 gap-2">
+      <div data-release-seal-block className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2.5 gap-y-0.5">
+        <span ref={seal} aria-hidden data-release-seal
+          className="row-span-2 grid size-[30px] shrink-0 place-items-center rounded-full border-[1.5px] border-ok bg-ok/12 text-ok">
+          <svg viewBox="0 0 16 16" className="size-[15px]" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round"><path d="M3.5 8.4 6.6 11.4 12.5 4.8" /></svg>
+          {burst}
+        </span>
+        <h3 data-release-version data-release-released title={`${title}${cost ? `\n${cost.title}` : ''}`} aria-label={said}
+          className="m-0 min-w-0 cursor-help truncate text-[15px] font-semibold leading-[20px] tracking-[-0.01em] tabular-nums text-fg">{version} is out</h3>
+        <p ref={line} data-release-seal-line aria-hidden className="m-0 flex h-[16px] min-w-0 gap-x-1 overflow-hidden whitespace-nowrap text-[12px] leading-[16px] tabular-nums text-fg-muted">
+          <span data-release-seal-age data-release-fold-age className={cost && drop >= 2 ? 'hidden' : 'shrink-0'}>{ago}{cost && <span aria-hidden className="ml-1 text-fg-faint">·</span>}</span>
+          {cost && <span data-release-fold-cost title={cost.title} className="shrink-0 font-semibold text-fg">{cost.text}</span>}
+          {prs && <span data-release-seal-prs className={drop >= 1 ? 'hidden' : 'shrink-0'}>{prs}</span>}
+        </p>
+      </div>
+      <div data-release-track role="img" tabIndex={0} title={[track, kept].filter(Boolean).join('\n')} aria-label={track}
+        className={`grid min-w-0 gap-1 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-accent/50${kept ? ' opacity-70 saturate-50' : ''}`}>
+        <span aria-hidden className="flex gap-[3px]">
+          {stages.map((x) => {
+            const done = x.state === 'done' || (x.state === 'current' && x.tone === 'ok')
+            return <i key={x.key} data-track-step={x.key} data-step-state={done ? 'done' : x.state} className={`block h-[3px] flex-1 rounded-[2px] ${done ? 'bg-ok/85' : 'bg-border-strong'}`} />
+          })}
+        </span>
+        <span aria-hidden className="flex justify-between text-[10.5px] leading-[13px] text-fg-faint"><span>Merged</span><span>Out</span></span>
+      </div>
     </header>
   )
 }

@@ -657,9 +657,13 @@ export interface ReleaseFold {
    * What agents spent on the release just out (kind 'out' only), from the
    * Pipeline's releases: only when that release is listed and a cost above
    * zero was recorded, never a $0 standing for "not recorded". It is the
-   * text's third part: *0.193.0 released · 4 min ago · $17.25*.
+   * text's third part: *0.193.0 released · 4 min ago · $17.25*. `prs` is
+   * how many pull requests the figure covers (0 when none are listed), for
+   * the unfolded heading's *$17.25 on 3 pull requests*.
    */
-  cost?: { text: string; title: string }
+  cost?: { text: string; title: string; prs: number }
+  /** The release just out (kind 'out' only): its version and age as the text says them, *0.193.0* and *4 min ago*. */
+  out?: { version: string; ago: string }
 }
 
 /**
@@ -679,7 +683,7 @@ export function releaseCost(tag: string, releases: readonly BoardRelease[] | und
   const sessions = r.sessions > 0 ? `${r.sessions} session${r.sessions === 1 ? '' : 's'}` : ''
   const on = prs ? ` on ${[prs, sessions].filter(Boolean).join(', ')}` : sessions ? ` in ${sessions}` : ''
   const partial = r.partial ? '\nIt may be partial: the pull requests listed may not reach back to the release before it.' : ''
-  return { text, title: `$${r.cost_usd.toFixed(2)} agents spent${on}${partial}\n${AGENT_COST_NOTE}` }
+  return { text, title: `$${r.cost_usd.toFixed(2)} agents spent${on}${partial}\n${AGENT_COST_NOTE}`, prs: n }
 }
 
 /** "5 min ago", one unit, as the CI line says its age. */
@@ -723,8 +727,9 @@ export function releaseFold(s: ReleaseStatus, o: { waiting: number; batch?: Batc
     if (last && o.now - last.at < OUT_RECENT_MS) {
       const ago = agoText(o.now - last.at)
       const cost = releaseCost(last.tag, o.releases)
+      const version = plainVersion(last.tag) ?? last.tag
       return {
-        kind: 'out', text: `${plainVersion(last.tag) ?? last.tag} released · ${ago}${cost ? ` · ${cost.text}` : ''}${batchWord(o.batch)}`,
+        kind: 'out', out: { version, ago }, text: `${version} released · ${ago}${cost ? ` · ${cost.text}` : ''}${batchWord(o.batch)}`,
         title: `${last.tag} was published on GitHub ${ago}.${cost ? `\n${cost.title}` : ''}`, tone: 'ok', ...(cost ? { cost } : {}),
       }
     }
