@@ -532,6 +532,13 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-11-24 — 0.195.0: switching tabs is instant
+
+A minor release, #1061. Going back to one of the last four session tabs shows
+it at once, with no "Reading…" and nothing fetched first: those tabs stay
+built while hidden, paused after half a minute out of sight, and refresh
+behind what they show. Hovering a tab starts reading it early.
+
 ### 2026-11-24 — 0.194.2: dictation on the iPhone keeps every phrase
 
 A patch release, #1059. Dictating on an iPhone kept only the last phrase:

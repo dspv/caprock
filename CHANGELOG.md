@@ -12,6 +12,18 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.195.0] - 2026-11-24
+
+### Changed
+
+- **tabs:** switching back to a tab is instant. The inspector and the chat
+  of the last four tabs stay drawn while hidden, so a tab shown again is as
+  it was left on the first frame, with no "Reading…" and no request for what
+  it already held; for its first 30 s out of sight it keeps following the
+  session, and after that it rests and reads only what changed when shown.
+  A tab first opened draws its working tree and its calls from what this
+  window last read, and pointing at a tab reads them ahead.
+
 ## [0.194.2] - 2026-11-24
 
 ### Fixed
