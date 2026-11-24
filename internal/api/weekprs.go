@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dspv/caprock/internal/github"
@@ -51,6 +52,34 @@ func (s *Server) slugOf(ctx context.Context, root string) string {
 	return strings.ToLower(repo.FullName())
 }
 
+// slugWorkers bounds the git lookups slugsOf runs at once.
+const slugWorkers = 4
+
+// slugsOf is slugOf for each root, in order. A root not yet in the repository
+// cache costs a git call (15–80 ms each on the owner's Mac); a cold Week
+// asked for fourteen of them one after another, half a second of its
+// answer (2026-11-24), so they run a few at a time.
+func (s *Server) slugsOf(ctx context.Context, roots []string) []string {
+	out := make([]string, len(roots))
+	next := make(chan int)
+	var wg sync.WaitGroup
+	for range min(slugWorkers, len(roots)) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range next {
+				out[i] = s.slugOf(ctx, roots[i])
+			}
+		}()
+	}
+	for i := range roots {
+		next <- i
+	}
+	close(next)
+	wg.Wait()
+	return out
+}
+
 // countWeekPRs combines GitHub's record and the agents' own for wk.
 //
 // The cost per merged pull request, when GitHub's record has merges, is the
@@ -69,8 +98,12 @@ func (s *Server) countWeekPRs(ctx context.Context, wk store.Week, loc *time.Loca
 	// The roots of each GitHub repository, dearest first (wk.Repos' order).
 	var slugs []string
 	rootOf := map[string]string{}
-	for _, r := range wk.Repos {
-		slug := s.slugOf(ctx, r.Root)
+	roots := make([]string, len(wk.Repos))
+	for i, r := range wk.Repos {
+		roots[i] = r.Root
+	}
+	for i, slug := range s.slugsOf(ctx, roots) {
+		r := wk.Repos[i]
 		if slug == "" {
 			continue
 		}

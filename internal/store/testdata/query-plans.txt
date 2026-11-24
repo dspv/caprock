@@ -2774,52 +2774,54 @@ SELECT e.agent_id, json_extract((CASE WHEN typeof(e.payload) = 'blob' THEN zjson
         SCAN json_each VIRTUAL TABLE INDEX 1:
 
 ## store.agentSplit
-SELECT COALESCE(agent,'claude') FROM sessions WHERE session_id = ?
-    SEARCH sessions USING INDEX sqlite_autoindex_sessions_1 (session_id=?)
-
-## store.agentSplit
-SELECT json_extract(payload, '$.sidechain') FROM events INDEXED BY idx_events_session_ts WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND kind = 'turn.assistant' AND COALESCE(agent_id,'') = '' LIMIT 1
-    SEARCH events USING INDEX idx_events_session_ts (sid=?)
-    SCALAR SUBQUERY 1
-        SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
-
-## store.agentSplit
-SELECT sid, (SELECT session_id FROM sessions WHERE sessions.sid = events.sid), COALESCE(agent_id,'') <> '', COUNT(*), COALESCE(SUM(cost_usd),0), COUNT(DISTINCT NULLIF(agent_id,'')) FROM events INDEXED BY idx_events_turn_agent WHERE kind = 'turn.assistant' AND ts >= ? AND internal = 0 GROUP BY sid, 3
-    SEARCH events USING COVERING INDEX idx_events_turn_agent (kind=? AND ts>?)
-    USE TEMP B-TREE FOR GROUP BY
+SELECT g.sid, s.session_id, COALESCE(NULLIF(s.agent,''),'claude'), g.sub, g.n, g.cost, g.threads, CASE WHEN g.sub THEN NULL ELSE ( SELECT json_extract(payload, '$.sidechain') FROM events e2 INDEXED BY idx_events_session_ts WHERE e2.sid = g.sid AND e2.kind = 'turn.assistant' AND COALESCE(e2.agent_id,'') = '' LIMIT 1) END FROM ( SELECT sid, COALESCE(agent_id,'') <> '' AS sub, COUNT(*) AS n, COALESCE(SUM(cost_usd),0) AS cost, COUNT(DISTINCT NULLIF(agent_id,'')) AS threads FROM events INDEXED BY idx_events_turn_agent WHERE kind = 'turn.assistant' AND ts >= ? AND internal = 0 GROUP BY sid, 2) g JOIN sessions s ON s.sid = g.sid
+    CO-ROUTINE g
+        SEARCH events USING COVERING INDEX idx_events_turn_agent (kind=? AND ts>?)
+        USE TEMP B-TREE FOR GROUP BY
+        USE TEMP B-TREE FOR count(DISTINCT)
+    SCAN g
+    SEARCH s USING INTEGER PRIMARY KEY (rowid=?)
     CORRELATED SCALAR SUBQUERY 1
-        SEARCH sessions USING INTEGER PRIMARY KEY (rowid=?)
-    USE TEMP B-TREE FOR count(DISTINCT)
+        SEARCH e2 USING INDEX idx_events_session_ts (sid=?)
 
 ## store.agentSplit
-SELECT sid, (SELECT session_id FROM sessions WHERE sessions.sid = events.sid), COALESCE(agent_id,'') <> '', COUNT(*), COALESCE(SUM(cost_usd),0), COUNT(DISTINCT NULLIF(agent_id,'')) FROM events INDEXED BY idx_events_turn_agent WHERE kind = 'turn.assistant' AND ts >= ? AND ts < ? AND internal = 0 AND sid NOT IN (SELECT sid FROM sessions WHERE cwd IN ('/')) GROUP BY sid, 3
-    SEARCH events USING COVERING INDEX idx_events_turn_agent (kind=? AND ts>? AND ts<?)
-    LIST SUBQUERY 2
-        SCAN sessions
-        CREATE BLOOM FILTER
-    USE TEMP B-TREE FOR GROUP BY
+SELECT g.sid, s.session_id, COALESCE(NULLIF(s.agent,''),'claude'), g.sub, g.n, g.cost, g.threads, CASE WHEN g.sub THEN NULL ELSE ( SELECT json_extract(payload, '$.sidechain') FROM events e2 INDEXED BY idx_events_session_ts WHERE e2.sid = g.sid AND e2.kind = 'turn.assistant' AND COALESCE(e2.agent_id,'') = '' LIMIT 1) END FROM ( SELECT sid, COALESCE(agent_id,'') <> '' AS sub, COUNT(*) AS n, COALESCE(SUM(cost_usd),0) AS cost, COUNT(DISTINCT NULLIF(agent_id,'')) AS threads FROM events INDEXED BY idx_events_turn_agent WHERE kind = 'turn.assistant' AND ts >= ? AND ts < ? AND internal = 0 AND sid NOT IN (SELECT sid FROM sessions WHERE cwd IN ('/')) GROUP BY sid, 2) g JOIN sessions s ON s.sid = g.sid
+    CO-ROUTINE g
+        SEARCH events USING COVERING INDEX idx_events_turn_agent (kind=? AND ts>? AND ts<?)
+        LIST SUBQUERY 2
+            SCAN sessions
+            CREATE BLOOM FILTER
+        USE TEMP B-TREE FOR GROUP BY
+        USE TEMP B-TREE FOR count(DISTINCT)
+    SCAN g
+    SEARCH s USING INTEGER PRIMARY KEY (rowid=?)
     CORRELATED SCALAR SUBQUERY 1
-        SEARCH sessions USING INTEGER PRIMARY KEY (rowid=?)
-    USE TEMP B-TREE FOR count(DISTINCT)
+        SEARCH e2 USING INDEX idx_events_session_ts (sid=?)
 
 ## store.agentSplit
-SELECT sid, (SELECT session_id FROM sessions WHERE sessions.sid = events.sid), COALESCE(agent_id,'') <> '', COUNT(*), COALESCE(SUM(cost_usd),0), COUNT(DISTINCT NULLIF(agent_id,'')) FROM events INDEXED BY idx_events_turn_agent WHERE kind = 'turn.assistant' AND ts >= ? AND ts < ? AND internal = 0 AND sid NOT IN (SELECT sid FROM sessions WHERE cwd IN ('/','<temp>')) GROUP BY sid, 3
-    SEARCH events USING COVERING INDEX idx_events_turn_agent (kind=? AND ts>? AND ts<?)
-    LIST SUBQUERY 2
-        SCAN sessions
-        CREATE BLOOM FILTER
-    USE TEMP B-TREE FOR GROUP BY
+SELECT g.sid, s.session_id, COALESCE(NULLIF(s.agent,''),'claude'), g.sub, g.n, g.cost, g.threads, CASE WHEN g.sub THEN NULL ELSE ( SELECT json_extract(payload, '$.sidechain') FROM events e2 INDEXED BY idx_events_session_ts WHERE e2.sid = g.sid AND e2.kind = 'turn.assistant' AND COALESCE(e2.agent_id,'') = '' LIMIT 1) END FROM ( SELECT sid, COALESCE(agent_id,'') <> '' AS sub, COUNT(*) AS n, COALESCE(SUM(cost_usd),0) AS cost, COUNT(DISTINCT NULLIF(agent_id,'')) AS threads FROM events INDEXED BY idx_events_turn_agent WHERE kind = 'turn.assistant' AND ts >= ? AND ts < ? AND internal = 0 AND sid NOT IN (SELECT sid FROM sessions WHERE cwd IN ('/','<temp>')) GROUP BY sid, 2) g JOIN sessions s ON s.sid = g.sid
+    CO-ROUTINE g
+        SEARCH events USING COVERING INDEX idx_events_turn_agent (kind=? AND ts>? AND ts<?)
+        LIST SUBQUERY 2
+            SCAN sessions
+            CREATE BLOOM FILTER
+        USE TEMP B-TREE FOR GROUP BY
+        USE TEMP B-TREE FOR count(DISTINCT)
+    SCAN g
+    SEARCH s USING INTEGER PRIMARY KEY (rowid=?)
     CORRELATED SCALAR SUBQUERY 1
-        SEARCH sessions USING INTEGER PRIMARY KEY (rowid=?)
-    USE TEMP B-TREE FOR count(DISTINCT)
+        SEARCH e2 USING INDEX idx_events_session_ts (sid=?)
 
 ## store.agentSplit
-SELECT sid, (SELECT session_id FROM sessions WHERE sessions.sid = events.sid), COALESCE(agent_id,'') <> '', COUNT(*), COALESCE(SUM(cost_usd),0), COUNT(DISTINCT NULLIF(agent_id,'')) FROM events INDEXED BY idx_events_turn_agent WHERE kind = 'turn.assistant' AND ts >= ? AND ts < ? AND internal = 0 GROUP BY sid, 3
-    SEARCH events USING COVERING INDEX idx_events_turn_agent (kind=? AND ts>? AND ts<?)
-    USE TEMP B-TREE FOR GROUP BY
+SELECT g.sid, s.session_id, COALESCE(NULLIF(s.agent,''),'claude'), g.sub, g.n, g.cost, g.threads, CASE WHEN g.sub THEN NULL ELSE ( SELECT json_extract(payload, '$.sidechain') FROM events e2 INDEXED BY idx_events_session_ts WHERE e2.sid = g.sid AND e2.kind = 'turn.assistant' AND COALESCE(e2.agent_id,'') = '' LIMIT 1) END FROM ( SELECT sid, COALESCE(agent_id,'') <> '' AS sub, COUNT(*) AS n, COALESCE(SUM(cost_usd),0) AS cost, COUNT(DISTINCT NULLIF(agent_id,'')) AS threads FROM events INDEXED BY idx_events_turn_agent WHERE kind = 'turn.assistant' AND ts >= ? AND ts < ? AND internal = 0 GROUP BY sid, 2) g JOIN sessions s ON s.sid = g.sid
+    CO-ROUTINE g
+        SEARCH events USING COVERING INDEX idx_events_turn_agent (kind=? AND ts>? AND ts<?)
+        USE TEMP B-TREE FOR GROUP BY
+        USE TEMP B-TREE FOR count(DISTINCT)
+    SCAN g
+    SEARCH s USING INTEGER PRIMARY KEY (rowid=?)
     CORRELATED SCALAR SUBQUERY 1
-        SEARCH sessions USING INTEGER PRIMARY KEY (rowid=?)
-    USE TEMP B-TREE FOR count(DISTINCT)
+        SEARCH e2 USING INDEX idx_events_session_ts (sid=?)
 
 ## store.backgroundCallRows
 SELECT e.ts, e.tool, json_extract((CASE WHEN typeof(e.payload) = 'blob' THEN zjson(e.payload) ELSE e.payload END), '$.tool_response.backgroundTaskId', '$.tool_response.isAsync', '$.tool_response.agentId', '$.tool_response.taskId', '$.tool_response.resumedAgentId', '$.tool_input.task_id', '$.tool_input.shell_id', '$.tool_input.description', '$.tool_input.command') FROM events e INDEXED BY idx_events_attr_work WHERE e.sid = (SELECT sid FROM sessions WHERE session_id = ?) AND e.ts >= ? AND e.kind = 'tool.post' AND e.source = 'hook' AND e.tool IN ('Bash', 'Agent', 'Task', 'Monitor', 'SendMessage', 'TaskStop', 'KillShell') AND COALESCE(e.agent_id, '') = '' ORDER BY e.ts, e.id
@@ -2950,7 +2952,7 @@ SELECT agent_id, COUNT(DISTINCT COALESCE(json_extract((CASE WHEN typeof(payload)
 
 ## store.describeSubagents
 SELECT (CASE WHEN json_valid(payload) THEN json_extract(payload, '$.tool_response.agentId') END), (CASE WHEN json_valid(payload) THEN json_extract(payload, '$.tool_response.description') END) FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND kind = 'tool.post' AND tool IN ('Agent', 'Task') AND (CASE WHEN json_valid(payload) THEN json_extract(payload, '$.tool_response.agentId') END) IN (?)
-    SEARCH events USING INDEX idx_events_session_id (sid=?)
+    SEARCH events USING INDEX idx_events_tool_post (sid=?)
     SCALAR SUBQUERY 1
         SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
 
@@ -3093,13 +3095,13 @@ SELECT MIN(ts) FROM events WHERE sid = ? AND kind = 'tool.pre' AND tool IN ('Edi
     SEARCH events USING COVERING INDEX idx_events_attr_work (sid=?)
 
 ## store.learnMatch
-WITH a(i, at) AS MATERIALIZED ( SELECT CAST(key AS INTEGER), CAST(value AS INTEGER) FROM json_each(?)) SELECT a.i, s.session_id, MIN(e.ts) FROM a CROSS JOIN events p INDEXED BY idx_events_tool_dist JOIN sessions s ON s.sid = p.sid AND s.repo_root = ? JOIN events e ON e.sid = p.sid AND e.key = 'post:' || substr(p.key, 5) WHERE p.kind = 'tool.pre' AND p.ts >= a.at - ? AND p.ts < a.at + 1000 AND p.tool = 'Bash' AND p.internal = 0 AND p.key LIKE 'pre:%' AND e.ts >= a.at GROUP BY a.i, p.sid
+WITH a(i, at) AS MATERIALIZED ( SELECT CAST(key AS INTEGER), CAST(value AS INTEGER) FROM json_each(?)) SELECT a.i, s.session_id, MIN(e.ts) FROM a CROSS JOIN events p INDEXED BY idx_events_bash_pre JOIN sessions s ON s.sid = p.sid AND s.repo_root = ? JOIN events e INDEXED BY idx_events_tool_post ON e.sid = p.sid AND e.key = 'post:' || substr(p.key, 5) AND e.kind = 'tool.post' WHERE p.kind = 'tool.pre' AND p.ts >= a.at - ? AND p.ts < a.at + 1000 AND p.tool = 'Bash' AND p.internal = 0 AND p.key LIKE 'pre:%' AND e.ts >= a.at GROUP BY a.i, p.sid
     MATERIALIZE a
         SCAN json_each VIRTUAL TABLE INDEX 1:
     SCAN a
-    SEARCH p USING INDEX idx_events_tool_dist (kind=? AND ts>? AND ts<?)
+    SEARCH p USING INDEX idx_events_bash_pre (ts>? AND ts<?)
     SEARCH s USING INTEGER PRIMARY KEY (rowid=?)
-    SEARCH e USING INDEX idx_events_sid_key (sid=? AND key=?)
+    SEARCH e USING COVERING INDEX idx_events_tool_post (sid=? AND key=? AND ts>?)
     USE TEMP B-TREE FOR GROUP BY
 
 ## store.learnRepo

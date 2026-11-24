@@ -106,19 +106,23 @@ func (s *Server) weekAnswer(ctx context.Context, period string, from, to time.Ti
 	if period == "30d" || period == "all" {
 		cache = s.weekLong
 	}
-	key := "week:" + period + ":" + from.Format("2006-01-02") + ":" + to.Format("2006-01-02")
+	// Keyed by the window alone: the Week screen's default (no start) and the
+	// share card's 7d are the same seven days, and were counted twice. The
+	// period is the one field that differs, set on the copy handed back.
+	key := "week:" + from.Format("2006-01-02") + ":" + to.Format("2006-01-02")
 	v, err := cache.get(ctx, key, func() (any, error) {
-		resp, err := s.buildWeek(context.WithoutCancel(ctx), from, to)
-		resp.Period = period
-		return resp, err
+		return s.buildWeek(context.WithoutCancel(ctx), from, to)
 	})
+	resp, ok := v.(WeekResponse)
+	if !ok || err != nil {
+		return v, err
+	}
 	// On every ask, not only on a count: the cache keeps an answer while no
 	// event is written, and github_prs is not an event. What is already
 	// covered costs a meta read per repository and sends nothing.
-	if resp, ok := v.(WeekResponse); ok && err == nil {
-		s.fillWeekPRs(ctx, resp.prSlugs, resp.FromMs)
-	}
-	return v, err
+	s.fillWeekPRs(ctx, resp.prSlugs, resp.FromMs)
+	resp.Period = period
+	return resp, nil
 }
 
 // weekPeriod is the window a named period covers, in whole local days ending
