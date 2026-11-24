@@ -532,6 +532,13 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-11-24 — 0.194.2: dictation on the iPhone keeps every phrase
+
+A patch release, #1059. Dictating on an iPhone kept only the last phrase:
+Apple's recogniser starts over after a pause and its next guess holds only
+the new words. Caprock now keeps what was heard before each new phrase, on
+the phone page in Safari and, from its next build, in the iOS app.
+
 ### 2026-11-24 — 0.194.1: the released pill when the section is open
 
 A patch release, #1057. The expanded Release section shows the same green
