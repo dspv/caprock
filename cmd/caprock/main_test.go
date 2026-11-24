@@ -100,16 +100,27 @@ func TestAwaitDaemonWaitsOutAnUpgrade(t *testing.T) {
 	if _, ok := awaitDaemon(cmd, dir, 0); ok || out.Len() > 0 {
 		t.Fatalf("found a daemon in an empty directory, or said %q", out.String())
 	}
+	// The marker outlives the wait, so only a deadline that moves with it
+	// keeps the loop going. Every pass that sees the marker resets the
+	// deadline, so the loop can return only on a pass that found it gone:
+	// after the moment stamped just before removing it, however late the
+	// runner's timers fire (a 150 ms poll overran 220 ms on a loaded
+	// Windows runner, which broke a check on the poll interval).
 	done := config.MarkUpgrading(dir)
-	ended := make(chan time.Time, 1)
-	time.AfterFunc(500*time.Millisecond, func() { done(); ended <- time.Now() })
-	const wait = 1500 * time.Millisecond
+	removing := make(chan time.Time, 1)
+	const wait = 600 * time.Millisecond
+	time.AfterFunc(2*wait, func() { removing <- time.Now(); done() })
 	if _, ok := awaitDaemon(cmd, dir, wait); ok {
 		t.Fatal("found a daemon that never started")
 	}
-	// A poll is 150 ms, so the upgrade was last seen at most that long before it ended.
-	if after := time.Since(<-ended); after < wait-200*time.Millisecond {
-		t.Fatalf("stopped waiting %v after the upgrade, want the start's %v", after, wait)
+	returned := time.Now()
+	select {
+	case r := <-removing:
+		if returned.Before(r) {
+			t.Fatalf("stopped waiting %v before the upgrade ended", r.Sub(returned))
+		}
+	default:
+		t.Fatal("stopped waiting while the upgrade was still running")
 	}
 	if !strings.Contains(out.String(), "Upgrading the database") {
 		t.Fatalf("the wait was not explained: %q", out.String())
