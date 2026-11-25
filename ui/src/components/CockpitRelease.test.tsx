@@ -129,13 +129,18 @@ describe('the cockpit’s Release section', () => {
       [{ number: 1030, stage: 'ready', ci: 'pass', spend: SPEND }, { number: 1031, stage: 'merged', spend: SPEND }], [rel('v0.190.0', 86_400_000, 23)]))
     writeDeck(workRepoKey(ROOT), { ...repo('v0.190.0', 1), unreleased: { ref: 'origin/master', items: ['a'], count: 1, kinds: { Fixed: 1 } } })
     const { unmount } = draw(true)
-    expect(line()).toHaveAttribute('aria-label', 'Ready to release 0.190.1 · not started · 1 change')
+    // Folded, the same one number as the heading (owner, 2026-11-25).
+    expect(line()).toHaveAttribute('aria-label', 'Ready to release 0.191.0 · waits for #1030')
     unmount()
     draw(false)
     expect(document.querySelector('[data-release-via]')).toBeNull()
     expect(document.querySelector('[data-release-section="branch"]')).toHaveTextContent('Not in it yet: 1 other PR')
     // What it would make the version, from its title (variant 1A).
     expect(document.querySelector('[data-release-hint]')).toHaveAttribute('data-release-hint', '0.191.0')
+    // Said once, by the heading (owner, 2026-11-25): no second number.
+    expect(document.querySelector('[data-release-version]')).toHaveAttribute('aria-label', 'Next release 0.191.0')
+    expect(document.querySelector('[data-release-why]')).toHaveTextContent(/^minor · waits for #1030$/)
+    expect(document.querySelector('[data-release-hint-text]')).toBeNull()
   })
 
   // Owner, 2026-11-23: after #1031 merged the panel said *Ready to release ·

@@ -447,14 +447,16 @@ describe('where it is drawn', () => {
     writeDeck('stats:/w/caprock', stats)
     render(<CockpitRelease sessionId="s1" repoRoot="/w/caprock" />)
     const region = await screen.findByRole('region', { name: 'Release' })
-    await within(region).findByRole('heading', { name: 'Next release 0.117.5' })
-    expect(region.querySelector('[data-release-why]')).toHaveTextContent('patch · fixes only')
+    // One number (owner, 2026-11-25): the version with the queued feature,
+    // its bump, and what it waits for; no second *0.118.0 once #633 lands*.
+    await within(region).findByRole('heading', { name: 'Next release 0.118.0' })
+    expect(region.querySelector('[data-release-why]')).toHaveTextContent(/^minor · waits for #633$/)
+    expect(region.querySelector('[data-release-version]')!.getAttribute('title')).toMatch(/^0\.117\.5 is what the default branch holds now \(patch\)\..*\n1 feature waiting\.\n/s)
+    expect(region.textContent).not.toMatch(/0\.117\.5|once #633 lands/)
     const hint = region.querySelector('[data-release-hint]')!
     expect(hint).toHaveAttribute('data-release-hint', '0.118.0')
-    expect(hint.querySelector('[data-release-hint-text]')).toHaveTextContent('0.118.0 once #633 lands')
-    // No bare number list: what they are is on the line's hover, the PR itself a row.
+    expect(hint.querySelector('[data-release-hint-text]')).toBeNull()
     expect(hint.querySelector('[data-release-hint-sub]')).toBeNull()
-    expect(hint.querySelector('[data-release-hint-text]')!.getAttribute('title')).toMatch(/\n1 feature waiting\.$/)
     expect(hint.querySelectorAll('[data-release-hint-rows] > li')).toHaveLength(1)
     expect(hint.querySelector('[data-release-row="633"] [data-release-kind]')).toHaveTextContent(/^feat$/)
     expect(hint.querySelector('[data-release-row="633"] a')!.getAttribute('href')).toContain('pr=633')
@@ -483,6 +485,23 @@ describe('where it is drawn', () => {
     expect(row.querySelector('a')!.getAttribute('href')).toContain('pr=633')
   })
 
+  // Owner, 2026-11-25: one number. Nothing queued that would raise it — no
+  // kind said, or a fix over a patch — and the heading is as it was.
+  it.each([['nothing queued', 'input highlight'], ['a fix queued on a patch', 'fix(ui): input highlight']])('keeps the default branch’s version with %s', async (_, title) => {
+    const w = workFixture()
+    w.repos[0]!.unreleased = { ref: 'origin/master', items: ['a'], count: 1, kinds: { Fixed: 1 } }
+    h.data = w
+    const stats = statsFixture()
+    stats.prs!.find((p) => p.number === 633)!.title = title
+    writeDeck('stats:/w/caprock', stats)
+    render(<CockpitRelease sessionId="s1" repoRoot="/w/caprock" />)
+    const region = await screen.findByRole('region', { name: 'Release' })
+    await within(region).findByRole('heading', { name: 'Next release 0.117.5' })
+    expect(region.querySelector('[data-release-why]')).toHaveTextContent(/^patch · fixes only$/)
+    expect(region.querySelector('[data-release-hint]')).toBeNull()
+    expect(region.textContent).not.toMatch(/waits for/)
+  })
+
   // Owner, 2026-11-23: the hint's *#1017 #1030 …* said nothing; the open
   // PRs as rows, five then *+N more*, and the PR the release waits for
   // always on view.
@@ -504,9 +523,10 @@ describe('where it is drawn', () => {
     writeDeck('stats:/w/caprock', stats)
     render(<CockpitRelease sessionId="s1" repoRoot="/w/caprock" />)
     const region = await screen.findByRole('region', { name: 'Release' })
-    await within(region).findByRole('heading', { name: 'Next release 0.117.5' })
+    await within(region).findByRole('heading', { name: 'Next release 0.118.0' })
+    expect(region.querySelector('[data-release-why]')).toHaveTextContent(/^minor · waits for 7 PRs$/)
     const hint = region.querySelector('[data-release-hint]')!
-    expect(hint.querySelector('[data-release-hint-text]')).toHaveTextContent('0.118.0 once the 7 open PRs land')
+    expect(hint.querySelector('[data-release-hint-text]')).toBeNull()
     const rows = () => [...hint.querySelectorAll('[data-release-hint-rows] > li')]
     expect(rows()).toHaveLength(5)
     expect(rows().every((r) => r.querySelector('[data-release-title]')!.classList.contains('truncate'))).toBe(true)

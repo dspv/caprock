@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest'
 import type { WorkRepo } from './api'
 import type { BranchPR } from './branches'
 import type { BoardCard } from './prboard'
-import { batchOf, groupNotes, notesHeading, notesOf, notInIt, plainItem, viaLine } from './releasenotes'
+import { batchOf, groupNotes, notesHeading, notesOf, notInIt, plainItem, viaLine, withNext } from './releasenotes'
 import type { PlanRow } from './releaseplan'
-import { releaseStatus, type ReleaseStatusInput } from './releasestatus'
+import { nextHint, releaseStatus, type ReleaseStatusInput } from './releasestatus'
 
 const H = 3_600_000
 const T = Date.UTC(2026, 10, 19, 12)
@@ -33,6 +33,32 @@ describe('the release notes', () => {
     const h = notesHeading(s, { name: 'v0.183.0', at: T - 8 * H }, T)
     expect(h).toMatchObject({ state: 'waiting', text: 'Next release 0.183.1', short: 'Next 0.183.1', why: { text: 'patch · fixes only', title: expect.stringMatching(/^patch: fixes only\.\n/) }, age: 'last release 8h ago', ageWide: true })
     expect(notesOf(repo(), h, s).map((e) => e.text)).toEqual(['b fixed', 'a changed'])
+  })
+
+  // Owner, 2026-11-25 (translated): *Next 0.196.1 · patch* over *0.197.0
+  // once #1072 lands* read as two numbers out of sync.
+  it('says one number: the version with the queued PRs, and what it waits for', () => {
+    const s = status({ unreleased: onBatch })
+    const base = notesHeading(s, { name: 'v0.183.0', at: T - 8 * H }, T)
+    const head = (prs: { number: number; title: string }[]) => withNext(base, nextHint(s, prs))
+    // Nothing queued: as before.
+    expect(head([])).toEqual(base)
+    // A fix over a patch changes nothing: as before.
+    expect(head([{ number: 1080, title: 'fix(ui): y' }])).toEqual(base)
+    // One feature: a minor, by its number.
+    const one = head([{ number: 1072, title: 'feat(app): x' }])
+    expect(one).toMatchObject({ state: 'waiting', text: 'Next release 0.184.0', short: 'Next 0.184.0', why: { text: 'minor · waits for #1072' }, age: 'last release 8h ago' })
+    expect(one.why!.title).toMatch(/^minor: waits for #1072\.\n0\.183\.1 is what the default branch holds now \(patch\)\./)
+    expect(one.title).toMatch(/\n1 feature waiting\.\n/)
+    // Two by number (a count in a narrow panel), more as a count.
+    expect(head([{ number: 1072, title: 'feat: x' }, { number: 1080, title: 'fix: y' }]).why).toMatchObject({ text: 'minor · waits for #1072, #1080', short: 'minor · waits for 2 PRs' })
+    const three = head([{ number: 1072, title: 'feat: x' }, { number: 1080, title: 'fix: y' }, { number: 1081, title: 'feat: z' }])
+    expect(three).toMatchObject({ text: 'Next release 0.184.0', why: { text: 'minor · waits for 3 PRs' } })
+    expect(three.why!.short).toBeUndefined()
+    expect(one.why!.short).toBeUndefined()
+    // Only a waiting heading takes it.
+    const idle = notesHeading(status({ unreleased: { ref: 'origin/master', items: [], count: 0 } }), undefined, T)
+    expect(withNext(idle, nextHint(s, [{ number: 1072, title: 'feat: x' }]))).toEqual(idle)
   })
 
   it('says nothing new, shipping, and out with the released section’s notes', () => {
