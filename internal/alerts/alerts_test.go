@@ -203,3 +203,25 @@ func TestQueuedDoneAlertsAtOnceAndOnce(t *testing.T) {
 		t.Fatalf("stale: %+v", got)
 	}
 }
+
+// A failed turn Caprock answers itself is held: no alert, and no cooldown
+// spent, so the give-up's alert goes when it comes (ADR-105).
+func TestHoldDropsAFinishedTurnWithoutSpendingTheCooldown(t *testing.T) {
+	r := New(allOn)
+	hold := true
+	r.Hold = func(id string, trigger event.Event) bool { return hold && trigger.Kind == event.KindThrottle }
+	r.Observe(ev("s", event.KindThrottle, t0), t0)
+	if got := r.Due(t0.Add(FinishedAfter)); len(got) != 0 {
+		t.Fatalf("held turn alerted: %+v", got)
+	}
+	at := t0.Add(FinishedAfter + time.Second)
+	hold = false
+	r.Observe(ev("s", event.KindThrottle, at), at)
+	if got := r.Due(at.Add(FinishedAfter)); len(got) != 1 {
+		t.Fatalf("the give-up inside the cooldown of a held one: %+v", got)
+	}
+	hold = true
+	if got := r.QueuedDone(ev("s2", event.KindThrottle, at), "x", at); len(got) != 0 {
+		t.Fatalf("held queued turn alerted: %+v", got)
+	}
+}

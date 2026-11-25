@@ -200,3 +200,23 @@ func TestALongReplyKeepsCodeOutUnlessAsked(t *testing.T) {
 		t.Fatalf("long reply is %d runes", n)
 	}
 }
+
+// A failed turn after Caprock's automatic tries says it gave up (ADR-105),
+// in the Telegram message and the app's notification alike.
+func TestAGiveUpAfterAPIErrorsSaysSo(t *testing.T) {
+	a := finished(`{"hook_event_name":"StopFailure","error":"server_error"}`)
+	a.Trigger.Kind = event.KindThrottle
+	line := "Resumed automatically 3 times after API errors; gave up."
+	if got := Message(a, Details{Title: "t", AutoResumes: 3}); !strings.Contains(got, line) {
+		t.Fatalf("message: %q", got)
+	}
+	if got := Notify(a, Details{Title: "t", AutoResumes: 3}, ""); !strings.Contains(got.Body, line) {
+		t.Fatalf("notification: %q", got.Body)
+	}
+	if got := Message(a, Details{Title: "t"}); strings.Contains(got, "gave up") {
+		t.Fatalf("no tries, no line: %q", got)
+	}
+	if gaveUpLine(1) != "Resumed automatically 1 time after API errors; gave up." {
+		t.Fatal(gaveUpLine(1))
+	}
+}

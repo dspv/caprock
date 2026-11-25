@@ -102,6 +102,26 @@ export interface Session {
   /** Set while the session's last call was refused at its plan's usage
    *  limit, null once a reply came after it (migration 0078, ADR-090). */
   limit_hit?: LimitHit | null
+  /** The API error that ended its last turn after Claude Code's own retries,
+   *  and what Caprock did about it (migration 0095, ADR-105); null when
+   *  there is neither. */
+  api_error?: ApiErrorState | null
+}
+
+/** An API error that ended a turn, and the automatic resume after it (`Session.api_error`). */
+export interface ApiErrorState {
+  /** When the error was written (unix ms); absent once a reply came after it. */
+  at?: number
+  /** The error in a few words: "529 Overloaded". */
+  reason?: string
+  /** A "continue" may get past it: overloaded, a 5xx, a network failure, a timeout. */
+  retryable?: boolean
+  /** How many times Caprock typed "continue" in this incident. */
+  tries?: number
+  /** What Caprock did: a try went in, a reply came after one, the tries ran out, the user took over. */
+  resume?: 'resumed' | 'recovered' | 'gave_up' | 'stopped'
+  /** When Caprock last typed "continue" (unix ms). */
+  resumed_at?: number
 }
 
 /** A session stopped at its plan's usage limit (`Session.limit_hit`). */
@@ -1337,6 +1357,10 @@ export interface Settings {
   limit_fallbacks?: ContinueTarget[]
   /** Take an automatically moved session back once its own window resets. */
   limit_return_after_reset?: boolean
+  /** Settings → After an API error (ADR-105): type "continue" into a session
+   *  Caprock started whose turn ended on a transient API error. On unless
+   *  turned off. */
+  resume_after_api_error?: boolean
   update_checks: boolean
   plan_kind: '' | 'flat' | 'metered'
   plan_label: string

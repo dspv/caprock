@@ -219,6 +219,18 @@ describe('ChatView', () => {
     expect(screen.getByText('μήνυμα 1 日本 🙂')).toBeInTheDocument()
   })
 
+  it('a "continue" Caprock typed after an API error says so under it (ADR-105)', async () => {
+    store.events = [
+      { ...msg(1, 'continue'), payload: { prompt: 'continue', via: 'auto_resume' } },
+      msg(2, 'mine'),
+    ]
+    render(<ChatView sessionId="s" canType={false} />)
+    await screen.findByText('mine')
+    const marks = log().querySelectorAll('[data-via="auto_resume"]')
+    expect(marks).toHaveLength(1)
+    expect(marks[0]).toHaveTextContent('sent by Caprock after an API error')
+  })
+
   it('an event replayed after it was fetched, and a late one older than what is shown, land in place', async () => {
     store.events = [1, 2, 3, 5, 6].map((i) => msg(i))
     render(<ChatView sessionId="s" canType={false} />)

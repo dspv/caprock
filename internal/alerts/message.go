@@ -49,6 +49,22 @@ type Details struct {
 	// Code says its code blocks go too; without it each is a one-line
 	// placeholder.
 	LongReply, Code bool
+	// AutoResumes is how many times Caprock typed "continue" after API
+	// errors before this failed turn, when it gave up (ADR-105); 0 otherwise.
+	AutoResumes int
+}
+
+// gaveUpLine is what a failed turn's alert adds after Caprock's automatic
+// tries ran out: "Resumed automatically 3 times after API errors; gave up."
+func gaveUpLine(n int) string {
+	if n <= 0 {
+		return ""
+	}
+	times := "times"
+	if n == 1 {
+		times = "time"
+	}
+	return fmt.Sprintf("Resumed automatically %d %s after API errors; gave up.", n, times)
 }
 
 // Limits that keep one alert readable on a lock screen.
@@ -88,6 +104,9 @@ func Message(a Alert, d Details) string {
 	if a.Kind == KindFinished {
 		if a.Queued != "" {
 			b.WriteString("\n“" + html(clip(a.Queued, queuedMaxRunes)) + "”")
+		}
+		if l := gaveUpLine(d.AutoResumes); l != "" && a.Trigger.Kind == event.KindThrottle {
+			b.WriteString("\n" + l)
 		}
 		writeRun(&b, d)
 	} else if s := subject(a.Trigger, d); s != "" {

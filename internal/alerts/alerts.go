@@ -151,6 +151,11 @@ type Rules struct {
 	// turn asks (Alert.Need): a Done turn may be wanted by one sender and
 	// not another.
 	EnabledFor func(k Kind, need string) bool
+	// Hold, when set, is asked about each finished turn whose minute is up
+	// before it is sent: true drops it without counting it against the
+	// cooldown or the hour — Caprock is answering it itself (a turn ended
+	// on an API error it resumes, ADR-105).
+	Hold func(sessionID string, trigger event.Event) bool
 
 	sessions map[string]*session
 	sent     []time.Time
@@ -237,6 +242,9 @@ func (r *Rules) QueuedDone(ev event.Event, text string, now time.Time) []Alert {
 	if ev.SessionID == "" || now.Sub(ev.Ts) > freshFor {
 		return nil
 	}
+	if r.Hold != nil && ev.Kind == event.KindThrottle && r.Hold(ev.SessionID, ev) {
+		return nil
+	}
 	out := r.emit(KindFinished, TurnNeed(ev), ev.SessionID, now)
 	for i := range out {
 		out[i].Trigger = ev
@@ -252,6 +260,9 @@ func (r *Rules) Due(now time.Time) []Alert {
 	for id, s := range r.sessions {
 		if !s.stoppedAt.IsZero() && now.Sub(s.stoppedAt) >= FinishedAfter && s.working(now) == 0 {
 			s.stoppedAt = time.Time{}
+			if r.Hold != nil && r.Hold(id, s.stop) {
+				continue
+			}
 			for _, a := range r.emit(KindFinished, TurnNeed(s.stop), id, now) {
 				a.Trigger = s.stop
 				out = append(out, a)

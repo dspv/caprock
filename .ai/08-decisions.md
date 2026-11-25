@@ -8350,3 +8350,88 @@ will miss more ([12-risks.md](12-risks.md) OQ-30).
 
 **Revisit if** a real voice on a laptop microphone misses far more than the
 synthetic recordings did, or Windows ships an offline dictation API.
+
+---
+
+## ADR-105 — After a transient API error, Caprock types "continue" into a session it started: three tries, backing off, stopping when the user acts
+
+**Date:** 2026-11-26 · **Status:** accepted (owner, 2026-11-25, translated:
+"It would be great to detect and catch situations like this [`API error ·
+retrying… attempt 2/10`] so Caprock retries on its own: I shouldn't have to
+check later and ping or restart the session myself; it should handle it and
+I should know it happened, if possible."). Within rule 7; a new kind of
+automatic typing beside the message queue (ADR-053) and the compact button
+(ADR-085). Contract: [03-contracts.md § Session API error DDL (migration
+0095)](03-contracts.md#session-api-error-ddl-migration-0095); screens:
+[04-ui.md § The API-error line](04-ui.md#the-api-error-line).
+
+**Context.** Claude Code retries a failed API call itself — ten attempts,
+the screen saying "API error · retrying… attempt N/10". When they are all
+spent it writes the error into the transcript as a synthetic assistant line
+(`isApiErrorMessage`, `error`, `apiErrorStatus`, the text "API Error: 529
+Overloaded.") and ends the turn with the `StopFailure` hook. The session then
+sits at its prompt until someone types "continue". An overload or a
+gateway error usually clears in minutes; the owner found out hours later.
+
+**Decision.**
+
+- **Detected from the transcript, after Claude Code gave up.** The synthetic
+  line is the signal (`ingest.APIErrorLine`), stored on the session
+  (`api_error_*`, migration 0095) and cleared at the next real reply, as the
+  usage limit is (ADR-090). While Claude Code still retries there is no such
+  line and the turn is running, so nothing acts on "attempt N/10".
+- **Only a transient error is retried.** Retryable: `server_error`, a 5xx
+  or 529 status, 408, and text that says overloaded, internal server error,
+  bad gateway, service unavailable, timed out, connection error, network,
+  socket hang up. Never retried: a usage limit (ADR-090's flow owns it, and
+  `LimitHit` claims the line first), `rate_limit`, `authentication_failed`,
+  `billing_error`, `invalid_request`, `max_output_tokens`, any other 4xx,
+  and text about a prompt or context that is too long, an API key, a login,
+  billing or a permission — those words win over a 5xx. Anything this
+  cannot place is not retried: a "continue" into a session that cannot go
+  on only fails again.
+- **Only a session Caprock started, at its prompt (rule 7).** The session
+  must be held by this daemon's agent manager, be Claude Code, have no
+  permission dialog or question open, no running turn by the queue's own
+  reading (ADR-053) and nothing waiting in its queue. "continue" is typed
+  the way the chat field types (`typeLocked`: the text, Enter, a second
+  Enter if the prompt still holds it). This is typing into a process
+  Caprock started, which rule 7 has always allowed; what is new is that no
+  click asked for it, so the setting says so and is one switch away.
+- **Backoff and a cap.** A minute after the error, then five minutes after
+  the next one, then fifteen; three tries per incident. A fourth error after
+  the third try is a give-up. A real reply ends the incident.
+- **The user wins.** A message the user sent after the error (any prompt
+  not marked as Caprock's), or a key typed into the session's terminal in
+  Caprock (`agents.Manager.Key`, not focus or mouse reports, not Caprock's
+  own typing), hands the session back: nothing more is typed for that
+  error. A prompt from the user after a try makes a later error a new
+  incident with three tries of its own.
+- **Telling the user, with what exists.** Each try is the prompt event it
+  becomes, marked `via: "auto_resume"`, so the chat shows "sent by Caprock
+  after an API error" under it and the history keeps it. A line under the
+  session's terminal says "resumed automatically · try 1 of 3", then "it
+  went on", or "gave up after 3 automatic tries". The failed turn's alert
+  (desktop notification, Telegram when the user already has finished alerts
+  on there) is held while Caprock is answering the error and goes for the
+  give-up, saying "Resumed automatically 3 times after API errors; gave
+  up." No new outbound call, no new alert switch.
+- **On by default** (Settings → After an API error → *Resume after API
+  errors*). Off, nothing is typed and every failed turn alerts as before.
+
+**Rejected.**
+
+- *Acting on the `StopFailure` hook alone.* It names a category
+  (`server_error`) but not the status or the text that tell a 529 from a
+  prompt that is too long; the transcript line has all three.
+- *Restarting the process (`--resume`).* The session is alive at its
+  prompt; a restart costs a cold start and loses nothing a "continue" does
+  not already keep.
+- *Retrying on Claude Code's "retrying… attempt N/10" screen.* Claude Code is
+  still at it; typing then would land in a running turn.
+- *More tries, or no cap.* An outage that outlasts twenty minutes of
+  backoff is one the user should hear about, not one to keep typing into.
+- *Sessions Caprock did not start.* Rule 7.
+
+**Revisit if** Claude Code starts resuming a failed turn itself, or writes
+the retryable flag into the line.

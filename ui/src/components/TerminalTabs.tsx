@@ -31,6 +31,7 @@ import { ChatEnded, ChatHint, type ChatPane } from './QuickChatPane'
 import { EndedNotice } from './EndedNotice'
 import type { EndedAgent } from '@/lib/endedAgent'
 import { LimitStrip } from './LimitStrip'
+import { ApiErrorStrip } from './ApiErrorStrip'
 import { atLimit } from '@/lib/continueOn'
 import { voiceTab } from '@/lib/termvoice'
 
@@ -813,6 +814,8 @@ function PaneView({ node, visible, ctx }: { node: PaneNode; visible: boolean; ct
       voiceRestart={node.target.kind === 'session' && voiceTab({ shell: false, agent: own?.agent, owned: quick })} />
     // A session stopped at its plan's limit: the one-line strip under it (ADR-090).
     const limited = node.target.kind === 'session' && own && atLimit(own) ? <LimitStrip session={own} /> : null
+    // A turn ended on an API error Caprock resumed, or gave up on (ADR-105).
+    const apiErr = node.target.kind === 'session' && own?.api_error ? <ApiErrorStrip session={own} /> : null
     // A shell that took over an agent that ended unexpectedly: its line on top (lib/endedAgent.ts).
     const gone = node.target.kind === 'shell' && node.target.ended && !node.target.ended.dismissed ? node.target.ended : undefined
     const notice = gone && (
@@ -834,6 +837,7 @@ function PaneView({ node, visible, ctx }: { node: PaneNode; visible: boolean; ct
             {term}
             {ended}
           </div>
+          {apiErr}
           {limited}
         </div>
       )
@@ -874,6 +878,7 @@ function PaneView({ node, visible, ctx }: { node: PaneNode; visible: boolean; ct
           {/* The focused pane carries a ring; the others dim a little, as in Ghostty. */}
           <div aria-hidden className={`pointer-events-none absolute inset-0 ${focused ? 'shadow-[inset_0_0_0_1px_rgba(231,187,99,0.45)]' : 'bg-black/15'}`} />
         </div>
+        {apiErr}
         {limited}
       </div>
     )

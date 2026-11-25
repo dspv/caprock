@@ -713,6 +713,7 @@ const Message = memo(function Message({ m, onPath, plain = false }: { m: ChatMes
           <PromptText text={m.text} eventId={m.id} />
         </div>
         {m.via === 'telegram' && <div className="mt-0.5 text-[11px] text-fg-faint" data-via="telegram">from Telegram</div>}
+        {m.via === 'auto_resume' && <div className="mt-0.5 text-[11px] text-fg-faint" data-via="auto_resume">sent by Caprock after an API error</div>}
       </div>
     )
   }

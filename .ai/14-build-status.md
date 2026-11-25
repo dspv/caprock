@@ -77,6 +77,23 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-11-26 — unreleased: resume after an API error (ADR-105)
+
+A Claude Code session Caprock started whose turn ended on a transient API
+error, once Claude Code's own ten retries were spent, gets "continue" typed
+in by itself: a minute later, then five, then fifteen, three tries per
+incident (`internal/daemon/apiresume.go`). The transcript's synthetic
+`isApiErrorMessage` line is the signal (`ingest.APIErrorLine`,
+`ClassifyAPIError`; migration 0095); limits, sign-ins, billing, prompts too
+long and other 4xx are never retried. A user's message or a key in the
+terminal hands it back. The failed turn's alert is held while Caprock
+answers it and goes for the give-up; the terminal gets a line saying which
+try or that it gave up (`ApiErrorStrip.tsx`), the chat marks each try, and
+Settings → *After an API error* switches it off (on by default). Tested on
+unit level and the setting through e2e; not yet seen against a real
+overload — the line's shape is the limit line's, observed 2026-10/11, with
+the category and status Claude Code documents for `StopFailure`.
+
 ### 2026-11-22 — unreleased: terminals answer to macOS as Caprock Terminal (ADR-101)
 
 The `tccd` log showed `claude`'s microphone grant keyed on its per-version

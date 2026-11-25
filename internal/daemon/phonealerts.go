@@ -129,6 +129,11 @@ func (d *Daemon) alertLoop(ctx context.Context, sub *bus.Subscriber) {
 	defer sub.Unsubscribe()
 	rules := alerts.New(nil)
 	rules.EnabledFor = func(k alerts.Kind, need string) bool { return d.alertEnabled(k, need) || d.notifyEnabled(k, need) }
+	// A turn that ended on an API error Caprock is resuming is not news;
+	// the give-up is (ADR-105).
+	rules.Hold = func(id string, trigger event.Event) bool {
+		return trigger.Kind == event.KindThrottle && d.apiResumeCovers(ctx, id)
+	}
 	t := time.NewTicker(alertTick)
 	defer t.Stop()
 	for {
@@ -278,6 +283,9 @@ func (d *Daemon) alertDetails(ctx context.Context, a alerts.Alert) alerts.Detail
 	det.Link = d.sessionLink(a.SessionID)
 	if a.Kind != alerts.KindFinished {
 		return det
+	}
+	if err == nil && a.Trigger.Kind == event.KindThrottle {
+		det.AutoResumes = d.apiResumeTries(s)
 	}
 	end := a.Trigger.Ts
 	if end.IsZero() {

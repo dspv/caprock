@@ -208,6 +208,12 @@ type Config struct {
 	LimitAction           string   `json:"limit_action,omitempty"`
 	LimitFallbacks        []string `json:"limit_fallbacks,omitempty"`
 	LimitReturnAfterReset bool     `json:"limit_return_after_reset,omitempty"`
+	// ResumeAfterAPIError types "continue" into a Claude Code session
+	// Caprock started whose turn ended on a transient API error (overloaded,
+	// a 5xx, a network failure) after Claude Code's own retries: a minute
+	// later, then five, then fifteen, three times at most (ADR-105). On
+	// unless switched off.
+	ResumeAfterAPIError *bool `json:"resume_after_api_error,omitempty"`
 	// CustomAgents are coding agents the user added by command (ADR-046), a
 	// paid feature: kept whatever the licence says, offered and started only
 	// while it is active. Edited through PUT /v1/agents/custom, which
@@ -719,6 +725,13 @@ func (c Config) AlertFinishedOn() bool {
 // nothing (Done). On unless switched off.
 func (c Config) AlertDoneOn() bool {
 	return c.AlertDone == nil || *c.AlertDone
+}
+
+// ResumeAfterAPIErrorOn reports whether a session Caprock started is
+// resumed by itself after a transient API error (ADR-105). On unless
+// switched off.
+func (c Config) ResumeAfterAPIErrorOn() bool {
+	return c.ResumeAfterAPIError == nil || *c.ResumeAfterAPIError
 }
 
 // NotifyApprovalOn reports whether a session that needs you raises an OS

@@ -105,6 +105,9 @@ Every MVP feature must trace to a documented user pain. **Rule: a feature with n
 13. **"The tablet app has no project list; I cannot find my sessions."**
    - Evidence: the owner, 2026-10-18 (translated), after installing the Android web app. Tablet Home showed the figures first; the desktop sidebar was absent and the phone's projects were inside the chat picker.
    - Feature: **Projects on browser Home** at tablet width and wider (not on the phone since 2026-10-19, owner's request), including projects without sessions; expand a project and open its live or recent sessions ([04-ui.md § Projects in the browser](04-ui.md#projects-in-the-browser)).
+14. **"An API error stopped the session and I found out hours later."**
+   - Evidence: the owner, 2026-11-25 (translated): Claude Code showed `API error · retrying… attempt 2/10`, and he wants Caprock to retry on its own rather than him checking later and pinging or restarting the session, and to know it happened.
+   - Feature: **Resume after API errors** — "continue" typed into a session Caprock started after a transient API error, backing off, three tries, stopping when the user acts; a line under the terminal and the give-up's alert say so ([ADR-105](08-decisions.md), [04-ui.md § The API-error line](04-ui.md#the-api-error-line)).
 
 ## Product principles
 

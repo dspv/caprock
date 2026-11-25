@@ -110,6 +110,9 @@ type fileState struct {
 	// limitOpen after a refusal, limitClear once a reply has cleared it.
 	// It keeps the clearing UPDATE to one per limit, not one per reply.
 	limit int8
+	// apiErr is the same for an API error that ended a turn (migration
+	// 0095): limitUnknown, limitOpen after one, limitClear after a reply.
+	apiErr int8
 }
 
 const (
@@ -667,7 +670,8 @@ func (t *Tailer) handleLine(ctx context.Context, b *rollup.Batch, f *fileState, 
 	return true
 }
 
-// trackLimit keeps sessions.limit_hit_* (migration 0078) in step with the
+// trackLimit keeps sessions.limit_hit_* (migration 0078), and
+// sessions.api_error_* (migration 0095) the same way, in step with the
 // file: a usage-limit refusal sets it, and the first real reply after one
 // clears it — the session has made progress. A reply read while the file's
 // state is unknown (the tailer was restarted mid-file) clears too, under the
@@ -688,20 +692,44 @@ func (t *Tailer) trackLimit(ctx context.Context, b *rollup.Batch, f *fileState, 
 		f.limit = limitOpen
 		return true
 	}
-	if l.Message.Model == "<synthetic>" || f.limit == limitClear {
+	// An API error that ended the turn after Claude Code's own retries
+	// (migration 0095, ADR-105): the same shape, kept apart.
+	if ae, ok := APIErrorLine(l, bytes.TrimRight(raw, "\r\n"), fallbackTs); ok {
+		if err := b.Exec(func(ctx context.Context, q store.Querier) error {
+			return store.SetAPIError(ctx, q, l.SessionID, ae)
+		}); err != nil {
+			if retryable(ctx, err) {
+				return false
+			}
+			t.Log.Warn("record API error", "component", "ingest", "err", err, "path", f.path)
+		}
+		f.apiErr = limitOpen
+		return true
+	}
+	if l.Message.Model == "<synthetic>" || (f.limit == limitClear && f.apiErr == limitClear) {
 		return true
 	}
 	at := l.Ts(fallbackTs).UnixMilli()
+	clearLimit, clearAPI := f.limit != limitClear, f.apiErr != limitClear
 	if err := b.Exec(func(ctx context.Context, q store.Querier) error {
-		_, err := store.ClearLimitHit(ctx, q, l.SessionID, at)
-		return err
+		if clearLimit {
+			if _, err := store.ClearLimitHit(ctx, q, l.SessionID, at); err != nil {
+				return err
+			}
+		}
+		if clearAPI {
+			if _, err := store.ClearAPIError(ctx, q, l.SessionID, at); err != nil {
+				return err
+			}
+		}
+		return nil
 	}); err != nil {
 		if retryable(ctx, err) {
 			return false
 		}
-		t.Log.Warn("clear usage limit", "component", "ingest", "err", err, "path", f.path)
+		t.Log.Warn("clear usage limit or API error", "component", "ingest", "err", err, "path", f.path)
 	}
-	f.limit = limitClear
+	f.limit, f.apiErr = limitClear, limitClear
 	return true
 }
 

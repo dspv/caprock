@@ -2636,6 +2636,8 @@ page acts on it; the daemon never installs anything (ADR-042 as amended
 
 `PUT /v1/settings` also accepts Settings → *When a limit is reached* ([ADR-090](08-decisions.md), § Continue on another provider): `limit_action` — `"ask"` (the default, stored as absent), `"auto"` or `"wait"`, anything else `400`; `limit_fallbacks` — the targets `"auto"` tries, in order: `"default"`, `"deepseek"`, `"kimi"`, `"codex"` or a well-formed subscription id, duplicates dropped, at most 16, anything else `400` (whether one exists or is usable is decided when it is tried); and `limit_return_after_reset` (bool). `GET` always reports all three (`limit_fallbacks` `[]` when none).
 
+`PUT /v1/settings` also accepts Settings → *After an API error* ([ADR-105](08-decisions.md), § Resume after an API error): `resume_after_api_error` (bool; absent in the file means on). `GET` always reports it.
+
 `PUT /v1/settings` accepts `report_bot_token` and `report_chat_id` for the weekly report. The **token is write-only**: it is kept in the secret store (below) and never returned by `GET /v1/settings`, which instead carries `report_bot_set` (a bool), `report_bot_where`, `report_last_error` and `report_last_sent_ms`. This is the only write-only field in the API and it exists because the settings response is read on every dashboard render and by `caprock report` — a credential should not ride along on either ([ADR-024](08-decisions.md)). Omitting `report_bot_token` from a PUT leaves the stored one alone, since a UI that reads settings and writes them back always omits it; sending `""` clears it. The chat id is not a credential and round-trips normally. `report_last_error` is the last send's failure, kept in `meta` so it survives a restart; a send that goes through (scheduled or *Send one now*) clears it, and so does saving a different bot token or chat — through `PUT /v1/settings`, `PUT /v1/telegram/token` or pairing — because the failure was the old bot's (a stale *Unauthorized* sat under a fresh *sent — check Telegram*, owner, 2026-10-22). The Weekly report panel reads settings again after *Send one now*, whichever way it went.
 
 **The secret store** (`internal/secret`, [ADR-024](08-decisions.md) amended
@@ -6302,6 +6304,60 @@ POST   /v1/agents/{id}/queue/resend         {ids?} → {session_id, resumed, sta
   next main-thread `UserPromptSubmit` event as `"via": "telegram"` before it
   is recorded (hookd's `Annotate`). The chat and the queue show *from
   Telegram* under such a message.
+- **After an API error.** The "continue" Caprock types into a session whose
+  turn ended on a transient API error (§ Resume after an API error) goes in
+  the same way with `via: "auto_resume"`, only when the session is at its
+  prompt with nothing queued (it is never queued itself). The chat shows
+  *sent by Caprock after an API error* under it.
+
+### Resume after an API error
+
+Settings → *After an API error* ([ADR-105](08-decisions.md);
+`internal/daemon/apiresume.go`, `internal/ingest/apierror.go`). On unless
+`resume_after_api_error` is `false`.
+
+- **Signal.** The synthetic assistant line Claude Code writes once its own
+  retries are spent (§ Transcript JSONL, *An API error*), stored on the
+  session (§ Session API error DDL, migration 0095). Claude Code's own
+  retrying ("attempt N/10") writes no such line and is left alone.
+- **Retryable.** `ingest.ClassifyAPIError(error, apiErrorStatus, text)`:
+  false for `rate_limit`, `authentication_failed`, `billing_error`,
+  `invalid_request`, `max_output_tokens`, `oauth_org_not_allowed`,
+  `permission_error`, `not_found_error`, `request_too_large`, and for text
+  naming a prompt or context that is too long, a usage or rate limit, credit
+  or billing, an API key, a login or OAuth, a permission or "not found";
+  then true for a status of 408 or 500–599 (the status read from "API
+  Error: NNN" when the field is absent), false for any other 4xx; then true
+  for `server_error` and for text saying overloaded, server error, service
+  unavailable, bad gateway, gateway timeout, timed out, connection
+  error/reset/refused, network, socket hang up, fetch failed, upstream;
+  false otherwise. A usage limit is `LimitHit`'s and never reaches this.
+- **Who.** Every 15 s, beside the limit watcher, the daemon lists the owned,
+  not-ended sessions with `api_error_at > 0` (`store.OwnedAtAPIError`). A
+  session is acted on only when this daemon's agent manager holds it, it is
+  Claude Code, and its current id is the row's.
+- **When.** Tries in the incident so far `n` (0, 1, 2): the next one goes
+  in at `api_error_at` + 1 min, 5 min, 15 min respectively, and only while
+  the queue reads the session as at its prompt (`waiting` empty) with no
+  message queued — otherwise the next tick looks again. After it,
+  `api_resume_state` is `resumed`, `api_resume_tries` `n+1`, `api_resume_at`
+  the time, `api_resume_for` the error answered; that error is never
+  answered twice. A newer error after a try continues the incident; with 3
+  tries made it becomes `gave_up`.
+- **The user wins.** A main-thread `turn.user` after the error that is not
+  Caprock's (not `via: "auto_resume"`, and not a bare "continue" within two
+  minutes of the last try) means nothing is typed for that error; a key
+  typed into the session's terminal after it (`agents.Manager.LastKey`:
+  terminal input through `Key` or `InputSeq`, not a focus or mouse report,
+  not Caprock's own `Input`) sets `stopped` for that error. A user prompt
+  after the last try makes the next error a new incident (tries from 0).
+- **Alerts.** While the decision for a session is to wait, to try or to
+  await a try's turn, the failed turn's finished alert (§ Phone alerts, §
+  Notify frames) is dropped before it is counted (`alerts.Rules.Hold`): no
+  cooldown, no hourly slot. The give-up's goes, its body adding "Resumed
+  automatically 3 times after API errors; gave up." Through the existing
+  switches and senders only.
+- **Frames.** Every state change publishes the session's `session` frame.
 
 ### Compact context
 
@@ -8269,6 +8325,49 @@ moved by hand or is no longer held (`store.DeleteLimitReturn`). On the
 watcher's first tick after a start, `store.RestoreLimitReturns` deletes the
 rows due more than an hour before then and those whose session has ended or
 is unknown, and the rest are watched again. Nothing reads it over HTTP.
+
+### Session API error DDL (migration 0095)
+
+[0095_session_api_error.sql](../internal/store/migrations/0095_session_api_error.sql):
+
+```sql
+ALTER TABLE sessions ADD COLUMN api_error_at INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE sessions ADD COLUMN api_error TEXT NOT NULL DEFAULT '';
+ALTER TABLE sessions ADD COLUMN api_error_retry INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE sessions ADD COLUMN api_resume_tries INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE sessions ADD COLUMN api_resume_at INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE sessions ADD COLUMN api_resume_for INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE sessions ADD COLUMN api_resume_state TEXT NOT NULL DEFAULT '';
+CREATE INDEX IF NOT EXISTS idx_sessions_api_error ON sessions(api_error_at) WHERE api_error_at > 0;
+```
+
+An API error that ended a Claude Code session's turn after Claude Code's
+own retries, from its transcript (§ Transcript JSONL, *An API error*), and
+what Caprock did about it (§ Resume after an API error, ADR-105).
+
+- **The error.** `api_error_at` the line's time (unix ms; 0 = none since the
+  last real reply), `api_error` the reason in a few words (the text after
+  "API Error:", an error body reduced to its status and `message` — "529
+  Overloaded" — else the category; at most 80 runes), `api_error_retry` 1
+  when `ingest.ClassifyAPIError` calls it retryable. The tailer sets them
+  (`store.SetAPIError`; only a newer error replaces one) and clears them on
+  the first real assistant line at or after it (`store.ClearAPIError`), in
+  the same pass and under the same once-per-file rule as the limit columns.
+- **The resume.** `api_resume_tries` the tries in the current incident,
+  `api_resume_at` the last one's time (unix ms), `api_resume_for` the
+  `api_error_at` the state answers, `api_resume_state` one of `''`,
+  `resumed` (a try went in), `recovered` (a reply came after one),
+  `gave_up` (three tries and a fourth error), `stopped` (the user typed
+  into the terminal). Written by the daemon (`store.SetAPIResume`, only
+  while the row still stands on that error). The clearing reply turns
+  `resumed` into `recovered` and `gave_up` and `stopped` into `''`.
+- **On the API.** `Session` carries it as `api_error: {at?, reason?,
+  retryable?, tries?, resume?, resumed_at?}` when an error stands or the
+  state is not `''`, else `null` — never omitted, so a live `session` frame
+  clears a held copy — on `/v1/sessions`, `/v1/sessions/{id}` and the live
+  `session` frame. `api_resume_for` is not sent.
+- **Index.** The watcher asks every 15 s which owned sessions stand on an
+  error; the partial index holds only those rows.
 
 ### Session limit DDL (migration 0078)
 
@@ -10300,6 +10399,7 @@ Not a public contract — the parser is schema-versioned and degrades to hooks-o
 - **One API response is written as several `assistant` lines** (thinking / text / tool_use blocks split across lines), each repeating the *same* `message.id`, `requestId` and `usage`. Verified 2026-08-18 across 16,210 such groups in local transcripts: usage never differs within a `message.id`. Ingest therefore counts usage once per `message.id` (dedupe key `msg:<id>`); summing per line would over-count cache tokens 2–3×.
 - Lines with `message.model == "<synthetic>"` are Claude Code's own notices, not turns; ignored, except a usage limit.
 - **A usage limit** is a synthetic `assistant` line (observed in 20 lines from 2.1.285 to 2.1.316, 2026-10-04 to 2026-11-02): `"error": "rate_limit"`, `"isApiErrorMessage": true`, `"apiErrorStatus": 429`, `quotaLimits: {status: "rejected", resetsAt: <unix seconds>, rateLimitType: "five_hour" | "seven_day", overageStatus, …}`, from 2.1.312 also `"apiError": "usage_limit_reached"` and `apiErrorParams.rate_limit_info` with the same `resetsAt` and `rateLimitType`, and the text `You've hit your session limit · resets 3:20pm (Asia/Jerusalem)` (weekly: `your weekly limit`). Older Claude Code wrote the reset into the text, `Claude AI usage limit reached|<unix seconds>`, read too. Other API errors (`authentication_failed`, `server_error`, …) are not limits. `ingest.LimitHit` reads it into migration 0078's columns.
+- **An API error** that ended a turn once Claude Code's own retries were spent is the same synthetic `assistant` line (model `<synthetic>`) with `"isApiErrorMessage": true`, `error` the category Claude Code's `StopFailure` hook also names (`server_error`, `authentication_failed`, `billing_error`, `invalid_request`, `max_output_tokens`, `unknown`, …), `apiErrorStatus` when there was one, and the text shown, `API Error: 529 Overloaded.` or `API Error: 529 {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}`. A line whose text starts "API Error" without the flag is read too; a usage limit is not one. While Claude Code is still retrying ("attempt N/10" on its screen) no such line is written. `ingest.APIErrorLine` reads it into migration 0095's columns (the shape is the limit line's, read from the code's knowledge of that line; no fixture of a real overload is in `testdata/`).
 - **A fork copies its parent's turns.** `claude --resume <id> --fork-session` writes the parent's history since its last `compact_boundary` into the new file: the same `uuid`, `message.id` and `usage`, with `sessionId` rewritten to the fork's. Observed 2026-10-03 on a Caprock-started fork: 827 of the parent's assistant messages, all of them still in the parent's file. Ingest prices each message id once across sessions (see **A turn is paid once across sessions** under Hook shim).
 - **The first messages a compaction preserves are copied with zeroed usage.** `input_tokens`, `output_tokens`, `cache_read_input_tokens` and `cache_creation_input_tokens` are 0, but `cache_creation.ephemeral_1h_input_tokens` keeps the original figure. The 1h write is part of `cache_creation_input_tokens`, so ingest bounds it by that total; read raw, each such copy was priced at a 1h cache write that never happened. On 2026-10-03, 6 of 24,239 local lines carrying the breakdown had it above the total, every one of them zeroed this way.
 - **A record is at most 16 MiB** (`Tailer.MaxLine`), counting the bytes before its newline. The longest line in 4.0 GB of local transcripts (702 files, 593,686 lines) was 2.1 MB on 2026-10-18. A longer record is never held whole. It is read in fragments of the 256 KiB reader buffer, so a read keeps at most the limit plus one buffer however long the record is, and once the record passes the limit its bytes are dropped as they are read. It is counted once in `lines_malformed` and logged once with its path and offset, and reading resumes after its newline. Until that newline is written, the tailer remembers how far into the record it has read (`skipTo`) and the next read continues from there. The persisted offset stays on the record's first byte, so after a restart the record is read from its start and skipped again. A file that shrinks below the point already read counts as truncated and is read from the start. Records up to the limit are read as before. Until 2026-10-18 a complete record of any length went to the parser, after a read that allocated twice its size. Only an unfinished record over the limit was dropped, by moving the offset into its middle. The next read took that for a rewritten file and read the whole transcript again.

@@ -102,6 +102,34 @@ type Session struct {
 	// it. Never omitted: a live frame patches the held copy, and a frame
 	// without the key would leave a cleared limit standing.
 	LimitHit *LimitHit `json:"limit_hit"`
+	// APIError is the API error that ended the session's last turn after
+	// Claude Code's own retries, and what Caprock did about it (migration
+	// 0095, ADR-105); nil when there is neither. Never omitted, as LimitHit.
+	APIError *APIError `json:"api_error"`
+}
+
+// APIError is an API error that ended a turn (the synthetic line Claude
+// Code writes into its transcript once its own retries are spent) and the
+// automatic resume after it.
+type APIError struct {
+	// At is when the error was written (unix ms); 0 once a real reply came
+	// after it, while a resume is still worth reporting.
+	At int64 `json:"at,omitempty"`
+	// Reason is the error in a few words: "529 Overloaded", "server error".
+	Reason string `json:"reason,omitempty"`
+	// Retryable says the error is one a "continue" may get past: overloaded,
+	// a 5xx, a network failure or a timeout.
+	Retryable bool `json:"retryable,omitempty"`
+	// Tries is how many times Caprock typed "continue" in this incident.
+	Tries int `json:"tries,omitempty"`
+	// Resume is what Caprock did: "" nothing, "resumed" a try went in,
+	// "recovered" a reply came after one, "gave_up" the tries ran out,
+	// "stopped" the user took over.
+	Resume string `json:"resume,omitempty"`
+	// ResumedAt is when Caprock last typed "continue" (unix ms).
+	ResumedAt int64 `json:"resumed_at,omitempty"`
+	// For is the At the resume state answers; internal.
+	For int64 `json:"-"`
 }
 
 // LimitHit is a session stopped at its plan's usage limit, from the
@@ -1053,7 +1081,7 @@ func updateStatusByID(ctx context.Context, q Querier, ids []string, status strin
 	return nil
 }
 
-const sessionCols = `session_id, COALESCE(cwd,''), COALESCE(project,''), COALESCE(model,''), COALESCE(started_at,0), COALESCE(last_event_at,0), status, COALESCE(transcript_path,''), has_hooks, has_transcript, COALESCE(git_branch,''), COALESCE(version,''), COALESCE(repo_root,''), COALESCE(repo_path,''), COALESCE(owned,0), COALESCE(worktree,''), COALESCE(spawn_command,''), COALESCE(pid,0), exit_code, COALESCE(agent,'claude'), COALESCE(title,''), COALESCE(prompt,''), COALESCE(worked_at,0), COALESCE(parent_session,''), COALESCE(native_id,''), COALESCE(relay_from,''), COALESCE(subscription,''), COALESCE(sessions.name,''), COALESCE(sessions.chat,0), COALESCE(sessions.archived_at,0), COALESCE(sessions.subagent_model,''), COALESCE(sessions.idle_ended_at,0), COALESCE(sessions.idle_ended_after,0), COALESCE(sessions.effort,''), COALESCE(sessions.limit_hit_at,0), COALESCE(sessions.limit_resets_at,0), COALESCE(sessions.limit_window,''), ` + attemptCol
+const sessionCols = `session_id, COALESCE(cwd,''), COALESCE(project,''), COALESCE(model,''), COALESCE(started_at,0), COALESCE(last_event_at,0), status, COALESCE(transcript_path,''), has_hooks, has_transcript, COALESCE(git_branch,''), COALESCE(version,''), COALESCE(repo_root,''), COALESCE(repo_path,''), COALESCE(owned,0), COALESCE(worktree,''), COALESCE(spawn_command,''), COALESCE(pid,0), exit_code, COALESCE(agent,'claude'), COALESCE(title,''), COALESCE(prompt,''), COALESCE(worked_at,0), COALESCE(parent_session,''), COALESCE(native_id,''), COALESCE(relay_from,''), COALESCE(subscription,''), COALESCE(sessions.name,''), COALESCE(sessions.chat,0), COALESCE(sessions.archived_at,0), COALESCE(sessions.subagent_model,''), COALESCE(sessions.idle_ended_at,0), COALESCE(sessions.idle_ended_after,0), COALESCE(sessions.effort,''), COALESCE(sessions.limit_hit_at,0), COALESCE(sessions.limit_resets_at,0), COALESCE(sessions.limit_window,''), ` + apiErrorCols + `, ` + attemptCol
 
 func scanSession(sc interface{ Scan(...any) error }) (Session, error) {
 	var s Session
@@ -1061,10 +1089,17 @@ func scanSession(sc interface{ Scan(...any) error }) (Session, error) {
 	var exit sql.NullInt64
 	var attempt string
 	var lim LimitHit
-	err := sc.Scan(&s.SessionID, &s.Cwd, &s.Project, &s.Model, &s.StartedAt, &s.LastEventAt, &s.Status, &s.TranscriptPath, &hh, &ht, &s.GitBranch, &s.Version, &s.RepoRoot, &s.RepoPath, &owned, &s.Worktree, &s.SpawnCommand, &s.PID, &exit, &s.Agent, &s.Title, &s.Prompt, &s.WorkedAt, &s.ParentSession, &s.NativeID, &s.RelayFrom, &s.Subscription, &s.Name, &chat, &s.ArchivedAt, &s.SubagentModel, &s.IdleEndedAt, &s.IdleEndedAfter, &s.Effort, &lim.At, &lim.ResetsAt, &lim.Window, &attempt)
+	var ae APIError
+	var aeRetry int
+	err := sc.Scan(&s.SessionID, &s.Cwd, &s.Project, &s.Model, &s.StartedAt, &s.LastEventAt, &s.Status, &s.TranscriptPath, &hh, &ht, &s.GitBranch, &s.Version, &s.RepoRoot, &s.RepoPath, &owned, &s.Worktree, &s.SpawnCommand, &s.PID, &exit, &s.Agent, &s.Title, &s.Prompt, &s.WorkedAt, &s.ParentSession, &s.NativeID, &s.RelayFrom, &s.Subscription, &s.Name, &chat, &s.ArchivedAt, &s.SubagentModel, &s.IdleEndedAt, &s.IdleEndedAfter, &s.Effort, &lim.At, &lim.ResetsAt, &lim.Window,
+		&ae.At, &ae.Reason, &aeRetry, &ae.Tries, &ae.ResumedAt, &ae.For, &ae.Resume, &attempt)
 	s.setAttempt(attempt)
 	if lim.At > 0 {
 		s.LimitHit = &lim
+	}
+	ae.Retryable = aeRetry != 0
+	if ae.At > 0 || ae.Resume != "" {
+		s.APIError = &ae
 	}
 	s.HasHooks, s.HasTranscript, s.Owned, s.Chat = hh != 0, ht != 0, owned != 0, chat != 0
 	if exit.Valid {
