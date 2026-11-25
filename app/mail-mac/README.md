@@ -18,7 +18,20 @@ says so and fills in when Caprock starts; a Caprock updated or restarted, on
 the same port or another, is picked up from `runtime.json` within a few
 seconds and the page reloads onto its UI. Closing the window keeps the app in
 the Dock, like Mail.app; a click on the icon brings the window back. Links that leave the
-daemon open in the browser; attachments save to Downloads.
+daemon open in the browser when clicked; attachments save to Downloads.
+
+Nothing opens the browser without a click (`policy.swift`, the desktop app's
+Mail window rule in `src-tauri/src/shell.rs` plus that guard). The page reloads
+itself onto a new UI after every Caprock update, and that reload can come while
+the daemon is still restarting: the window used to hand its own page to the
+browser then, a stray *Caprock Mail* tab after updates. A page on 127.0.0.1
+with no daemon answering, or on the port the page was loaded from, is now
+refused quietly; a redirect or script navigation to the web is refused too.
+`test.sh` checks the rule with `swiftc` alone, without building or opening the
+app; `build.sh` runs it first and CI runs it on macOS.
+
+An installed preview keeps the rule it was built with: rebuild it and copy it
+to `/Applications` again to pick up a fix like this one.
 
 This is a preview for this machine, not a release: it is signed ad hoc, needs
 an installed Caprock new enough to serve `?mail=1`, and is not built by CI.

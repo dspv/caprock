@@ -5,11 +5,14 @@
 # (brew install librsvg) for the icon. Signed ad hoc: for this machine only.
 set -eu
 cd "$(dirname "$0")"
+# The navigation rule first: a build never ships one that opens the browser
+# without a click (policy.swift).
+./test.sh
 app="build/Caprock Mail.app"
 tmp=$(mktemp -d)
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
-swiftc -O -o "$app/Contents/MacOS/caprock-mail" main.swift -framework Cocoa -framework WebKit
+swiftc -O -o "$app/Contents/MacOS/caprock-mail" main.swift policy.swift -framework Cocoa -framework WebKit
 set_dir="$tmp/AppIcon.iconset"
 mkdir "$set_dir"
 for s in 16 32 128 256 512; do

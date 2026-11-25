@@ -48,12 +48,18 @@ final class Delegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKU
     var web: WKWebView!
     var current: Daemon?
     var port: Int? { current?.port }
+    /// The port the daemon's page was last loaded from, kept while the daemon
+    /// is away so the page's own reload is still recognised (policy.swift).
+    var pagePort: Int?
     var timer: Timer?
 
     func applicationDidFinishLaunching(_ note: Notification) {
         buildMenu()
         let cfg = WKWebViewConfiguration()
         cfg.preferences.setValue(true, forKey: "developerExtrasEnabled")
+        // A page opens a window only from a click (createWebViewWith relies
+        // on it): WebKit's default, said out loud.
+        cfg.preferences.javaScriptCanOpenWindowsAutomatically = false
         web = WKWebView(frame: .zero, configuration: cfg)
         web.navigationDelegate = self
         web.uiDelegate = self
@@ -79,6 +85,7 @@ final class Delegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKU
             DispatchQueue.main.async {
                 self.current = d
                 if let d = d, let url = URL(string: "http://127.0.0.1:\(d.port)/?mail=1") {
+                    self.pagePort = d.port
                     self.web.load(URLRequest(url: url))
                 } else {
                     self.web.loadHTMLString(waitingPage, baseURL: nil)
@@ -103,22 +110,31 @@ final class Delegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKU
         return true
     }
 
-    // Links that leave the daemon open in the browser, like in Caprock.
+    // A link the user clicks that leaves the daemon opens in the browser, like
+    // in Caprock. Nothing else does: the page reloading itself while Caprock
+    // restarts after an update is refused quietly (policy.swift).
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
                  decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-        guard let url = action.request.url else { return decisionHandler(.allow) }
-        let ours = url.host == "127.0.0.1" && url.port == port
-        if ours || url.scheme == "about" || url.scheme == "data" || url.scheme == "blob" {
-            return decisionHandler(.allow)
+        let url = action.request.url
+        switch route(url, daemonPort: port, pagePort: pagePort, userClick: action.navigationType == .linkActivated) {
+        case .stay: decisionHandler(.allow)
+        case .drop: decisionHandler(.cancel)
+        case .browser:
+            if let url = url { NSWorkspace.shared.open(url) }
+            decisionHandler(.cancel)
         }
-        if ["http", "https", "mailto"].contains(url.scheme ?? "") { NSWorkspace.shared.open(url) }
-        decisionHandler(.cancel)
     }
 
+    // A window the page opens (a link with target=_blank, window.open from a
+    // click; WebKit opens none without one): the daemon's page loads here, a
+    // link elsewhere goes to the browser.
     func webView(_ webView: WKWebView, createWebViewWith cfg: WKWebViewConfiguration,
                  for action: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
-        if let url = action.request.url {
-            if url.host == "127.0.0.1" && url.port == port { webView.load(action.request) } else { NSWorkspace.shared.open(url) }
+        guard let url = action.request.url else { return nil }
+        switch route(url, daemonPort: port, pagePort: pagePort, userClick: true) {
+        case .stay: if url.host == "127.0.0.1" { webView.load(action.request) }
+        case .browser: NSWorkspace.shared.open(url)
+        case .drop: break
         }
         return nil
     }

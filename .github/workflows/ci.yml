@@ -463,6 +463,12 @@ jobs:
           save-if: ${{ github.event_name == 'push' }}
       - name: fmt, clippy, test
         run: make app-test
+      # The Caprock Mail Mac preview (app/mail-mac) is not built by CI, but
+      # its navigation rule is checked: nothing reaches the browser without
+      # a click.
+      - name: mail preview navigation rule
+        if: runner.os == 'macOS'
+        run: sh app/mail-mac/test.sh
       # The stable self-signed identity, as in release.yml; without its
       # secrets (a pull request from a fork) the bundle is ad-hoc, as before.
       - name: stable signing identity
