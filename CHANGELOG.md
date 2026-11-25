@@ -12,6 +12,74 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.197.0] - 2026-11-26
+
+### Added
+
+- **chat:** a video dropped into a session (`.mov`, `.mp4`, `.m4v`, `.webm`)
+  shows in the chat as its first frame, with the file name and its length,
+  not as its path; a click opens it in the system's default player. The
+  session still gets the path, since Claude Code cannot watch a video. On
+  the phone the path stays as it was.
+
+### Changed
+
+- **perf:** a write to one of a private module's documents now sends only the
+  page of its list that holds that document back to the database. Before,
+  every write re-read every page of the collection: the Ops module's
+  busiest collection, twelve pages long, took about 2,000 writes an hour,
+  and its lists were still the daemon's largest disk reader (1.44 GB of
+  5.2 GB in an hour on 0.196.0). Pages the write did not touch keep their
+  ETag and are answered from memory.
+- **perf:** the daemon holds less Go heap for the summaries: one copy of each
+  kind, model, tool and folder name per read instead of one per session, and
+  the stored summary parts are compressed with an encoder that is dropped
+  afterwards, not with the shared one that kept an 8 MB buffer for good.
+- **perf:** the daemon reads less of its database for the Now screen's At a
+  glance, the plan-limit pace and the background-work check. The all-time
+  agent split keeps each session's sidechain mark between rebuilds and reads
+  it again only for sessions whose events moved; the "at current pace"
+  slope is extended by the status line's new samples instead of re-read over
+  the whole seven-day cycle; and the newest restart of a working session is
+  found from an index that carries each event's kind, so only its
+  `SessionStart` rows are read. Every answer is the same as before.
+- **perf:** the footprint's disk reads by source name more of what reads.
+  Reads while nothing counted runs but the system pages the daemon's own
+  program and memory back in are listed as `paging (no read running)`
+  instead of `unattributed`, and the Disk reads verdict says the Mac is short
+  of memory when that is the most. A prepared statement's runs, the copy of
+  the database kept before an upgrade and the transcript tailer's folder walk
+  and file checks are counted too.
+- **machines:** the other computers read at a glance. In the sidebar each
+  computer has a second line — *macOS · 36 GB · 2 running*, or *offline · seen
+  3d ago* greyed — with a badge for how many agents run there, and **All N**
+  opens a new **All computers** view: one card each with its memory and
+  processor bars. A computer's own page now opens with its name large, its
+  system, memory, cores and Caprock version, bars for memory in use (amber at
+  70%) and the processor (from the one-minute load; *No figure* on Windows,
+  which gives none), what is ready there, and **Start an agent there** in the
+  app. Offline, it says when it was last seen and what it was last time. All
+  of it is read from what that computer already answers; nothing new is
+  collected.
+
+### Fixed
+
+- **ui:** the Release panel says one next version. With open pull requests
+  that would raise it, the heading names the version they make and what it
+  waits for, *Next 0.197.0 · minor · waits for #1072*, over those pull
+  requests' rows, and the folded line says the same number, *Ready to
+  release 0.197.0 · waits for #1072*; the separate *0.197.0 once #1072
+  lands* line, which read as a second number out of sync with *Next 0.196.1
+  · patch*, is gone. Nothing queued, or only fixes over a patch, both are as
+  before; a pull request closed drops the number back.
+- **mail:** the Caprock Mail Mac preview no longer opens Mail in your
+  browser by itself. After a Caprock update the Mail page reloads onto the
+  new version, and when that reload came while Caprock was still restarting
+  the preview took its own page for a link and handed it to the browser. It
+  now refuses that reload quietly, and only a link you click opens the
+  browser. The fix is in the preview's source (`app/mail-mac`): rebuild it
+  with `app/mail-mac/build.sh` and copy it to Applications again.
+
 ## [0.196.0] - 2026-11-25
 
 ### Changed

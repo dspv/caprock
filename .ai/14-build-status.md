@@ -532,6 +532,17 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-11-26 — 0.197.0: computers at a glance, videos in chat
+
+A minor release, #1078. Other computers read at a glance: each sidebar row
+shows the OS, memory and how many agents run there, a computer's page is a
+card with memory and processor meters and what is ready there, and All
+computers lays them out side by side. A video dropped into a session shows
+as its first frame and opens in the system player on a click. The Release
+panel names one next version. The Mac mail preview opens the browser only
+on a click. The daemon keeps less in memory and reads the disk less, and
+the documented screenshots are retaken.
+
 ### 2026-11-25 — 0.196.0: lighter, steadier, and a new install window
 
 A minor release, #1070. The app uses less memory: a terminal tab hidden for
