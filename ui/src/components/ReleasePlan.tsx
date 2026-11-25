@@ -32,9 +32,9 @@
 import { OSGlyph } from './OSGlyph'
 import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
-import type { ReleaseCI, SessionCIStats, SessionRepoCI, Work, WorkEntry, WorkRepo } from '@/lib/api'
+import type { ReleaseCI, SessionCI, SessionCIStats, SessionPRs, SessionRepoCI, Work, WorkEntry, WorkRepo } from '@/lib/api'
 import { asBoard, type ShipsBy } from '@/lib/prboard'
-import { HINT_ROWS, mainChecks, nextHint, OUT_RECENT_MS, prKind, releaseFold, releaseStatus, STATUS_TEXT, tagUnpublished, type BatchPR, type NextHint, type ReleaseFold, type ReleaseStatus } from '@/lib/releasestatus'
+import { checksRead, HINT_ROWS, mainChecks, nextHint, OUT_RECENT_MS, prKind, releaseFold, releaseStatus, STATUS_TEXT, tagUnpublished, type BatchPR, type NextHint, type PRChecksRead, type ReleaseFold, type ReleaseStatus } from '@/lib/releasestatus'
 import { batchOf, groupNotes, notesHeading, notesOf, notInIt, viaLine, withNext, type NotesHeading, type NotInIt, type ViaLine } from '@/lib/releasenotes'
 import { stageWords, stripStages, type StripStage } from '@/lib/releasestatus'
 import { fmtWhen } from '@/lib/format'
@@ -47,7 +47,7 @@ import { changesRelease, useWork } from '@/lib/useWork'
 import { useNow } from '@/lib/useNow'
 import { pipelineHref, STEPS, titleIsNumber } from '@/lib/work'
 import { Chevron, SectionLabel, useFolded } from './Cockpit'
-import { asOfText, KEPT_CLASS, useDeckAnswer, useKeptCopy } from './CockpitCI'
+import { asOfText, KEPT_CLASS, KEPT_FOLD_MS, useDeckAnswer, useKeptCopy } from './CockpitCI'
 import { workRepoKey, writeDeck } from '@/lib/deckCache'
 import { Panel, usePanelFold } from './ui'
 import { extTitle } from '@/lib/externalLinks'
@@ -666,6 +666,29 @@ function keptWork(repo: WorkRepo, now: number): Work {
 }
 
 /**
+ * The release pull request's own checks as the CI section last read them —
+ * never asked here (owner, 2026-11-26: the panel knows the number, so it
+ * says *#1080 checks running · 6 of 16*, not *checks not read*): the copy
+ * kept per repository (`ci:<root>:<n>`) or per session (`ci:<session>:<n>`)
+ * by the CI section and the Pipeline, or the session's own pull requests
+ * (`prs:<session>`) when the session opened it; the newest that names it,
+ * none older than KEPT_FOLD_MS.
+ */
+function useReleasePRChecks(sessionId: string, repoRoot: string | undefined, n: number | undefined, now: number): PRChecksRead | undefined {
+  const byRepo = useDeckAnswer<SessionCI>(n && repoRoot ? `ci:${repoRoot}:${n}` : '')
+  const bySession = useDeckAnswer<SessionCI>(n ? `ci:${sessionId}:${n}` : '')
+  const own = useDeckAnswer<SessionPRs>(n ? `prs:${sessionId}` : '')
+  if (!n) return undefined
+  const young = (at: number | undefined) => !!at && now - at < KEPT_FOLD_MS
+  const reads: { at: number; live?: NonNullable<SessionCI['pr']>['live'] }[] = []
+  for (const c of [byRepo, bySession]) if (young(c.at) && c.d?.pr?.number === n) reads.push({ at: c.at!, live: c.d.pr.live })
+  const mine = own.d?.prs.find((p) => p.number === n)
+  if (young(own.at) && mine?.live) reads.push({ at: own.at!, live: mine.live })
+  const newest = reads.filter((r) => r.live?.state === 'open').sort((a, b) => b.at - a.at)[0]
+  return newest ? checksRead(n, newest.live!.checks) : undefined
+}
+
+/**
  * The right panel's *Release* section: the session's repository's next
  * release, as release notes (owner, 2026-11-19, translated: "the Release
  * section is unclear, it looks more like a list of PRs" — variant A, with
@@ -725,13 +748,16 @@ export function CockpitRelease({ sessionId, repoRoot }: { sessionId: string; rep
   const plan = useMemo(() => (repoRoot ? planForRepo(workFor, repoRoot, stats.d, now, { branches }) : undefined), [workFor, repoRoot, stats.d, now, branches])
   const board = useMemo(() => asBoard(stats.d?.board), [stats.d?.board])
   const merged = plan ? plan.rows.filter((r) => r.stage === 'merged').length : 0
-  const statusOf = (run: ReleaseCI | undefined) => releaseStatus({
+  const statusOf = (run: ReleaseCI | undefined, checks?: PRChecksRead) => releaseStatus({
     lastTag: repo?.tags?.last, unreleased: repo?.unreleased, merged,
-    prs: stats.d?.prs ?? [], cards: board?.cards, releases: board?.releases ?? [], run,
+    prs: stats.d?.prs ?? [], cards: board?.cards, releases: board?.releases ?? [], run, checks,
   })
   // The release run: the kept copy, asked again only while a release is under way.
   const keptRun = useDeckAnswer<SessionRepoCI>(repoRoot ? `release:${repoRoot}` : '')
-  const before = statusOf(keptRun.d?.release)
+  // The release pull request's checks, as the CI section last read them.
+  const relPR = statusOf(keptRun.d?.release).pr
+  const prChecks = useReleasePRChecks(sessionId, repoRoot, relPR && !relPR.merged ? relPR.number : undefined, now)
+  const before = statusOf(keptRun.d?.release, prChecks)
   // Under way: a release pull request listed, a tag no release has published
   // yet, a release published within the hour (its files may still upload),
   // or a run the kept copy says runs.
@@ -740,7 +766,7 @@ export function CockpitRelease({ sessionId, repoRoot }: { sessionId: string; rep
     || (!!newest && Date.now() - newest.published_at < OUT_RECENT_MS)
   const [run] = usePoll<SessionRepoCI>(moving && !!repoRoot, `cockpit-release:${sessionId}`, () => api.sessionCIRelease(sessionId), (d) => d.release?.state === 'running', CI_RUNNING_MS, repoRoot ? `release:${repoRoot}` : undefined,
     (prev, next) => !!next.error && !!prev.release && !next.release)
-  const status = run?.release === keptRun.d?.release ? before : statusOf(run?.release)
+  const status = run?.release === keptRun.d?.release ? before : statusOf(run?.release, prChecks)
   // The open pull request in flight that is not the release one: the batch.
   const batchPR = useMemo(() => batchOf(stats.d?.prs ?? [], repo?.unreleased?.via?.number), [stats.d?.prs, repo?.unreleased?.via?.number])
   const via = useMemo(() => (batchPR ? viaLine(batchPR, board?.cards.find((c) => c.number === batchPR.number)) : undefined), [batchPR, board])

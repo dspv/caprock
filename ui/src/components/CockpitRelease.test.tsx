@@ -193,6 +193,36 @@ describe('the cockpit’s Release section', () => {
     expect(line()!.querySelector('[data-release-fold-pulse]')).toHaveClass('release-step-pulse')
   })
 
+  // Owner, 2026-11-26 (translated: "again a PR step that's punched out — not
+  // logical, not clear"): #1080 open, its checks not on the board card.
+  it('unfolded, a release PR whose checks are not read yet is the current step, read, never dashed', () => {
+    writeDeck(`stats:${ROOT}`, stats([pr(1080, 'chore(release): 0.197.0', 'open')], [{ number: 1080, stage: 'open', spend: SPEND }], [rel('v0.196.0', 86_400_000, 23)]))
+    writeDeck(workRepoKey(ROOT), repo('v0.196.0', 5))
+    draw(false)
+    const strip = document.querySelector('[data-release-strip]')!
+    expect(strip).toHaveAttribute('data-release-current', 'pr')
+    const dots = [...strip.querySelectorAll('[data-strip-stage]')]
+    expect(dots.map((e) => e.getAttribute('data-step-state'))).toEqual(['done', 'current', 'todo', 'todo', 'todo'])
+    // The current step ringed; every step to come drawn alike, none dashed.
+    expect(dots[1]!.className).toMatch(/shadow-\[0_0_0_3px/)
+    expect(strip.querySelector('.border-dashed')).toBeNull()
+    expect(new Set(dots.slice(2).map((e) => e.className)).size).toBe(1)
+    expect(strip.querySelector('[data-release-stage-words]')).toHaveTextContent(/^Release PR open · #1080 · reading checks…$/)
+    expect(strip.textContent).not.toMatch(/not read/)
+    // Nothing more is asked of GitHub for it: no read of #1080's own checks.
+    expect(asked.some((u) => /\/ci\?pr=|\/ci\/1080|pr=1080/.test(u))).toBe(false)
+  })
+
+  it('takes the release PR’s checks from the CI section’s kept read: named and counted', () => {
+    writeDeck(`stats:${ROOT}`, stats([pr(1080, 'chore(release): 0.197.0', 'open')], [{ number: 1080, stage: 'open', spend: SPEND }], [rel('v0.196.0', 86_400_000, 23)]))
+    writeDeck(workRepoKey(ROOT), repo('v0.196.0', 5))
+    const items = [...Array(16)].map((_, i) => ({ name: `check ${i}`, state: i < 6 ? 'pass' : 'pending' }))
+    writeDeck(`ci:${ROOT}:1080`, { connected: true, pr: { number: 1080, url: 'u', repo: 'acme/app', live: { number: 1080, state: 'open', checks: { state: 'pending', passed: 6, failed: 0, pending: 10, items } } } })
+    draw(true)
+    expect(line()).toHaveAttribute('aria-label', 'Releasing 0.197.0 · #1080 checks running · 6 of 16')
+    expect(line()).toHaveClass('text-progress')
+  })
+
   it('folded, says a tag building with the files its release has, from the kept release run', () => {
     writeDeck(`stats:${ROOT}`, stats([pr(942, 'chore(release): 0.183.0', 'merged', now - 900_000)], [{ number: 942, stage: 'merged', spend: SPEND }],
       [rel('v0.183.0', 120_000, 12), rel('v0.182.4', 86_400_000, 23)]))

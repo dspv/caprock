@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { CIJob, ReleaseCI, WorkRepo } from './api'
 import type { BranchPR } from './branches'
 import type { BoardCard, BoardRelease } from './prboard'
-import { bumpBetween, mainChecks, nextHint, plainVersion, prKind, raiseVersion, releaseBranchVersion, releaseFold, releasePRVersion, releaseStatus, releaseVersionOf, stageWords, stripStages, tagUnpublished, type BatchPR, type MainChecks, type ReleaseStatus, type ReleaseStatusInput } from './releasestatus'
+import { bumpBetween, checksRead, mainChecks, nextHint, plainVersion, prKind, raiseVersion, releaseBranchVersion, releaseFold, releasePRVersion, releaseStatus, releaseVersionOf, stageWords, stripStages, tagUnpublished, type BatchPR, type MainChecks, type ReleaseStatus, type ReleaseStatusInput } from './releasestatus'
 
 const H = 3_600_000
 const T = Date.UTC(2026, 9, 16, 12)
@@ -68,17 +68,40 @@ describe('the release status’s stages', () => {
     expect(ci.title).toMatch(/windows-latest/)
   })
 
-  it('with the release PR green, waits for the tag', () => {
+  // Owner, 2026-11-26: an open release PR is where the release is until it merges.
+  it('with the release PR green, is at the PR, waiting for it to merge', () => {
     const s = releaseStatus(base({ prs: [pr(730, 'chore(release): 0.127.0')], cards: [card(730, 'pass')] }))
-    expect(s.current).toBe('tag')
+    expect(s.current).toBe('pr')
+    expect(states(s)).toMatchObject({ pr: 'current', ci: 'done', tag: 'todo' })
+    expect(s.stages.find((x) => x.key === 'pr')?.title).toMatch(/waiting to merge/)
     expect(s.stages.find((x) => x.key === 'tag')?.title).toMatch(/#730 to merge/)
   })
 
-  it('says CI not known when the release PR’s checks were not read', () => {
+  it('with the release PR’s checks not read, is at its CI, being read — never a later step', () => {
     const s = releaseStatus(base({ prs: [pr(730, 'chore(release): 0.127.0')] }))
-    // Unknown is neutral, never invented: the first knowable stage after it is current.
-    expect(states(s).ci).toBe('unknown')
-    expect(s.current).toBe('tag')
+    expect(s.current).toBe('ci')
+    expect(states(s)).toMatchObject({ pr: 'done', ci: 'current', tag: 'todo' })
+    expect(s.stages.find((x) => x.key === 'ci')?.title).toMatch(/^Reading #730’s checks/)
+  })
+
+  it('takes the release PR’s own checks read over the card, with the counts', () => {
+    const read = { number: 730, state: 'running' as const, done: 6, total: 16 }
+    const s = releaseStatus(base({ prs: [pr(730, 'chore(release): 0.127.0')], checks: read }))
+    expect(s.current).toBe('ci')
+    expect(s.pr).toEqual({ number: 730, merged: false, checks: read })
+    expect(s.stages.find((x) => x.key === 'ci')).toMatchObject({ text: 'CI 6/16', tone: 'pending', title: '#730’s checks are running (6 of 16 checks finished).' })
+    // Another pull request's read says nothing of this one.
+    expect(releaseStatus(base({ prs: [pr(730, 'chore(release): 0.127.0')], checks: { ...read, number: 731 } })).pr?.checks).toBeUndefined()
+    // The read wins over an older card state.
+    expect(releaseStatus(base({ prs: [pr(730, 'chore(release): 0.127.0')], cards: [card(730, 'running')], checks: { ...read, state: 'pass', done: 16 } })).current).toBe('pr')
+  })
+
+  it('reads a pull request’s live checks as every CI view counts them', () => {
+    const live = { state: 'pending' as const, passed: 1, failed: 1, pending: 2, items: [
+      { name: 'lint', state: 'pass' as const }, { name: 'e2e', state: 'fail' as const }, { name: 'go (macos)', state: 'pending' as const }, { name: 'go (windows)', state: 'pending' as const }] }
+    expect(checksRead(9, live)).toEqual({ number: 9, state: 'running', done: 2, total: 4, failed: ['e2e'] })
+    expect(checksRead(9, { ...live, state: 'none', items: [] })).toEqual({ number: 9, state: 'none', done: 0, total: 0 })
+    expect(checksRead(9, undefined)).toBeUndefined()
   })
 
   it('ignores a release PR for a version already tagged, and a closed one', () => {
@@ -265,6 +288,10 @@ describe('the right panel’s folded Release line', () => {
     expect(fold(releaseStatus(base({ ...input, cards: [card(942, 'running')] }))).text).toBe('Releasing 0.183.0 · checks running')
     expect(fold(releaseStatus(base({ ...input, cards: [card(942, 'fail')] })))).toMatchObject({ kind: 'stopped', text: 'Release 0.183.0 stopped · checks failed', tone: 'fail' })
     expect(fold(releaseStatus(base({ ...input, cards: [card(942, 'pass')] })))).toMatchObject({ kind: 'ready', text: '0.183.0 ready to merge · #942 checks passed', tone: 'idle' })
+    // Its own checks read: named and counted (owner, 2026-11-26).
+    expect(fold(releaseStatus(base({ ...input, checks: { number: 942, state: 'running', done: 6, total: 16 } }))).text).toBe('Releasing 0.183.0 · #942 checks running · 6 of 16')
+    // Not read yet: being read, never *not read*.
+    expect(fold(releaseStatus(base(input)))).toMatchObject({ kind: 'ready', text: '0.183.0 release PR open · #942 · reading checks…', tone: 'idle' })
   })
 
   it('says a tag building as releasing, with the files its release has of the last one’s; a failed build stopped', () => {
@@ -357,6 +384,47 @@ describe('the right panel’s stages strip', () => {
   })
 })
 
+// Owner, 2026-11-26 (translated: "again a PR step that's punched out — not
+// logical, not clear"): every stepper state is done, current (in the status's
+// tone) or to come; the step it is at is never a later one than the release is.
+describe('the stepper’s states', () => {
+  const step = (over: Partial<ReleaseStatusInput>) => {
+    const s = releaseStatus(base(over))
+    const strip = stripStages(s)
+    const w = stageWords(s, strip, { cards: over.cards, now: T })!
+    return { states: strip.map((x) => x.state).join(' '), at: w.key, tone: w.tone, text: w.text }
+  }
+  const relPR = (extra: Partial<BranchPR> = {}) => ({ prs: [{ ...pr(1080, 'chore(release): 0.127.0'), ...extra }] })
+
+  it('no release PR: at the PR, not started', () => {
+    expect(step({})).toEqual({ states: 'done current todo todo todo', at: 'pr', tone: 'idle', text: 'Ready to release · not started' })
+  })
+  it('release PR open, checks running: at the PR, in progress, counted', () => {
+    expect(step({ ...relPR(), checks: { number: 1080, state: 'running', done: 6, total: 16 } }))
+      .toEqual({ states: 'done current todo todo todo', at: 'pr', tone: 'active', text: 'Releasing · #1080 checks running · 6 of 16' })
+    expect(step({ ...relPR(), cards: [card(1080, 'running')] })).toMatchObject({ states: 'done current todo todo todo', tone: 'active', text: 'Releasing · checks running' })
+  })
+  it('release PR open, checks unknown: at the PR, being read — Tagged to come like the rest', () => {
+    expect(step(relPR())).toEqual({ states: 'done current todo todo todo', at: 'pr', tone: 'idle', text: 'Release PR open · #1080 · reading checks…' })
+    expect(stripStages(releaseStatus(base(relPR()))).some((x) => x.unknown)).toBe(false)
+  })
+  it('release PR open, checks failed: at the PR, stopped', () => {
+    expect(step({ ...relPR(), checks: { number: 1080, state: 'fail', done: 16, total: 16, failed: ['e2e'] } })).toMatchObject({ states: 'done current todo todo todo', at: 'pr', tone: 'fail', text: 'Release stopped · checks failed' })
+  })
+  it('release PR open, a job given no machine: at the PR, waiting', () => {
+    expect(step({ ...relPR(), cards: [card(1080, 'no_runner')] })).toEqual({ states: 'done current todo todo todo', at: 'pr', tone: 'waiting', text: 'Release PR open · #1080 · a job not run' })
+  })
+  it('release PR open, green: at the PR, waiting to merge', () => {
+    expect(step({ ...relPR(), checks: { number: 1080, state: 'pass', done: 16, total: 16 } })).toEqual({ states: 'done current todo todo todo', at: 'pr', tone: 'idle', text: 'Ready to merge · #1080 checks passed' })
+  })
+  it('a draft release PR: at the PR', () => {
+    expect(step(relPR({ draft: true }))).toMatchObject({ states: 'done current todo todo todo', at: 'pr', tone: 'idle', text: 'Ready to release · #1080 is a draft' })
+  })
+  it('release PR merged, not tagged: at Tagged', () => {
+    expect(step(relPR({ state: 'merged' }))).toMatchObject({ states: 'done done current todo todo', at: 'tag', tone: 'idle' })
+  })
+})
+
 // Owner, 2026-11-19, variant A: only the stage it is at is named, with its
 // detail; 2026-11-20 (translated: "it must be really clear, I must know the
 // status exactly"): the state first in plain words, in one colour language —
@@ -399,7 +467,7 @@ describe('the words beside the stage dots', () => {
 
   it('a draft release PR, a green one waiting to merge, a merged one not tagged: grey, nothing runs', () => {
     expect(words(releaseStatus(base({ prs: [{ ...pr(952, 'chore(release): 0.127.0'), draft: true }] })))).toMatchObject({ text: 'Ready to release · #952 is a draft', tone: 'idle' })
-    expect(words(releaseStatus(base({ prs: [pr(952, 'chore(release): 0.127.0')], cards: [card(952, 'pass')] })))).toMatchObject({ key: 'tag', text: 'Ready to merge · #952 checks passed', tone: 'idle' })
+    expect(words(releaseStatus(base({ prs: [pr(952, 'chore(release): 0.127.0')], cards: [card(952, 'pass')] })))).toMatchObject({ key: 'pr', text: 'Ready to merge · #952 checks passed', tone: 'idle' })
     expect(words(releaseStatus(base({ prs: [pr(952, 'chore(release): 0.127.0', 'merged')] })))).toMatchObject({ key: 'tag', text: 'Not tagged yet · #952 merged', tone: 'idle' })
   })
 
