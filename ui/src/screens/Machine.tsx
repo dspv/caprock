@@ -20,10 +20,10 @@
  * there, refused. A terminal that drops with the channel reopens by itself
  * and resumes where it was (terminal protocol v2).
  */
-import { useState, type ReactNode } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { ApiError, type SessionSummary } from '@/lib/api'
 import { machineLook, machinePageURL, offlineWhy, machinesApi, useMachineSessions, useMachines, type Machine, type MachineSessions as MachineRead } from '@/lib/machines'
-import { gb, machineState, osName, seenAgo, useMachineSpec } from '@/lib/machinespec'
+import { gb, machineState, osName, seenAgo, stateStatus, useMachineSpec } from '@/lib/machinespec'
 import { ready, useAppActions } from '@/lib/setup'
 import { MachineCard, MachineMeters, MachineReadyList, OsGlyph } from '@/components/MachineCard'
 import { href, navigate } from '@/lib/router'
@@ -65,16 +65,25 @@ function MachineHead({ m, back, children }: { m: Machine; back?: boolean; childr
 
 function MachineSessions({ m }: { m: Machine }) {
   const now = useNow(30_000)
-  const look = machineLook(m)
   const actions = useAppActions()
-  const sessions = useApi(() => machinesApi.sessions(m.id, false), [m.id], { live: false, intervalMs: 15_000, active: look.reachable })
+  // The one list the sidebar reads too (shared, no second request): its
+  // answer stands in for this page's own until that comes.
+  const shared = useMachineSessions(useMemo(() => [m], [m])).get(m.id)
+  const sessions = useApi(() => machinesApi.sessions(m.id, false), [m.id], { live: false, intervalMs: 15_000, active: machineLook(m).reachable })
   const failure = sessions.error instanceof ApiError ? (sessions.error.body as { error?: string; status?: string } | undefined) : undefined
-  // What its session list said last outranks the list's state: it was asked later.
-  const st = machineState(m, failure?.status ? { status: failure.status } : sessions.data ? { status: 'online' } : undefined)
+  // Its state is machineState's, as the sidebar and All computers have it:
+  // this page's own read when it has one, else the shared list's.
+  const read = failure?.status ? { status: failure.status } : sessions.data ? { status: 'online' } : shared
+  const st = machineState(m, read)
+  const look = machineLook({ ...m, status: stateStatus(m, read, st) })
   const spec = useMachineSpec(m.id, look.reachable && !st.down, 15_000)
-  const all = sessions.data ?? []
+  // What runs there: this page's read (running and recent), else the shared
+  // list's running ones, so a slow first read there never leaves a skeleton.
+  const sharedRunning = shared?.status === 'online' && !shared.error ? shared.sessions : undefined
+  const listed = sessions.data ?? sharedRunning
+  const all = listed ?? []
   const running = all.filter((s) => s.status !== 'ended')
-  const recent = all.filter((s) => s.status === 'ended').slice(0, 20)
+  const recent = (sessions.data ?? []).filter((s) => s.status === 'ended').slice(0, 20)
   const rep = spec.data?.setup
   const f = spec.data?.machine
   // Figures kept from before and not yet confirmed, or the computer is down: last time's.
@@ -117,14 +126,13 @@ function MachineSessions({ m }: { m: Machine }) {
         </div>
       </header>
       {!failure?.status && look.detail && look.tone !== 'ok' && look.tone !== 'muted' && <p className="text-[13px] text-fg-muted">{look.detail}</p>}
-      {failure?.status && (
-        <p role="alert" className="text-[13px] text-danger" data-machine-error={failure.status} title={failure.error}>
-          {failure.status === 'offline' ? `${m.name} is offline. ${offlineWhy(failure.error ?? '')}` : failure.status === 'revoked' ? machineLook({ ...m, status: 'revoked' }).detail : failure.error ?? sessions.error?.message}
+      {sessions.error && (
+        <p role="alert" className="text-[13px] text-danger" data-machine-error={failure?.status ?? 'error'} title={failure?.error}>
+          {readFailure(m, st, failure, sessions.error.message)}
           {' '}
           <button type="button" onClick={sessions.refresh} className="text-accent hover:underline">Try again</button>
         </p>
       )}
-      {sessions.error && !failure?.status && <p role="alert" className="text-[13px] text-danger">{sessions.error.message}</p>}
       {(spec.data || st.offline) && (
         <div className="grid grid-cols-1 gap-6 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
           {st.offline ? (
@@ -136,8 +144,11 @@ function MachineSessions({ m }: { m: Machine }) {
           <MachineReadyList m={m} spec={spec.data} lastTime={lastTime} />
         </div>
       )}
-      {look.reachable && !sessions.data && !sessions.error && <Skeleton rows={4} />}
-      {sessions.data && !st.offline && (
+      {/* Reading, and nothing to show yet: the only skeleton, and it ends —
+          every read is bounded (lib/machines.ts MACHINE_READ_MS) and ends in
+          the list, its empty state, or the error above with Try again. */}
+      {look.reachable && !st.down && !listed && !sessions.error && <Skeleton rows={4} />}
+      {listed && !st.down && (
         <>
           <SessionGroup title="Running" items={running} m={m} now={now} empty={`Nothing runs on ${m.name} now.`} />
           {recent.length > 0 && <SessionGroup title="Recent" items={recent} m={m} now={now} />}
@@ -150,6 +161,19 @@ function MachineSessions({ m }: { m: Machine }) {
       )}
     </div>
   )
+}
+
+/**
+ * Why this page's read of the computer failed, said for a person: offline
+ * (and why) only when machineState says so — a read that ran out of time on
+ * a computer whose channel is up is slow, not offline.
+ */
+function readFailure(m: Machine, st: { offline: boolean }, failure: { error?: string; status?: string } | undefined, message: string): string | undefined {
+  const status = failure?.status
+  if (status === 'offline' && st.offline) return `${m.name} is offline. ${offlineWhy(failure?.error ?? '')}`
+  if (status === 'revoked' || status === 'refused' || status === 'pending') return machineLook({ ...m, status }).detail
+  if (status === 'offline' || status === 'timeout') return `${m.name} is online but did not answer in time.`
+  return failure?.error ?? message
 }
 
 /** All computers (#/m): one card each, the same figures as their pages; a card opens the page. */

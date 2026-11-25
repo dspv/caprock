@@ -496,7 +496,10 @@ the target runs its ordinary Host and gate, and pairs it as a computer
   echoed, never a device token; a close there closes here with its code (a
   dropped channel, 1006, drops the local socket). Errors: `404 {error: "no
   such computer"}`; `503 {error, status: "offline"}`; `502 {error, status:
-  "refused"}`; a computer that answers `401` is asked `GET /v1/pair/me` once
+  "refused"}`; `504 {error, status: "timeout"}` for a `GET` or `HEAD` whose
+  answer has not begun within **30 s** (the computer is online but did not
+  answer; only the head is bounded, so a long answer still streams, and a
+  write is never cut short); a computer that answers `401` is asked `GET /v1/pair/me` once
   and, when that says this machine was removed, the answer is `403 {error,
   status: "revoked"}`; while it reads `revoked`, each request asks again
   before forwarding and goes through once it is allowed back. A waiting
@@ -530,7 +533,11 @@ the target runs its ordinary Host and gate, and pairs it as a computer
   `GET /v1/sessions?active=true&chats=exclude&limit=50` answer, as it sent
   it, read through its channel (8 s at most each, all at once) and kept
   here **10 s** for every caller; `status` is `online`, or why there is no
-  list — `offline` (with `error`), `pending` (its `403` while it waits, or
+  list — `offline` (with `error`; a read that ran out of its 8 s is
+  `offline` only when the channel is not up), `timeout` (the channel is up
+  but the computer did not answer in 8 s: online, slow — never `offline`,
+  which had the sidebar call an online computer offline, 2026-11-26),
+  `pending` (its `403` while it waits, or
   the state already known), `revoked` (a `401`, confirmed with `GET
   /v1/pair/me`), `refused`, `error`. A computer already known to be
   `pending`, `revoked` or `refused` is not asked. When the last read

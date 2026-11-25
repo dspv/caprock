@@ -29,6 +29,7 @@ type fakeMachines struct {
 	checked  int
 	revoked  bool // what a Check finds
 	doErr    error
+	hang     bool // Do never answers: it waits for the request's context
 	left     bool
 	forgot   bool
 	renamed  string
@@ -86,6 +87,13 @@ func (f *fakeMachines) Forget(string) error                 { f.forgot = true; r
 func (f *fakeMachines) Do(id string, req *http.Request) (*http.Response, error) {
 	if f.doErr != nil {
 		return nil, f.doErr
+	}
+	f.mu.Lock()
+	hang := f.hang
+	f.mu.Unlock()
+	if hang {
+		<-req.Context().Done()
+		return nil, req.Context().Err()
 	}
 	w := httptest.NewRecorder()
 	f.far.ServeHTTP(w, req)
@@ -336,5 +344,44 @@ func TestMachineProxySocketRefused(t *testing.T) {
 	fm.sockErr = remote.ErrMachineOffline
 	if w := serve(s, r); w.Code != 503 {
 		t.Fatalf("offline socket: %d %s", w.Code, w.Body)
+	}
+}
+
+// A read through the proxy that the other computer never answers ends, with
+// the computer's state said — online but slow, "timeout" — rather than
+// holding the dashboard's request open for good (Win PC1, 2026-11-26: the
+// page sat on its skeleton). A write is never cut short.
+func TestMachineProxyReadThatNeverAnswers(t *testing.T) {
+	old := machineProxyWait
+	machineProxyWait = 50 * time.Millisecond
+	t.Cleanup(func() { machineProxyWait = old })
+	fm := &fakeMachines{status: "online", hang: true, far: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {})}
+	s := machinesServer(t, fm)
+	start := time.Now()
+	w := serve(s, local("GET", "/v1/m/mini/v1/sessions?chats=exclude&limit=50", ""))
+	if w.Code != http.StatusGatewayTimeout || !strings.Contains(w.Body.String(), `"status":"timeout"`) {
+		t.Fatalf("a read that never answers: %d %s", w.Code, w.Body)
+	}
+	if d := time.Since(start); d > 5*time.Second {
+		t.Fatalf("answered after %s", d)
+	}
+
+	// A write waits for its answer, however long.
+	fm.mu.Lock()
+	fm.hang = false
+	fm.far = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		time.Sleep(150 * time.Millisecond)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	})
+	fm.mu.Unlock()
+	if w := serve(s, local("POST", "/v1/m/mini/v1/agents", `{"cwd":"/x"}`)); w.Code != 200 {
+		t.Fatalf("a slow write was cut short: %d %s", w.Code, w.Body)
+	}
+	// A read that answers in time streams its body as before.
+	fm.mu.Lock()
+	fm.far = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(`[]`)) })
+	fm.mu.Unlock()
+	if w := serve(s, local("GET", "/v1/m/mini/v1/sessions", "")); w.Code != 200 {
+		t.Fatalf("a read in time: %d %s", w.Code, w.Body)
 	}
 }

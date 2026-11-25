@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -26,8 +27,9 @@ import (
 const machineSessionsFresh = 10 * time.Second
 
 // machineSessionsWait bounds one computer's read; one that does not answer
-// in time is listed as it stood, never holding up the others.
-const machineSessionsWait = 8 * time.Second
+// in time is listed as it stood, never holding up the others. A var so a
+// test can wait less.
+var machineSessionsWait = 8 * time.Second
 
 // machineSessionsPath is what is asked of each computer: its running
 // sessions, chats left out, as its own sidebar lists them.
@@ -39,7 +41,8 @@ type MachineSessions struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 	// Status is how the computer stands: online, or why its sessions are not
-	// listed — offline, pending (waiting for Allow there), revoked (removed
+	// listed — offline, timeout (the channel is up but the computer did not
+	// answer in time), pending (waiting for Allow there), revoked (removed
 	// there), refused (another key), error.
 	Status string `json:"status"`
 	Error  string `json:"error,omitempty"`
@@ -228,11 +231,16 @@ func (s *Server) askMachine(ctx context.Context, id, path string, wait time.Dura
 	res, err := s.d.Machines.Do(id, req)
 	if err != nil {
 		out.Status, out.Error = machineState(err), err.Error()
+		if rctx.Err() != nil {
+			out.Status, out.Error = s.slowOrOffline(id, wait)
+		}
 		return out
 	}
 	defer res.Body.Close()
 	b, err := io.ReadAll(io.LimitReader(res.Body, askMachineMax))
 	switch {
+	case err != nil && rctx.Err() != nil:
+		out.Status, out.Error = s.slowOrOffline(id, wait)
 	case err != nil:
 		out.Status, out.Error = "offline", err.Error()
 	case res.StatusCode == http.StatusOK && json.Valid(b):
@@ -265,6 +273,18 @@ func (s *Server) askMachine(ctx context.Context, id, path string, wait time.Dura
 		}
 	}
 	return out
+}
+
+// slowOrOffline words a read that ran out of time. Only the channel knows
+// whether the computer is gone: while it is up, the computer is online and
+// slow to answer — "timeout" — not offline. Saying offline there had the
+// sidebar call a computer that was on, and answering, offline (Win PC1,
+// 2026-11-26), while its page, reading the channel, said online.
+func (s *Server) slowOrOffline(id string, wait time.Duration) (status, why string) {
+	if st, err := s.d.Machines.Get(id); err == nil && st.Status == "online" {
+		return machineTimeout, errMachineSlowFor(wait).Error()
+	}
+	return "offline", fmt.Sprintf("%v: it did not answer in %s", remote.ErrMachineOffline, wait)
 }
 
 // machineState is the word for a channel error: offline, refused or error.

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { agentsReady, cpuPct, fetchMachineSpec, machineLine, machineState, memoryUse, meterWarn, projectsThere } from './machinespec'
+import { agentsReady, cpuPct, fetchMachineSpec, machineLine, machineState, memoryUse, meterWarn, projectsThere, stateStatus } from './machinespec'
+import { MACHINE_READ_MS } from './machines'
 import type { SetupReport } from './setup'
 
 const GiB = 2 ** 30
@@ -45,10 +46,46 @@ describe('machinespec — a computer’s figures, from what it already answers',
     expect(machineLine({ offline: false, state: 'waiting for Allow', running: 0 })).toBe('waiting for Allow')
   })
 
-  it('takes what its session list said last over the list’s state', () => {
-    expect(machineState({ status: 'online' }, { status: 'offline' })).toEqual({ online: false, offline: true, down: true })
+  it('takes online or offline from the channel, never from a read that failed (Win PC1, 2026-11-26)', () => {
+    // The owner's case: the channel online, its sessions read empty — online.
+    expect(machineState({ status: 'online' }, { status: 'online' })).toEqual({ online: true, offline: false, down: false })
+    // A read that ran out of time, or failed, on an online channel: still online.
+    expect(machineState({ status: 'online' }, { status: 'offline' })).toEqual({ online: true, offline: false, down: false })
+    expect(machineState({ status: 'online' }, { status: 'timeout' })).toEqual({ online: true, offline: false, down: false })
+    expect(machineState({ status: 'online' }, { status: 'error' })).toEqual({ online: true, offline: false, down: false })
+    // A read that answered counts for a channel not opened yet; offline is the channel's word.
     expect(machineState({ status: 'idle' }, { status: 'online' })).toEqual({ online: true, offline: false, down: false })
+    expect(machineState({ status: 'offline' }, { status: 'online' })).toEqual({ online: false, offline: true, down: true })
+    // Offline when the channel says so, or a read does and the channel is not up.
+    expect(machineState({ status: 'offline' })).toEqual({ online: false, offline: true, down: true })
+    expect(machineState({ status: 'idle' }, { status: 'offline' })).toEqual({ online: false, offline: true, down: true })
+    // A state that needs its owner, said by either.
     expect(machineState({ status: 'pending' })).toEqual({ online: false, offline: false, down: true })
+    expect(machineState({ status: 'online' }, { status: 'revoked' })).toEqual({ online: false, offline: false, down: true })
+  })
+
+  it('words a view by the same state: a read that needs its owner first, else online or offline', () => {
+    const word = (m: string, r?: string) => stateStatus({ status: m as never }, r ? { status: r } : undefined, machineState({ status: m as never }, r ? { status: r } : undefined))
+    expect(word('online', 'offline')).toBe('online')
+    expect(word('idle', 'online')).toBe('online')
+    expect(word('online', 'revoked')).toBe('revoked')
+    expect(word('idle')).toBe('idle')
+    expect(word('offline')).toBe('offline')
+  })
+
+  it('gives up on a figure read that never answers, rather than holding the view for good', async () => {
+    vi.useFakeTimers()
+    try {
+      vi.spyOn(globalThis, 'fetch').mockImplementation((_u, init) => new Promise((_, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))
+      }))
+      const got = fetchMachineSpec('abc')
+      const settled = expect(got).rejects.toThrow('no answer')
+      await vi.advanceTimersByTimeAsync(MACHINE_READ_MS + 10)
+      await settled
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('names the agents ready there, from a Caprock before the switches too, and counts projects', () => {

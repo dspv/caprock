@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { machineLook, machinesApi, type Machine } from './machines'
+import { MACHINE_READ_MS, machineLook, machinesApi, type Machine } from './machines'
+import { ApiError } from './api'
 import { installMachineProxy, machinePageId, machinePageURL, rewriteForMachine } from './machinepage'
 
 const ID = 'f7kc4QaG4HRPYEjg19Pr-au-FeTljmKHkikFrAmRTzM'
@@ -80,5 +81,30 @@ describe('machinesApi', () => {
     await machinesApi.sessions(ID)
     expect(f.mock.calls[0]![0]).toBe(`/v1/m/${ID}/v1/sessions?active=true&chats=exclude&limit=50`)
     expect((f.mock.calls[0]![1]?.headers as Record<string, string>)['Content-Type']).toBeUndefined()
+  })
+})
+
+// Win PC1, 2026-11-26: a read through the proxy never answered and the page
+// sat on its skeleton for good. Every read of another computer is bounded.
+describe('reads of another computer end', () => {
+  afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers() })
+
+  it('gives up on a read that never answers, as a timeout the page words', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(globalThis, 'fetch').mockImplementation((_u, init) => new Promise((_, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))
+    }))
+    for (const read of [() => machinesApi.sessions(ID, false), () => machinesApi.allSessions(), () => machinesApi.list()]) {
+      const got = read().catch((e: unknown) => e)
+      await vi.advanceTimersByTimeAsync(MACHINE_READ_MS + 10)
+      const e = (await got) as ApiError
+      expect(e).toBeInstanceOf(ApiError)
+      expect(e.status).toBe(504)
+      expect((e.body as { status?: string }).status).toBe('timeout')
+    }
+  })
+
+  it('words a timeout as slow, not offline', () => {
+    expect(machineLook({ ...base, status: 'timeout' })).toMatchObject({ label: 'slow to answer', tone: 'warn', reachable: true })
   })
 })

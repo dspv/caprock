@@ -57,15 +57,52 @@ export interface Machine {
   traffic?: { msgs_out: number; msgs_in: number; bytes_out: number; bytes_in: number }
 }
 
-export type MachineStatus = 'idle' | 'connecting' | 'online' | 'offline' | 'refused' | 'closed' | 'pending' | 'revoked'
+/** `timeout` is never the list's own state: it is what a read through the
+ *  channel says when the channel is up but the computer did not answer in
+ *  time (online, slow), handed to machineLook to word it. */
+export type MachineStatus = 'idle' | 'connecting' | 'online' | 'offline' | 'refused' | 'closed' | 'pending' | 'revoked' | 'timeout'
 
 export { machineBase, machinePageURL } from './machinepage'
 
-async function call<T>(path: string, init?: RequestInit): Promise<T> {
+/**
+ * How long a read of another computer may take before it is given up, in ms.
+ * The daemon gives up on one first (30 s for a read through `/v1/m/{id}/…`,
+ * 8 s a computer for `/v1/machines/sessions`) and says so; this is the floor
+ * under that, for a request the browser itself never finishes. A read that
+ * never ended held its hook for good — `useApi` asks nothing again while one
+ * is in flight — and the computer's page sat on its skeleton (Win PC1,
+ * 2026-11-26).
+ */
+export const MACHINE_READ_MS = 35_000
+
+/** Says a read gave up waiting, in the proxy's words: `status: 'timeout'`. */
+export function readTimeout(ms: number): ApiError {
+  return new ApiError(504, `No answer in ${Math.round(ms / 1000)} s`, { status: 'timeout', error: `did not answer in ${Math.round(ms / 1000)} s` })
+}
+
+/**
+ * fetch, given up after `ms`: a read that never answers ends as
+ * readTimeout instead of hanging whatever waits on it.
+ */
+export async function fetchWithin(url: string, init: RequestInit, ms: number): Promise<Response> {
+  const ctl = new AbortController()
+  let timedOut = false
+  const t = setTimeout(() => { timedOut = true; ctl.abort() }, ms)
+  try {
+    return await fetch(url, { ...init, signal: ctl.signal })
+  } catch (e) {
+    throw timedOut ? readTimeout(ms) : e
+  } finally {
+    clearTimeout(t)
+  }
+}
+
+async function call<T>(path: string, init?: RequestInit, ms = 0): Promise<T> {
   // The daemon refuses a state-changing request without a JSON content type,
   // a DELETE with no body included.
   const write = !!init?.method && init.method !== 'GET'
-  const res = await fetch(path, { ...init, headers: { Accept: 'application/json', ...(write ? { 'Content-Type': 'application/json' } : {}) } })
+  const req = { ...init, headers: { Accept: 'application/json', ...(write ? { 'Content-Type': 'application/json' } : {}) } }
+  const res = ms > 0 ? await fetchWithin(path, req, ms) : await fetch(path, req)
   if (!res.ok) {
     let body: unknown
     try { body = await res.json() } catch { /* not JSON */ }
@@ -84,7 +121,7 @@ function changed<T>(p: Promise<T>): Promise<T> {
 export const machinesApi = {
   /** `check` asks each computer first (up to 12 s), and every list on the page re-reads what it said. */
   list: (check = false) => {
-    const p = call<{ machines: Machine[] }>(`/v1/machines${check ? '?check=1' : ''}`).then((r) => r.machines ?? [])
+    const p = call<{ machines: Machine[] }>(`/v1/machines${check ? '?check=1' : ''}`, undefined, MACHINE_READ_MS).then((r) => r.machines ?? [])
     return check ? changed(p) : p
   },
   /** Pairs with the computer a pasted link names (60 s at most). */
@@ -92,20 +129,29 @@ export const machinesApi = {
   rename: (id: string, name: string) => changed(call<Machine>(`/v1/machines/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ name }) })),
   /** Deletes it and its token here, after asking it to drop this machine. */
   forget: (id: string) => changed(call<{ forgotten: boolean; released: boolean }>(`/v1/machines/${encodeURIComponent(id)}`, { method: 'DELETE' })),
-  /** That computer's sessions: the running ones, or every recent one. */
   /** Every computer's running sessions, kept by the daemon a few seconds, so every window shares one read per computer. */
-  allSessions: () => call<{ machines: MachineSessionsEntry[] }>('/v1/machines/sessions').then((r) => r.machines ?? []),
+  allSessions: () => call<{ machines: MachineSessionsEntry[] }>('/v1/machines/sessions', undefined, MACHINE_READ_MS).then((r) => r.machines ?? []),
+  /** That computer's sessions: the running ones, or every recent one. */
   sessions: (id: string, activeOnly = true) =>
-    call<SessionSummary[]>(`${machineBase(id)}/v1/sessions?${activeOnly ? 'active=true&' : ''}chats=exclude&limit=50`),
+    call<SessionSummary[]>(`${machineBase(id)}/v1/sessions?${activeOnly ? 'active=true&' : ''}chats=exclude&limit=50`, undefined, MACHINE_READ_MS),
 }
 
-/** The computers this machine reaches, re-read every `intervalMs`. */
+/**
+ * The computers this machine reaches, re-read every `intervalMs`, and again
+ * (debounced) when the daemon says one of them changed — a `machines` frame
+ * on `/v1/live`, sent when a computer's channel comes up or goes down — so
+ * the channel's state, which every view reads (lib/machinespec.ts
+ * machineState), is never half a minute behind.
+ */
 export function useMachines(intervalMs = 30_000): Loaded<Machine[]> {
   const got = useApi(() => machinesApi.list(), [], { live: false, intervalMs, share: 'machines' })
   const { refresh } = got
   useEffect(() => {
+    let t: number | undefined
+    const soon = () => { window.clearTimeout(t); t = window.setTimeout(refresh, 300) }
+    const off = live.onFrame((f) => { if (f.type === 'machines') soon() })
     window.addEventListener(MACHINES_EVENT, refresh)
-    return () => window.removeEventListener(MACHINES_EVENT, refresh)
+    return () => { off(); window.clearTimeout(t); window.removeEventListener(MACHINES_EVENT, refresh) }
   }, [refresh])
   return got
 }
@@ -136,6 +182,8 @@ export function machineLook(m: Pick<Machine, 'name' | 'status' | 'error' | 'kind
       return { label: 'removed there', tone: 'bad', reachable: false, detail: `${m.name} removed this computer. Show a new link there and add it again, or forget it here.` }
     case 'refused':
       return { label: 'refused', tone: 'bad', reachable: false, detail: `${m.name} answered with another key: it was reset, or the link is for another computer. Add it again with a new link.` }
+    case 'timeout':
+      return { label: 'slow to answer', tone: 'warn', reachable: true, detail: `${m.name} is online but did not answer in time. It is asked again by itself.` }
     case 'offline':
       return { label: 'offline', tone: 'bad', reachable: true, detail: m.error ? offlineWhy(m.error) : `${m.name} is not reachable: asleep, off the internet, Caprock not running there, or its access from anywhere is off.` }
   }
@@ -169,7 +217,7 @@ export interface MachineSessions {
 export interface MachineSessionsEntry {
   id: string
   name: string
-  /** online, or why its sessions are not listed: offline, pending, revoked, refused, error. */
+  /** online, or why its sessions are not listed: offline, timeout (online but slow), pending, revoked, refused, error. */
   status: string
   error?: string
   /** Absent when the last read failed: a list from before is not what runs there now. */

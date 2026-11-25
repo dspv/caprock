@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httputil"
@@ -248,7 +249,7 @@ func (s *Server) handleMachineProxy(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		},
-		Transport: machineTransport{m: s.d.Machines, id: id},
+		Transport: machineTransport{m: s.d.Machines, id: id, wait: machineProxyWait},
 		// Streamed as it arrives: a long answer is not held here.
 		FlushInterval: -1,
 		ModifyResponse: func(res *http.Response) error {
@@ -282,6 +283,8 @@ func machineFail(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, errRevoked):
 		status, state = http.StatusForbidden, peers.StatusRevoked
+	case errors.Is(err, errMachineSlow):
+		status, state = http.StatusGatewayTimeout, machineTimeout
 	case errors.Is(err, remote.ErrMachineOffline), errors.Is(err, remote.ErrRelayUnreachable):
 		state = "offline"
 	case errors.Is(err, remote.ErrRefused):
@@ -294,14 +297,67 @@ func machineFail(w http.ResponseWriter, err error) {
 	writeJSON(w, status, map[string]string{"error": err.Error(), "status": state})
 }
 
-// machineTransport carries one request to computer id.
+// machineProxyWait bounds how long a read (GET, HEAD) through the proxy
+// waits for the other computer to start answering. A request whose answer
+// never comes — the computer up at the relay but its side of the stream
+// stuck — used to hold the dashboard's read open for good: the page sat on
+// its skeleton and asked nothing again (Win PC1, 2026-11-26). Only the head
+// is bounded, so a long answer still streams; a write is never cut short,
+// since a start sent again could start twice. A var so a test can wait less.
+var machineProxyWait = 30 * time.Second
+
+// machineTimeout is the state a computer is in when the channel is up but it
+// did not answer in time: online, slow — not offline.
+const machineTimeout = "timeout"
+
+// errMachineSlow is a computer that did not answer in time.
+var errMachineSlow = errors.New("that computer is online but did not answer in time")
+
+func errMachineSlowFor(wait time.Duration) error {
+	return fmt.Errorf("%w (%s)", errMachineSlow, wait)
+}
+
+// machineTransport carries one request to computer id; a read waits at most
+// wait for the answer to begin.
 type machineTransport struct {
-	m  Machines
-	id string
+	m    Machines
+	id   string
+	wait time.Duration
 }
 
 func (t machineTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	return t.m.Do(t.id, req)
+	if t.wait <= 0 || (req.Method != http.MethodGet && req.Method != http.MethodHead) {
+		return t.m.Do(t.id, req)
+	}
+	ctx, cancel := context.WithCancel(req.Context())
+	slow := time.AfterFunc(t.wait, cancel)
+	res, err := t.m.Do(t.id, req.WithContext(ctx))
+	if !slow.Stop() && req.Context().Err() == nil {
+		// The wait ran out, not the caller's patience.
+		if res != nil {
+			_ = res.Body.Close()
+		}
+		cancel()
+		return nil, errMachineSlowFor(t.wait)
+	}
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+	res.Body = &cancelOnClose{ReadCloser: res.Body, cancel: cancel}
+	return res, nil
+}
+
+// cancelOnClose ends a proxied read's context when its body is done with.
+type cancelOnClose struct {
+	io.ReadCloser
+	cancel context.CancelFunc
+}
+
+func (c *cancelOnClose) Close() error {
+	err := c.ReadCloser.Close()
+	c.cancel()
+	return err
 }
 
 // bridgeMachineSocket opens the socket on the other computer first — so a

@@ -202,3 +202,35 @@ func TestMachineSessionsAWordDuringARead(t *testing.T) {
 		t.Fatalf("a quiet read after it: %d asks, want 2 (kept)", n)
 	}
 }
+
+// A computer whose channel is up but which does not answer in time is
+// online and slow — "timeout" — never "offline": the sidebar read that word
+// and called a computer that was on, and answering, offline (Win PC1,
+// 2026-11-26). With the channel down, the same wait is offline.
+func TestMachineSessionsSlowIsNotOffline(t *testing.T) {
+	old := machineSessionsWait
+	machineSessionsWait = 50 * time.Millisecond
+	t.Cleanup(func() { machineSessionsWait = old })
+	fm := &fakeMachines{status: "online", hang: true, far: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {})}
+	s := machinesServer(t, fm)
+	got := readMachineSessions(t, s)
+	if got.Status != "timeout" || got.Sessions != nil || !strings.Contains(got.Error, "did not answer") {
+		t.Fatalf("slow, channel up: %+v", got)
+	}
+	fm.mu.Lock()
+	fm.status = "offline"
+	fm.mu.Unlock()
+	s.MachineChanged("mini")
+	if got := readMachineSessions(t, s); got.Status != "offline" {
+		t.Fatalf("slow, channel down: %+v", got)
+	}
+	// It answers again: online, with its (empty) list.
+	fm.mu.Lock()
+	fm.status, fm.hang = "online", false
+	fm.far = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(`[]`)) })
+	fm.mu.Unlock()
+	s.MachineChanged("mini")
+	if got := readMachineSessions(t, s); got.Status != "online" || string(got.Sessions) != "[]" {
+		t.Fatalf("back: %+v (%s)", got, got.Sessions)
+	}
+}
