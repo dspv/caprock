@@ -718,7 +718,10 @@ const FOLD_KIND: Record<StatusTone, ReleaseFold['kind']> = { idle: 'ready', acti
  *   on it where that was recorded (*0.183.0 released · 5 min ago · $17.25*,
  *   releaseCost; owner, 2026-11-24, variant A: the version drawn as a green
  *   pill that bursts once);
- * - *Ready to release 0.183.1 · not started · 2 changes*, grey;
+ * - *Ready to release 0.183.1 · not started · 2 changes*, grey; with open
+ *   pull requests queued that raise the version (`o.next`, nextHint), the
+ *   version they make, as the unfolded heading says it, and *Ready to
+ *   release 0.184.0 · waits for #951* in place of *not started*;
  * - *Waiting for #949 to merge · 0.183.1 · 2 changes*, amber (red with
  *   *CI red*; *· ready to merge*, *· checks running* when its state was read);
  * - *Releasing 0.183.0 · checks 1 of 3 systems*, *Releasing 0.183.0 ·
@@ -726,7 +729,7 @@ const FOLD_KIND: Record<StatusTone, ReleaseFold['kind']> = { idle: 'ready', acti
  * - *Release 0.183.0 stopped · checks failed*, *… · build failed*, *… ·
  *   draft only, not public*, red.
  */
-export function releaseFold(s: ReleaseStatus, o: { waiting: number; batch?: BatchPR; lastTag?: string; now: number; cards?: readonly BoardCard[]; main?: MainChecks; releases?: readonly BoardRelease[] }): ReleaseFold {
+export function releaseFold(s: ReleaseStatus, o: { waiting: number; batch?: BatchPR; lastTag?: string; now: number; cards?: readonly BoardCard[]; main?: MainChecks; releases?: readonly BoardRelease[]; next?: NextHint }): ReleaseFold {
   if (s.phase === 'idle') {
     const last = s.last
     if (last && o.now - last.at < OUT_RECENT_MS) {
@@ -742,18 +745,28 @@ export function releaseFold(s: ReleaseStatus, o: { waiting: number; batch?: Batc
     return { kind: 'idle', text: `${tag ? `Nothing new since ${tag}` : 'Nothing new'}${batchWord(o.batch)}`, title: tag ? `Nothing merged and no changelog entry waiting since ${tag}.` : 'Nothing merged and no changelog entry waiting.', tone: 'idle' }
   }
   const strip = stripStages(s)
-  const w = stageWords(s, strip, { cards: o.cards, now: o.now, batch: o.batch, main: o.main })
+  // The version the open pull requests queued for the release would make,
+  // as the unfolded heading says it (owner, 2026-11-25: folded and unfolded
+  // must not name two numbers). Nothing queued, the default branch's.
+  const next = o.next
+  const sv = next ? { ...s, version: next.version, bump: next.bump } : s
+  const w = stageWords(sv, strip, { cards: o.cards, now: o.now, batch: o.batch, main: o.main })
   const n = o.waiting
   const changes = n > 0 ? `${n} ${n === 1 ? 'change' : 'changes'}` : ''
   const stage = w ? strip[w.index - 1] : undefined
-  const why = s.why?.title ?? 'No version is predicted: no changelog entry of a known kind was read.'
-  if (!w) return { kind: 'ready', text: [s.version ?? 'Next release', changes].filter(Boolean).join(' · '), title: why, tone: 'idle' }
+  const why = [next ? `${next.title}\n${next.sub}.` : '', s.why?.title ?? 'No version is predicted: no changelog entry of a known kind was read.'].filter(Boolean).join('\n')
+  if (!w) return { kind: 'ready', text: [sv.version ?? 'Next release', changes].filter(Boolean).join(' · '), title: why, tone: 'idle' }
   const title = [w.title ?? stage?.title, why].filter(Boolean).join('\n')
   // Waiting for the batch: the version and the changes after the batch's own words.
   // Its state only when it stops the release (*CI red*, *needs a rebase*):
   // *Waiting for #949 to merge · ready to merge* would say merge twice.
-  if (w.key === 'merged') return { kind: FOLD_KIND[w.tone], text: [w.vlead, w.tone === 'fail' ? w.detail : '', s.version, changes].filter(Boolean).join(' · '), title, tone: w.tone }
+  if (w.key === 'merged') return { kind: FOLD_KIND[w.tone], text: [w.vlead, w.tone === 'fail' ? w.detail : '', sv.version, changes].filter(Boolean).join(' · '), title, tone: w.tone }
   const ready = w.key === 'pr' && !s.pr
+  // Nothing started and pull requests queued: what it waits for in place
+  // of *not started*, *Ready to release 0.197.0 · waits for #1072*.
+  if (ready && next && w.detail === 'not started') {
+    return { kind: FOLD_KIND[w.tone], text: `${[w.vlead, next.waits].join(' · ')}${batchWord(o.batch)}`, title, tone: w.tone }
+  }
   const parts = [w.vlead, w.detail, ready ? changes : ''].filter(Boolean).join(' · ')
   return { kind: FOLD_KIND[w.tone], text: `${parts}${ready ? batchWord(o.batch) : ''}`, title, tone: w.tone }
 }

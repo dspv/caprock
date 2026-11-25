@@ -327,6 +327,24 @@ describe('the right panel’s stages strip', () => {
     expect(stripStages(w).find((x) => x.state === 'current')?.key).toBe('merged')
     expect(releaseFold(w, { waiting: 2, now: T, batch: { number: 949, ci: 'pass', next: 'merge #949' } })).toMatchObject({ kind: 'waiting', text: 'Waiting for #949 to merge · 0.183.1 · 2 changes', tone: 'waiting' })
     expect(releaseFold(w, { waiting: 2, now: T, batch: { number: 949, ci: 'fail' } })).toMatchObject({ kind: 'stopped', text: 'Waiting for #949 to merge · CI red · 0.183.1 · 2 changes', tone: 'fail' })
+    // A feature queued: the version it makes, as the unfolded heading says it.
+    const next = nextHint(w, [{ number: 951, title: 'feat(ui): x' }])
+    expect(releaseFold(w, { waiting: 2, now: T, batch: { number: 949, ci: 'pass' }, next })).toMatchObject({ text: 'Waiting for #949 to merge · 0.184.0 · 2 changes' })
+  })
+
+  // Owner, 2026-11-25: folded and unfolded name one number, the heading's.
+  it('says the version the queued PRs make, and what it waits for, in place of not started', () => {
+    const fold = (s: ReleaseStatus, o: Partial<Parameters<typeof releaseFold>[1]> = {}) => releaseFold(s, { waiting: 0, now: T, ...o })
+    const s =releaseStatus(base({ merged: 1, unreleased: { ref: 'origin/master', items: ['a'], count: 1, kinds: { Fixed: 1 } }, lastTag: { name: 'v0.196.0', at: T - 8 * H }, releases: [rel('v0.196.0', T - 8 * H, 23)] }))
+    expect(fold(s, { waiting: 1 })).toMatchObject({ kind: 'ready', text: 'Ready to release 0.196.1 · not started · 1 change' })
+    // Nothing queued, or a fix on a patch: as before.
+    expect(fold(s, { waiting: 1, next: nextHint(s, []) }).text).toBe('Ready to release 0.196.1 · not started · 1 change')
+    expect(fold(s, { waiting: 1, next: nextHint(s, [{ number: 1080, title: 'fix: y' }]) }).text).toBe('Ready to release 0.196.1 · not started · 1 change')
+    const one = fold(s, { waiting: 1, next: nextHint(s, [{ number: 1072, title: 'feat(app): x' }]) })
+    expect(one).toMatchObject({ kind: 'ready', text: 'Ready to release 0.197.0 · waits for #1072', tone: 'idle' })
+    expect(one.title).toMatch(/0\.196\.1 is what the default branch holds now \(patch\)\./)
+    expect(fold(s, { waiting: 1, next: nextHint(s, [{ number: 1072, title: 'feat: x' }, { number: 1080, title: 'fix: y' }]) }).text).toBe('Ready to release 0.197.0 · waits for #1072, #1080')
+    expect(fold(s, { waiting: 1, next: nextHint(s, [1, 2, 3].map((number) => ({ number, title: 'feat: x' }))) }).text).toBe('Ready to release 0.197.0 · waits for 3 PRs')
   })
 
   it('keeps Merged to come while the entries are only on the batch PR’s branch', () => {

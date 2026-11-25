@@ -766,7 +766,12 @@ export function CockpitRelease({ sessionId, repoRoot }: { sessionId: string; rep
   if (!plan) return null
   const n = plan.rows.length
   const merge = plan.ships === 'merge'
-  const fold = merge ? undefined : releaseFold(status, { waiting: repo?.unreleased?.count || merged, batch, lastTag: repo?.tags?.last?.name, now, cards: board?.cards, main, releases: board?.releases })
+  const others = notInIt(plan.rows, batchPR?.number)
+  // What the open pull requests would make the version (owner, 2026-11-23,
+  // variant 1A): the one number the folded line and the heading both say
+  // (owner, 2026-11-25).
+  const next = merge ? undefined : nextHint(status, others.prs)
+  const fold = merge ? undefined : releaseFold(status, { waiting: repo?.unreleased?.count || merged, batch, lastTag: repo?.tags?.last?.name, now, cards: board?.cards, main, releases: board?.releases, next })
   const keptText = statsKept.kept && statsKept.at ? asOfText(now - statsKept.at) : undefined
   const label = (
     <SectionLabel right={!folded ? (keptText ? <span data-release-kept-age title="The pull requests and their checks as last read, drawn faint while they are read again" className="shrink-0 whitespace-nowrap text-[10.5px] text-fg-faint">{keptText}</span> : undefined) : (fold ? (
@@ -795,10 +800,7 @@ export function CockpitRelease({ sessionId, repoRoot }: { sessionId: string; rep
     )
   }
   const base = notesHeading(status, repo?.tags?.last ?? plan.last, now)
-  const others = notInIt(plan.rows, batchPR?.number)
-  // What the open pull requests would make the version (owner, 2026-11-23,
-  // variant 1A), said by the heading as its one number (owner, 2026-11-25).
-  const hint = base.state === 'waiting' ? nextHint(status, others.prs) : undefined
+  const hint = base.state === 'waiting' ? next : undefined
   const head = withNext(base, hint)
   const entries = notesOf(repo, head, status)
   // The words beside the dots name the batch and its state while the
