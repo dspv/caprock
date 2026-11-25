@@ -185,10 +185,17 @@ func (t *Tailer) Run(ctx context.Context) error {
 	}
 }
 
+// scanSource is the diskio source of the tailer's walks and stats: the
+// directory reads and file metadata of every transcript every 30 seconds,
+// which read the disk when the system has evicted them and were counted
+// nowhere (internal/diskio).
+const scanSource = "transcripts claude: scan"
+
 // discover walks Root for *.jsonl files and directories to watch.
 func (t *Tailer) discover(w *fsnotify.Watcher) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	defer diskio.Begin(scanSource)()
 	return filepath.WalkDir(t.Root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil //nolint:nilerr // unreadable subtree: skip, never fail the whole scan
@@ -299,9 +306,12 @@ func (t *Tailer) passHot(ctx context.Context) {
 	t.read(ctx, paths, true)
 }
 
-// read stats each file and reads the ones that changed.
+// read stats each file and reads the ones that changed. The stats are one
+// scan operation (scanSource) between the reads, which count as their own.
 func (t *Tailer) read(ctx context.Context, paths []*fileState, liveOnly bool) {
 	cutoff := time.Now().Add(-t.BackfillWindow)
+	end := diskio.Begin(scanSource)
+	defer func() { end() }()
 	for _, f := range paths {
 		if ctx.Err() != nil {
 			return
@@ -317,7 +327,9 @@ func (t *Tailer) read(ctx context.Context, paths []*fileState, liveOnly bool) {
 		if skip {
 			continue
 		}
+		end()
 		t.readFile(ctx, f, fi)
+		end = diskio.Begin(scanSource)
 	}
 }
 

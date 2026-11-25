@@ -471,10 +471,17 @@ func BackgroundAgentIDs(tasks []BackgroundTask) map[string]bool {
 // newestRestart is the session's newest main-thread SessionStart since
 // `since` that did not follow a compaction (a process start or a resume), or
 // 0 with none.
+//
+// It walks idx_events_attr_work, which carries each row's kind, so only the
+// SessionStart rows are read from the table. On idx_events_session_ts every
+// event of the window was fetched, payload and all, to test its kind: 4.3 MB
+// of pages for the last 12 hours of the owner's longest session and 9.9 MB
+// for all of it, against 0.2 and 0.6 (cold copies of his database,
+// 2026-11-25); his daemon asked it 480 times in an hour, 96 MB.
 func newestRestart(ctx context.Context, q Querier, sessionID string, since int64) (int64, error) {
 	var ts int64
 	err := q.QueryRowContext(ctx, `
-		SELECT COALESCE(MAX(e.ts), 0) FROM events e
+		SELECT COALESCE(MAX(e.ts), 0) FROM events e INDEXED BY idx_events_attr_work
 		 WHERE e.sid = (SELECT sid FROM sessions WHERE session_id = ?) AND e.ts >= ?
 		   AND +e.kind = 'agent.spawn' AND e.source = 'hook' AND COALESCE(e.agent_id, '') = ''
 		   AND COALESCE(json_extract(`+ZPayloadE+`, '$.source'), '') <> 'compact'`, sessionID, since).Scan(&ts)

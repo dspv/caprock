@@ -38,7 +38,7 @@ var plainPayloadReads = map[string]string{
 	"internal/store/compaction_stats.go:mainCallWhere":               "turn.assistant",
 	"internal/store/compaction_stats.go:SetCompactionSummary":        "turn.assistant",
 	"internal/store/compactions.go:compactionQuery":                  "context.* and turn.assistant",
-	"internal/store/glance.go:agentSplit":                            "turn.assistant",
+	"internal/store/glance.go:agentSplitWith":                        "turn.assistant",
 	"internal/store/hermes.go:HermesSpend":                           "turn.assistant",
 	"internal/store/cursor.go:CursorSpend":                           "turn.assistant",
 	"internal/store/requests.go:usageRows":                           "turn.assistant",

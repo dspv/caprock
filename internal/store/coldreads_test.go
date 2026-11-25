@@ -221,6 +221,65 @@ func TestAgentSplitEqualsThePerSessionRead(t *testing.T) {
 	}
 }
 
+// The sidechain answers kept between splits answer what a read gives, while
+// sessions start with an earlier sidechain turn, lose their first turn, have
+// it rewritten, and new sessions come.
+func TestAgentSplitKeptSidechainsMatchARead(t *testing.T) {
+	ctx := context.Background()
+	st := openTest(t)
+	db := st.DB()
+	exec := func(q string, args ...any) {
+		t.Helper()
+		if _, err := db.ExecContext(ctx, q, args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	turn := func(session string, ts int64, payload, key string) {
+		t.Helper()
+		exec(`INSERT INTO events(ts, sid, source, kind, payload, cost_usd, internal, key)
+			VALUES(?,(SELECT sid FROM sessions WHERE session_id = ?),'transcript','turn.assistant',?,1,0,?)`, ts, session, payload, key)
+	}
+	for i := range 8 {
+		id := "s" + strconv.Itoa(i)
+		exec(`INSERT INTO sessions(session_id, agent, status, last_event_at) VALUES(?,?,?,?)`, id, "claude", "ended", 100_000)
+		turn(id, 1000, `{"sidechain":`+strconv.FormatBool(i%3 == 0)+`}`, id+"-a")
+		turn(id, 2000, `{}`, id+"-b")
+	}
+	var memo sidechainMemo
+	check := func(step string) {
+		t.Helper()
+		for range 2 { // the second asks the memo alone
+			got, err := agentSplitWith(ctx, db, 0, 0, "", "", &memo)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want, err := agentSplitWith(ctx, db, 0, 0, "", "", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("%s: kept %+v, read %+v", step, got, want)
+			}
+		}
+	}
+	check("first")
+	turn("s1", 500, `{"sidechain":true}`, "s1-early") // an earlier first turn, a sidechain
+	check("an earlier sidechain turn")
+	exec(`DELETE FROM events WHERE key = 's0-a'`) // s0 loses its sidechain first turn
+	check("a first turn deleted")
+	exec(`UPDATE events SET payload = '{"sidechain":true}' WHERE key = 's2-a'`)
+	check("a first turn rewritten")
+	exec(`INSERT INTO sessions(session_id, agent, status, last_event_at) VALUES('s9','claude','ended',1)`)
+	turn("s9", 3000, `{"sidechain":true}`, "s9-a")
+	check("a new session")
+	memo.mu.Lock()
+	n := len(memo.side)
+	memo.mu.Unlock()
+	if n != 9 {
+		t.Fatalf("the memo keeps %d sessions, want 9", n)
+	}
+}
+
 // learnMatchByTable is learnMatch's statement as it was before migration
 // 0094: the calls off idx_events_tool_dist and the results off
 // idx_events_sid_key, each row read from the table.

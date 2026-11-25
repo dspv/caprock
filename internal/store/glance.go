@@ -3,8 +3,10 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"sort"
+	"sync"
 	"time"
 )
 
@@ -35,16 +37,97 @@ func AgentSplit(ctx context.Context, q Querier, from, to int64) ([]WeekAgent, er
 // A usage record (requests.go) is not a turn: it is taken out of Turns, and
 // Cursor's request counts are carried as Requests.
 func agentSplit(ctx context.Context, q Querier, from, to int64, skip, skipE string) ([]WeekAgent, error) {
+	return agentSplitWith(ctx, q, from, to, skip, skipE, &sidechains)
+}
+
+// sidechainMemo keeps what the agent split's sidechain read answered per
+// session — whether the session's first main-thread turn is a sidechain —
+// with the events mark it was read at (EventsMark). Asked again, a session
+// whose events have not moved since is answered from it, and only the others
+// are read.
+//
+// Why: that read is a seek per session and a fetch of the turn's row,
+// payload and all, so an all-time split read every session's first turn
+// again: 111 MB of pages of the 2.46 GB copy of the owner's database, 83 of
+// them this read, for each all-time At a glance (rebuilt at most once a
+// minute while the Now screen is open; 2026-11-25). The zero value is ready
+// to use and safe for concurrent use.
+type sidechainMemo struct {
+	mu sync.Mutex
+	// db is the database the memo was read from (tests open many).
+	db   Querier
+	mark EventsMark
+	ok   bool
+	side map[int64]bool
+}
+
+var sidechains sidechainMemo
+
+// known is the memo's answers that still hold at mark: every one kept, less
+// the sessions whose events moved since it was read; none when it cannot say.
+func (m *sidechainMemo) known(ctx context.Context, q Querier, mark EventsMark) (map[int64]bool, error) {
+	m.mu.Lock()
+	ok, old, side := m.ok && m.db == q, m.mark, m.side
+	m.mu.Unlock()
+	if !ok {
+		return map[int64]bool{}, nil
+	}
+	if mark.Same(old) {
+		return side, nil
+	}
+	moved, all, err := mark.MovedSince(ctx, q, old)
+	if err != nil || all {
+		return map[int64]bool{}, err
+	}
+	out := make(map[int64]bool, len(side))
+	for sid, v := range side {
+		out[sid] = v
+	}
+	for _, sid := range moved {
+		delete(out, sid)
+	}
+	return out, nil
+}
+
+// keep stores the answers known at mark.
+func (m *sidechainMemo) keep(q Querier, mark EventsMark, side map[int64]bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.db, m.mark, m.ok, m.side = q, mark, true, side
+}
+
+// agentSplitWith is agentSplit with the sidechain answers kept in memo, or
+// every one read when memo is nil.
+func agentSplitWith(ctx context.Context, q Querier, from, to int64, skip, skipE string, memo *sidechainMemo) ([]WeekAgent, error) {
 	upper, args := "", []any{from}
 	if to > 0 {
 		upper, args = " AND ts < ?", append(args, to)
 	}
-	// The subqueries run once per group, not per event. The sidechain read
-	// walks idx_events_session_ts, so "first" is the session's earliest
+	// The mark comes first: a session that moves after it is read again
+	// next time, never kept with an answer older than its events.
+	var mark EventsMark
+	known := map[int64]bool{}
+	if memo != nil {
+		var err error
+		if mark, err = ReadEventsMark(ctx, q); err != nil {
+			return nil, err
+		}
+		if known, err = memo.known(ctx, q, mark); err != nil {
+			return nil, err
+		}
+	}
+	list := make([]int64, 0, len(known))
+	for sid := range known {
+		list = append(list, sid)
+	}
+	knownJSON, _ := json.Marshal(list)
+	// The subqueries run once per group, not per event, and the sidechain
+	// read only for a session the memo does not answer. It walks
+	// idx_events_session_ts, so "first" is the session's earliest
 	// main-thread turn, whatever the window.
 	rows, err := q.QueryContext(ctx, `
 		SELECT g.sid, s.session_id, COALESCE(NULLIF(s.agent,''),'claude'), g.sub, g.n, g.cost, g.threads,
-		       CASE WHEN g.sub THEN NULL ELSE (
+		       CASE WHEN g.sub OR g.sid IN (SELECT value FROM json_each(?)) THEN NULL ELSE (
 		         SELECT json_extract(payload, '$.sidechain') FROM events e2 INDEXED BY idx_events_session_ts
 		         WHERE e2.sid = g.sid AND e2.kind = 'turn.assistant' AND COALESCE(e2.agent_id,'') = '' LIMIT 1) END
 		FROM (
@@ -52,7 +135,7 @@ func agentSplit(ctx context.Context, q Querier, from, to int64, skip, skipE stri
 		  FROM events INDEXED BY idx_events_turn_agent
 		  WHERE kind = 'turn.assistant' AND ts >= ?`+upper+nonInternalEvent+skip+`
 		  GROUP BY sid, 2) g
-		JOIN sessions s ON s.sid = g.sid`, args...)
+		JOIN sessions s ON s.sid = g.sid`, append([]any{string(knownJSON)}, args...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -66,6 +149,7 @@ func agentSplit(ctx context.Context, q Querier, from, to int64, skip, skipE stri
 	var parts []part
 	agentOf := map[string]string{}
 	sidechain := map[string]bool{}
+	read := map[int64]bool{} // the sidechain answers this read made
 	for rows.Next() {
 		var p part
 		var side sql.NullInt64
@@ -75,7 +159,12 @@ func agentSplit(ctx context.Context, q Querier, from, to int64, skip, skipE stri
 		}
 		agentOf[p.session] = p.agent
 		if !p.sub {
-			sidechain[p.session] = side.Valid && side.Int64 == 1
+			v, ok := known[p.sid]
+			if !ok {
+				v = side.Valid && side.Int64 == 1
+				read[p.sid] = v
+			}
+			sidechain[p.session] = v
 		}
 		parts = append(parts, p)
 	}
@@ -84,6 +173,18 @@ func agentSplit(ctx context.Context, q Querier, from, to int64, skip, skipE stri
 		return nil, err
 	}
 	_ = rows.Close()
+	if memo != nil && len(read) > 0 {
+		next := make(map[int64]bool, len(known)+len(read))
+		for sid, v := range known {
+			next[sid] = v
+		}
+		for sid, v := range read {
+			next[sid] = v
+		}
+		memo.keep(q, mark, next)
+	} else if memo != nil {
+		memo.keep(q, mark, known)
+	}
 	usage, err := usageRows(ctx, q, from, to, skipE, "")
 	if err != nil {
 		return nil, err

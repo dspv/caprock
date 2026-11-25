@@ -412,6 +412,10 @@ SELECT id, ts, CASE WHEN kind IN ('tool.pre', 'tool.post') AND typeof(payload) =
 SELECT id, payload FROM events WHERE id > ? AND id <= ? AND typeof(payload) = 'blob'
     SEARCH events USING INTEGER PRIMARY KEY (rowid>? AND rowid<?)
 
+## store.(*Store).EstimatePack
+SELECT data FROM sqlite_dbpage WHERE pgno = ?
+    SCAN sqlite_dbpage VIRTUAL TABLE INDEX 1:
+
 ## store.(*Store).GetMeta
 SELECT v FROM meta WHERE k = ?
     SEARCH meta USING INDEX sqlite_autoindex_meta_1 (k=?)
@@ -466,6 +470,9 @@ DELETE FROM tool_fields WHERE event_id = ?
 ## store.(*Store).ToolFieldsStep.func1
 UPDATE meta SET v = ? WHERE k = ?
     SEARCH meta USING INDEX sqlite_autoindex_meta_1 (k=?)
+
+## store.(*Store).UpsertGitHubPRs
+INSERT INTO github_prs(repo, number, url, title, head, state, created_at, merged_at, closed_at, updated_at, seen_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(repo, number) DO UPDATE SET url = excluded.url, title = excluded.title, head = excluded.head, state = excluded.state, created_at = excluded.created_at, merged_at = excluded.merged_at, closed_at = excluded.closed_at, updated_at = excluded.updated_at, seen_at = excluded.seen_at WHERE excluded.updated_at >= github_prs.updated_at
 
 ## store.(*Store).applyZstd.func1
 INSERT INTO meta(k, v) VALUES(?, MAX(?, 0)) ON CONFLICT(k) DO UPDATE SET v = MAX(CAST(v AS INTEGER) + ?, 0)
@@ -752,6 +759,12 @@ SELECT s.node_id, v.name FROM brain_vault_notes s JOIN brain_vaults v ON v.id = 
     SEARCH v USING INTEGER PRIMARY KEY (rowid=?)
     USE TEMP B-TREE FOR ORDER BY
 
+## store.BrainNoteNodeAlone
+SELECT kind = 'note' AND NOT EXISTS (SELECT 1 FROM brain_vault_notes WHERE node_id = ?) FROM brain_nodes WHERE id = ?
+    SEARCH brain_nodes USING INTEGER PRIMARY KEY (rowid=?)
+    SCALAR SUBQUERY 1
+        SEARCH brain_vault_notes USING COVERING INDEX idx_brain_vault_notes_node (node_id=?)
+
 ## store.BrainNoteSource
 SELECT se.session_id, e.ts, COALESCE(se.project, ''), COALESCE(json_extract(e.payload, '$.text'), '') FROM events e LEFT JOIN sessions se ON se.sid = e.sid WHERE e.id = ? AND e.kind = 'turn.assistant' AND e.internal = 0 AND COALESCE(e.agent_id, '') = '' AND json_extract(e.payload, '$.sidechain') IS NOT 1 AND COALESCE(json_extract(e.payload, '$.text'), '') != ''
     SEARCH e USING INTEGER PRIMARY KEY (rowid=?)
@@ -877,6 +890,10 @@ SELECT COALESCE(SUM(tokens_in + tokens_out), 0) FROM brain_runs WHERE finished_a
 SELECT n.id, n.kind, n.title, n.summary, n.session_id, COALESCE(n.event_id, 0), n.source_ts, n.project, n.manual, n.pinned, COALESCE(n.run_id, 0), n.created_at, n.updated_at, n.keywords FROM brain_nodes n WHERE n.id > ? AND n.kind IN ('idea','decision','finding','question') AND keywords = '' ORDER BY n.id LIMIT ?
     SEARCH n USING INTEGER PRIMARY KEY (rowid>?)
 
+## store.BrainVaultClaims
+SELECT src, dst, kind, pre FROM brain_vault_edges WHERE vault_id = ?
+    SEARCH brain_vault_edges USING PRIMARY KEY (vault_id=?)
+
 ## store.BrainVaultNotes
 SELECT id, vault_id, path, node_id, title, aliases, keys, links, tags, project, excerpt, mtime, size FROM brain_vault_notes WHERE vault_id = ? ORDER BY id
     SEARCH brain_vault_notes USING INDEX sqlite_autoindex_brain_vault_notes_1 (vault_id=?)
@@ -887,6 +904,12 @@ UPDATE sessions SET chat = 1 WHERE session_id = ? AND chat = 0 AND EXISTS (SELEC
     SEARCH sessions USING INDEX sqlite_autoindex_sessions_1 (session_id=?)
     SCALAR SUBQUERY 1
         SEARCH sessions USING INDEX sqlite_autoindex_sessions_1 (session_id=?)
+
+## store.ClaimBrainEdges
+INSERT INTO brain_edges (src, dst, kind, weight, created_at) VALUES (?, ?, ?, 1, ?) ON CONFLICT (src, dst, kind) DO NOTHING
+
+## store.ClaimBrainEdges
+INSERT INTO brain_vault_edges (vault_id, src, dst, kind, pre) VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING
 
 ## store.ClaudeTokensSince
 SELECT COALESCE(SUM(COALESCE(tokens_in,0)+COALESCE(tokens_out,0)+COALESCE(cache_read,0)+COALESCE(cache_write,0)), 0) FROM events INDEXED BY idx_events_turn_agent WHERE kind = 'turn.assistant' AND ts >= ? AND internal = 0 AND sid IN (SELECT sid FROM sessions WHERE COALESCE(agent,'claude') = 'claude')
@@ -1069,7 +1092,7 @@ SELECT COALESCE(SUM(cost_usd), 0), COUNT(DISTINCT sid) FROM events INDEXED BY id
     USE TEMP B-TREE FOR count(DISTINCT)
     SEARCH events USING COVERING INDEX idx_events_ts_cover (ts>?)
 
-## store.DeleteBrainNode
+## store.DeleteBrainNode, store.SyncBrainNoteNode
 DELETE FROM brain_nodes WHERE id = ?
     SEARCH brain_nodes USING INTEGER PRIMARY KEY (rowid=?)
     SEARCH brain_edges USING INDEX idx_brain_edges_dst (dst=?)
@@ -1101,6 +1124,10 @@ SELECT dst FROM brain_edges WHERE src = ? UNION SELECT src FROM brain_edges WHER
         RIGHT
             SEARCH brain_edges USING COVERING INDEX idx_brain_edges_dst (dst=?)
 
+## store.DeleteBrainVaultNote
+DELETE FROM brain_vault_notes WHERE id = ?
+    SEARCH brain_vault_notes USING INTEGER PRIMARY KEY (rowid=?)
+
 ## store.DeleteInboxItem
 DELETE FROM inbox WHERE id = ?
     SEARCH inbox USING INTEGER PRIMARY KEY (rowid=?)
@@ -1121,6 +1148,14 @@ DELETE FROM queued_messages WHERE session_id = ? AND id = ?
 DELETE FROM saved_prompts WHERE id = ?
     SEARCH saved_prompts USING INTEGER PRIMARY KEY (rowid=?)
 
+## store.EachBrainKey
+SELECT id, norm FROM brain_nodes WHERE kind IN ('idea','decision','finding','question')
+    SCAN brain_nodes
+
+## store.EachBrainKey
+SELECT node_id, keys FROM brain_vault_notes
+    SCAN brain_vault_notes
+
 ## store.EndSupersededSiblings
 UPDATE sessions SET status = ? WHERE pid = ? AND session_id <> ? AND status <> ?
     SCAN sessions
@@ -1128,6 +1163,10 @@ UPDATE sessions SET status = ? WHERE pid = ? AND session_id <> ? AND status <> ?
 ## store.EndedByPID
 SELECT session_id, pid, COALESCE(started_at, 0), COALESCE(last_event_at, 0) FROM sessions WHERE status = 'ended' AND pid IN (?,?,?)
     SCAN sessions
+
+## store.EnsureBrainVaultEntity
+UPDATE brain_nodes SET vault_id = ? WHERE id = ?
+    SEARCH brain_nodes USING INTEGER PRIMARY KEY (rowid=?)
 
 ## store.EventByKey
 SELECT id, ts, (SELECT session_id FROM sessions WHERE sessions.sid = e.sid), source, kind, COALESCE(tool,''), (CASE WHEN typeof(e.payload) = 'blob' THEN zjson(e.payload) ELSE e.payload END), tokens_in, tokens_out, cache_read, cache_write, cost_usd, COALESCE(key,''), COALESCE(model,''), cache_write_1h, COALESCE(agent_id,'') FROM events e WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND key = ? AND kind = ?
@@ -1819,10 +1858,6 @@ SELECT DISTINCT session_id FROM queued_messages WHERE undelivered_at = 0 ORDER B
 SELECT MAX(ts) FROM rate_limit_history WHERE window = ?
     SEARCH rate_limit_history USING COVERING INDEX idx_rate_limit_history_window_ts (window=?)
 
-## store.RateLimitPace
-SELECT ts, used_percentage FROM rate_limit_history WHERE window = ? AND resets_at = ? ORDER BY ts ASC
-    SEARCH rate_limit_history USING INDEX idx_rate_limit_history_window_ts (window=?)
-
 ## store.RateLimitSamples
 SELECT ts, used_percentage, resets_at FROM rate_limit_history WHERE window = ? AND ts >= ? UNION SELECT ts, used_percentage, resets_at FROM rate_limit_latest WHERE window = ? AND ts >= ? ORDER BY 1
     MERGE (UNION)
@@ -1970,6 +2005,10 @@ SELECT COALESCE((SELECT MAX(id) FROM events), 0), COALESCE((SELECT CAST(v AS INT
 SELECT session_id, gen FROM session_gen
     SCAN session_gen
 
+## store.ReadPaceSamples
+SELECT ts, used_percentage FROM rate_limit_history WHERE window = ? AND resets_at = ? AND ts > ? ORDER BY ts ASC
+    SEARCH rate_limit_history USING INDEX idx_rate_limit_history_window_ts (window=? AND ts>?)
+
 ## store.RecentCompactionStats
 SELECT b.ts, b.trigger, b.pre, b.dur, COALESCE(b.post, CASE WHEN b.src = 'cursor' THEN NULL ELSE ( SELECT COALESCE(t.tokens_in, 0) + COALESCE(t.cache_read, 0) + COALESCE(t.cache_write, 0) FROM events t INDEXED BY idx_events_session_ts WHERE t.sid = b.sid AND t.ts >= b.ts AND t.ts < b.next AND t.kind = 'turn.assistant' AND t.internal = 0 AND t.tokens_in IS NOT NULL AND t.source <> 'cursor' AND COALESCE(t.tokens_in, 0) + COALESCE(t.cache_read, 0) + COALESCE(t.cache_write, 0) > 0 AND COALESCE(t.agent_id, '') = '' AND json_extract(t.payload, '$.sidechain') IS NOT 1 ORDER BY t.ts, t.id LIMIT 1 ) END, 0) FROM ( SELECT e.sid, e.ts, e.source AS src, COALESCE(json_extract(e.payload, '$.trigger'), '') AS trigger, COALESCE(json_extract(e.payload, '$.pre_tokens'), 0) AS pre, COALESCE(json_extract(e.payload, '$.duration_ms'), 0) AS dur, NULLIF(json_extract(e.payload, '$.post_tokens'), 0) AS post, COALESCE(( SELECT MIN(n.ts) FROM events n INDEXED BY idx_events_kind_ts WHERE n.kind = 'context.compacted' AND n.ts > e.ts AND n.sid = e.sid AND COALESCE(n.agent_id, '') = '' AND json_extract(n.payload, '$.sidechain') IS NOT 1 ), 9223372036854775807) AS next FROM events e INDEXED BY idx_events_kind_ts WHERE e.kind = 'context.compacted' AND COALESCE(e.agent_id, '') = '' AND json_extract(e.payload, '$.sidechain') IS NOT 1 ORDER BY e.ts DESC, e.id DESC LIMIT ? ) b ORDER BY b.ts DESC
     CO-ROUTINE b
@@ -2060,6 +2099,14 @@ SELECT session_id, COALESCE(agent,'claude'), COALESCE(title,''), COALESCE(starte
 ## store.RelayLinks
 SELECT session_id, COALESCE(agent,'claude'), COALESCE(title,''), COALESCE(started_at,0) FROM sessions WHERE session_id = ?
     SEARCH sessions USING INDEX sqlite_autoindex_sessions_1 (session_id=?)
+
+## store.ReleaseBrainEdges, store.UnlinkBrainKind
+DELETE FROM brain_edges WHERE src = ? AND dst = ? AND kind = ?
+    SEARCH brain_edges USING PRIMARY KEY (src=? AND dst=? AND kind=?)
+
+## store.ReleaseBrainEdges
+DELETE FROM brain_vault_edges WHERE vault_id = ? AND src = ? AND dst = ? AND kind = ?
+    SEARCH brain_vault_edges USING PRIMARY KEY (vault_id=? AND src=? AND dst=? AND kind=?)
 
 ## store.ReleaseOwned
 UPDATE sessions SET owned = 0 WHERE session_id = ?
@@ -2691,10 +2738,6 @@ DELETE FROM brain_edges WHERE (src = ? AND dst = ?) OR (src = ? AND dst = ?)
         INDEX 2
             SEARCH brain_edges USING INDEX idx_brain_edges_dst (dst=? AND src=?)
 
-## store.UnlinkBrainKind
-DELETE FROM brain_edges WHERE src = ? AND dst = ? AND kind = ?
-    SEARCH brain_edges USING PRIMARY KEY (src=? AND dst=? AND kind=?)
-
 ## store.UnmeasuredBrainGaps
 SELECT g.id, g.run_id, g.session_id, g.from_event_id, COALESCE(g.to_event_id, 0), g.cursor, g.status, g.reads_total, g.reads_done, g.attempts, g.updated_at, COALESCE(r.through_event_id, 0) FROM brain_gaps g LEFT JOIN brain_runs r ON r.id = g.run_id WHERE g.to_event_id IS NULL ORDER BY g.id
     SCAN g
@@ -2707,6 +2750,10 @@ SELECT id FROM brain_nodes WHERE kind = ? AND norm = ? AND id != ?
 ## store.UpdateBrainNode
 UPDATE brain_nodes SET kind = ?, title = ?, norm = ?, summary = ?, search = ?, pinned = ?, updated_at = ? WHERE id = ?
     SEARCH brain_nodes USING INTEGER PRIMARY KEY (rowid=?)
+
+## store.UpdateBrainVaultNote
+UPDATE brain_vault_notes SET node_id = ?, title = ?, aliases = ?, keys = ?, links = ?, tags = ?, project = ?, excerpt = ?, mtime = ?, size = ? WHERE id = ?
+    SEARCH brain_vault_notes USING INTEGER PRIMARY KEY (rowid=?)
 
 ## store.UpdateProject
 UPDATE projects SET defaults = ? WHERE id = ?
@@ -2777,54 +2824,66 @@ SELECT e.agent_id, json_extract((CASE WHEN typeof(e.payload) = 'blob' THEN zjson
     LIST SUBQUERY 2
         SCAN json_each VIRTUAL TABLE INDEX 1:
 
-## store.agentSplit
-SELECT g.sid, s.session_id, COALESCE(NULLIF(s.agent,''),'claude'), g.sub, g.n, g.cost, g.threads, CASE WHEN g.sub THEN NULL ELSE ( SELECT json_extract(payload, '$.sidechain') FROM events e2 INDEXED BY idx_events_session_ts WHERE e2.sid = g.sid AND e2.kind = 'turn.assistant' AND COALESCE(e2.agent_id,'') = '' LIMIT 1) END FROM ( SELECT sid, COALESCE(agent_id,'') <> '' AS sub, COUNT(*) AS n, COALESCE(SUM(cost_usd),0) AS cost, COUNT(DISTINCT NULLIF(agent_id,'')) AS threads FROM events INDEXED BY idx_events_turn_agent WHERE kind = 'turn.assistant' AND ts >= ? AND internal = 0 GROUP BY sid, 2) g JOIN sessions s ON s.sid = g.sid
+## store.agentSplitWith
+SELECT g.sid, s.session_id, COALESCE(NULLIF(s.agent,''),'claude'), g.sub, g.n, g.cost, g.threads, CASE WHEN g.sub OR g.sid IN (SELECT value FROM json_each(?)) THEN NULL ELSE ( SELECT json_extract(payload, '$.sidechain') FROM events e2 INDEXED BY idx_events_session_ts WHERE e2.sid = g.sid AND e2.kind = 'turn.assistant' AND COALESCE(e2.agent_id,'') = '' LIMIT 1) END FROM ( SELECT sid, COALESCE(agent_id,'') <> '' AS sub, COUNT(*) AS n, COALESCE(SUM(cost_usd),0) AS cost, COUNT(DISTINCT NULLIF(agent_id,'')) AS threads FROM events INDEXED BY idx_events_turn_agent WHERE kind = 'turn.assistant' AND ts >= ? AND internal = 0 GROUP BY sid, 2) g JOIN sessions s ON s.sid = g.sid
     CO-ROUTINE g
         SEARCH events USING COVERING INDEX idx_events_turn_agent (kind=? AND ts>?)
         USE TEMP B-TREE FOR GROUP BY
         USE TEMP B-TREE FOR count(DISTINCT)
     SCAN g
     SEARCH s USING INTEGER PRIMARY KEY (rowid=?)
-    CORRELATED SCALAR SUBQUERY 1
+    LIST SUBQUERY 1
+        SCAN json_each VIRTUAL TABLE INDEX 1:
+        CREATE BLOOM FILTER
+    CORRELATED SCALAR SUBQUERY 2
         SEARCH e2 USING INDEX idx_events_session_ts (sid=?)
 
-## store.agentSplit
-SELECT g.sid, s.session_id, COALESCE(NULLIF(s.agent,''),'claude'), g.sub, g.n, g.cost, g.threads, CASE WHEN g.sub THEN NULL ELSE ( SELECT json_extract(payload, '$.sidechain') FROM events e2 INDEXED BY idx_events_session_ts WHERE e2.sid = g.sid AND e2.kind = 'turn.assistant' AND COALESCE(e2.agent_id,'') = '' LIMIT 1) END FROM ( SELECT sid, COALESCE(agent_id,'') <> '' AS sub, COUNT(*) AS n, COALESCE(SUM(cost_usd),0) AS cost, COUNT(DISTINCT NULLIF(agent_id,'')) AS threads FROM events INDEXED BY idx_events_turn_agent WHERE kind = 'turn.assistant' AND ts >= ? AND ts < ? AND internal = 0 AND sid NOT IN (SELECT sid FROM sessions WHERE cwd IN ('/')) GROUP BY sid, 2) g JOIN sessions s ON s.sid = g.sid
+## store.agentSplitWith
+SELECT g.sid, s.session_id, COALESCE(NULLIF(s.agent,''),'claude'), g.sub, g.n, g.cost, g.threads, CASE WHEN g.sub OR g.sid IN (SELECT value FROM json_each(?)) THEN NULL ELSE ( SELECT json_extract(payload, '$.sidechain') FROM events e2 INDEXED BY idx_events_session_ts WHERE e2.sid = g.sid AND e2.kind = 'turn.assistant' AND COALESCE(e2.agent_id,'') = '' LIMIT 1) END FROM ( SELECT sid, COALESCE(agent_id,'') <> '' AS sub, COUNT(*) AS n, COALESCE(SUM(cost_usd),0) AS cost, COUNT(DISTINCT NULLIF(agent_id,'')) AS threads FROM events INDEXED BY idx_events_turn_agent WHERE kind = 'turn.assistant' AND ts >= ? AND ts < ? AND internal = 0 AND sid NOT IN (SELECT sid FROM sessions WHERE cwd IN ('/')) GROUP BY sid, 2) g JOIN sessions s ON s.sid = g.sid
     CO-ROUTINE g
         SEARCH events USING COVERING INDEX idx_events_turn_agent (kind=? AND ts>? AND ts<?)
-        LIST SUBQUERY 2
+        LIST SUBQUERY 3
             SCAN sessions
             CREATE BLOOM FILTER
         USE TEMP B-TREE FOR GROUP BY
         USE TEMP B-TREE FOR count(DISTINCT)
     SCAN g
     SEARCH s USING INTEGER PRIMARY KEY (rowid=?)
-    CORRELATED SCALAR SUBQUERY 1
+    LIST SUBQUERY 1
+        SCAN json_each VIRTUAL TABLE INDEX 1:
+        CREATE BLOOM FILTER
+    CORRELATED SCALAR SUBQUERY 2
         SEARCH e2 USING INDEX idx_events_session_ts (sid=?)
 
-## store.agentSplit
-SELECT g.sid, s.session_id, COALESCE(NULLIF(s.agent,''),'claude'), g.sub, g.n, g.cost, g.threads, CASE WHEN g.sub THEN NULL ELSE ( SELECT json_extract(payload, '$.sidechain') FROM events e2 INDEXED BY idx_events_session_ts WHERE e2.sid = g.sid AND e2.kind = 'turn.assistant' AND COALESCE(e2.agent_id,'') = '' LIMIT 1) END FROM ( SELECT sid, COALESCE(agent_id,'') <> '' AS sub, COUNT(*) AS n, COALESCE(SUM(cost_usd),0) AS cost, COUNT(DISTINCT NULLIF(agent_id,'')) AS threads FROM events INDEXED BY idx_events_turn_agent WHERE kind = 'turn.assistant' AND ts >= ? AND ts < ? AND internal = 0 AND sid NOT IN (SELECT sid FROM sessions WHERE cwd IN ('/','<temp>')) GROUP BY sid, 2) g JOIN sessions s ON s.sid = g.sid
+## store.agentSplitWith
+SELECT g.sid, s.session_id, COALESCE(NULLIF(s.agent,''),'claude'), g.sub, g.n, g.cost, g.threads, CASE WHEN g.sub OR g.sid IN (SELECT value FROM json_each(?)) THEN NULL ELSE ( SELECT json_extract(payload, '$.sidechain') FROM events e2 INDEXED BY idx_events_session_ts WHERE e2.sid = g.sid AND e2.kind = 'turn.assistant' AND COALESCE(e2.agent_id,'') = '' LIMIT 1) END FROM ( SELECT sid, COALESCE(agent_id,'') <> '' AS sub, COUNT(*) AS n, COALESCE(SUM(cost_usd),0) AS cost, COUNT(DISTINCT NULLIF(agent_id,'')) AS threads FROM events INDEXED BY idx_events_turn_agent WHERE kind = 'turn.assistant' AND ts >= ? AND ts < ? AND internal = 0 AND sid NOT IN (SELECT sid FROM sessions WHERE cwd IN ('/','<temp>')) GROUP BY sid, 2) g JOIN sessions s ON s.sid = g.sid
     CO-ROUTINE g
         SEARCH events USING COVERING INDEX idx_events_turn_agent (kind=? AND ts>? AND ts<?)
-        LIST SUBQUERY 2
+        LIST SUBQUERY 3
             SCAN sessions
             CREATE BLOOM FILTER
         USE TEMP B-TREE FOR GROUP BY
         USE TEMP B-TREE FOR count(DISTINCT)
     SCAN g
     SEARCH s USING INTEGER PRIMARY KEY (rowid=?)
-    CORRELATED SCALAR SUBQUERY 1
+    LIST SUBQUERY 1
+        SCAN json_each VIRTUAL TABLE INDEX 1:
+        CREATE BLOOM FILTER
+    CORRELATED SCALAR SUBQUERY 2
         SEARCH e2 USING INDEX idx_events_session_ts (sid=?)
 
-## store.agentSplit
-SELECT g.sid, s.session_id, COALESCE(NULLIF(s.agent,''),'claude'), g.sub, g.n, g.cost, g.threads, CASE WHEN g.sub THEN NULL ELSE ( SELECT json_extract(payload, '$.sidechain') FROM events e2 INDEXED BY idx_events_session_ts WHERE e2.sid = g.sid AND e2.kind = 'turn.assistant' AND COALESCE(e2.agent_id,'') = '' LIMIT 1) END FROM ( SELECT sid, COALESCE(agent_id,'') <> '' AS sub, COUNT(*) AS n, COALESCE(SUM(cost_usd),0) AS cost, COUNT(DISTINCT NULLIF(agent_id,'')) AS threads FROM events INDEXED BY idx_events_turn_agent WHERE kind = 'turn.assistant' AND ts >= ? AND ts < ? AND internal = 0 GROUP BY sid, 2) g JOIN sessions s ON s.sid = g.sid
+## store.agentSplitWith
+SELECT g.sid, s.session_id, COALESCE(NULLIF(s.agent,''),'claude'), g.sub, g.n, g.cost, g.threads, CASE WHEN g.sub OR g.sid IN (SELECT value FROM json_each(?)) THEN NULL ELSE ( SELECT json_extract(payload, '$.sidechain') FROM events e2 INDEXED BY idx_events_session_ts WHERE e2.sid = g.sid AND e2.kind = 'turn.assistant' AND COALESCE(e2.agent_id,'') = '' LIMIT 1) END FROM ( SELECT sid, COALESCE(agent_id,'') <> '' AS sub, COUNT(*) AS n, COALESCE(SUM(cost_usd),0) AS cost, COUNT(DISTINCT NULLIF(agent_id,'')) AS threads FROM events INDEXED BY idx_events_turn_agent WHERE kind = 'turn.assistant' AND ts >= ? AND ts < ? AND internal = 0 GROUP BY sid, 2) g JOIN sessions s ON s.sid = g.sid
     CO-ROUTINE g
         SEARCH events USING COVERING INDEX idx_events_turn_agent (kind=? AND ts>? AND ts<?)
         USE TEMP B-TREE FOR GROUP BY
         USE TEMP B-TREE FOR count(DISTINCT)
     SCAN g
     SEARCH s USING INTEGER PRIMARY KEY (rowid=?)
-    CORRELATED SCALAR SUBQUERY 1
+    LIST SUBQUERY 1
+        SCAN json_each VIRTUAL TABLE INDEX 1:
+        CREATE BLOOM FILTER
+    CORRELATED SCALAR SUBQUERY 2
         SEARCH e2 USING INDEX idx_events_session_ts (sid=?)
 
 ## store.backgroundCallRows
@@ -3142,8 +3201,8 @@ SELECT EXISTS (SELECT 1 FROM brain_vault_notes)
         SCAN brain_vault_notes USING COVERING INDEX idx_brain_vault_notes_node
 
 ## store.newestRestart
-SELECT COALESCE(MAX(e.ts), 0) FROM events e WHERE e.sid = (SELECT sid FROM sessions WHERE session_id = ?) AND e.ts >= ? AND +e.kind = 'agent.spawn' AND e.source = 'hook' AND COALESCE(e.agent_id, '') = '' AND COALESCE(json_extract((CASE WHEN typeof(e.payload) = 'blob' THEN zjson(e.payload) ELSE e.payload END), '$.source'), '') <> 'compact'
-    SEARCH e USING INDEX idx_events_session_ts (sid=? AND ts>?)
+SELECT COALESCE(MAX(e.ts), 0) FROM events e INDEXED BY idx_events_attr_work WHERE e.sid = (SELECT sid FROM sessions WHERE session_id = ?) AND e.ts >= ? AND +e.kind = 'agent.spawn' AND e.source = 'hook' AND COALESCE(e.agent_id, '') = '' AND COALESCE(json_extract((CASE WHEN typeof(e.payload) = 'blob' THEN zjson(e.payload) ELSE e.payload END), '$.source'), '') <> 'compact'
+    SEARCH e USING INDEX idx_events_attr_work (sid=? AND ts>?)
     SCALAR SUBQUERY 1
         SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
 
@@ -3154,6 +3213,10 @@ SELECT e.ts, CASE WHEN json_valid(e.payload) AND json_type(e.payload, '$.backgro
         SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
     CORRELATED SCALAR SUBQUERY 1
         SCAN t VIRTUAL TABLE INDEX 3:
+
+## store.otherClaims
+SELECT src, dst, kind, MAX(pre) FROM brain_vault_edges WHERE vault_id != ? GROUP BY src, dst, kind
+    SCAN brain_vault_edges USING INDEX idx_brain_vault_edges_edge
 
 ## store.preInput
 SELECT (CASE WHEN typeof(payload) = 'blob' THEN zjson(payload) ELSE payload END) FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND key = ?

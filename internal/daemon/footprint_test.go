@@ -443,4 +443,15 @@ func TestIORingBySource(t *testing.T) {
 	if !found {
 		t.Error("no disk_reads_high verdict")
 	}
+
+	// Paging on top says what it is, not a source to chase.
+	f = cleanFootprint()
+	f.DiskIO.LastHour.ReadBytes = 1700 << 20
+	f.DiskIO.BySource = []diskio.Source{{Name: diskio.Paging, ReadBytes: 1300 << 20}}
+	f.finish()
+	for _, v := range f.Verdicts {
+		if v.Code == "disk_reads_high" && !strings.Contains(v.Text, "The most (1.3 GB) was the system reading the daemon's own memory and program back in") {
+			t.Errorf("the verdict names paging: %s", v.Text)
+		}
+	}
 }

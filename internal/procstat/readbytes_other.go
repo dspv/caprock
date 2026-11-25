@@ -2,11 +2,12 @@
 
 package procstat
 
-// SelfReadBytes is SelfDiskIO's read figure alone. 0 when it cannot be read.
-func SelfReadBytes() uint64 {
+// SelfReads is SelfDiskIO's read figure, and no fault count (0: not
+// known). Zeros when it cannot be read.
+func SelfReads() (read, faults uint64) {
 	r, _, err := SelfDiskIO()
 	if err != nil {
-		return 0
+		return 0, 0
 	}
-	return r
+	return r, 0
 }

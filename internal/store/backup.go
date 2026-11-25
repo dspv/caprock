@@ -12,6 +12,8 @@ import (
 
 	"github.com/shirou/gopsutil/v4/disk"
 	"modernc.org/sqlite"
+
+	"github.com/dspv/caprock/internal/diskio"
 )
 
 // backupBefore are the migrations no older Caprock reads past: before the
@@ -150,6 +152,10 @@ func copyDB(ctx context.Context, db *sql.DB, dst string) error {
 		return err
 	}
 	defer conn.Close()
+	// The copy reads the whole file through the driver's backup API, past
+	// the timed connection: counted here, or a gigabyte-scale read after
+	// every upgrade would land on "unattributed" (internal/diskio).
+	defer diskio.Begin("sql copy before upgrade")()
 	return conn.Raw(func(dc any) error {
 		if tc, ok := dc.(*timedConn); ok {
 			dc = tc.fullConn

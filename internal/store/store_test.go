@@ -455,6 +455,65 @@ func TestRateLimitSnapshotsAndPace(t *testing.T) {
 	}
 }
 
+// A cycle's samples extended sample by sample read what a whole read gives,
+// across another cycle and window written in between, a falling and a flat
+// stretch, and a sample written after the mark was read.
+func TestPaceSamplesExtendedMatchWhole(t *testing.T) {
+	ctx := context.Background()
+	s := openTest(t)
+	const reset = int64(1_900_000_000)
+	rec := func(window string, ts int64, pct float64, resets int64) {
+		t.Helper()
+		if err := RecordRateLimit(ctx, s.db, RateLimitSnapshot{Window: window, Ts: ts, UsedPercentage: pct, ResetsAt: resets}, "s1"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var kept PaceSamples
+	check := func(step int) {
+		t.Helper()
+		mark, err := RateLimitHistoryMark(ctx, s.db, "seven_day")
+		if err != nil {
+			t.Fatal(err)
+		}
+		next, err := ReadPaceSamples(ctx, s.db, "seven_day", reset, mark, kept)
+		if err != nil {
+			t.Fatal(err)
+		}
+		whole, err := ReadPaceSamples(ctx, s.db, "seven_day", reset, mark, PaceSamples{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		gp, gok := next.Pace()
+		wp, wok := whole.Pace()
+		direct, dok, err := RateLimitPace(ctx, s.db, "seven_day", reset)
+		if err != nil || gp != wp || gok != wok || gp != direct || gok != dok ||
+			next.N != whole.N || next.FirstTs != whole.FirstTs || next.LastTs != whole.LastTs {
+			t.Fatalf("step %d: extended %+v (%v %v), whole %+v (%v %v), RateLimitPace %v %v %v", step, next, gp, gok, whole, wp, wok, direct, dok, err)
+		}
+		kept = next
+	}
+	base := int64(1_000_000)
+	check(0) // nothing yet
+	pcts := []float64{10, 12, 12, 11, 15, 15, 30}
+	for i, p := range pcts {
+		ts := base + int64(i)*60_000
+		rec("seven_day", ts, p, reset)
+		rec("five_hour", ts+1, p, reset+7) // another window
+		if i == 3 {
+			rec("seven_day", ts+30_000, 99, reset+1) // the next cycle, in between
+		}
+		check(i + 1)
+	}
+	// A sample written after the mark was read is taken by the next read.
+	mark, _ := RateLimitHistoryMark(ctx, s.db, "seven_day")
+	rec("seven_day", base+20*60_000, 40, reset)
+	if kept, _ = ReadPaceSamples(ctx, s.db, "seven_day", reset, mark, kept); kept.N != len(pcts)+1 {
+		t.Fatalf("a sample written after the mark: N = %d, want %d", kept.N, len(pcts)+1)
+	}
+	rec("seven_day", base+21*60_000, 41, reset)
+	check(99)
+}
+
 // Notes are the "what did Claude actually say" queries. Two things must hold or
 // the feature misleads: subagent chatter must never be presented as the main
 // thread's words (45% of assistant turns are sidechains), and a mid-thought

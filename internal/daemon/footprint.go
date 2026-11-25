@@ -502,8 +502,11 @@ func topReaderText(by []diskio.Source) string {
 		return ""
 	}
 	top := by[0]
-	if top.Name == diskio.Unattributed {
+	switch top.Name {
+	case diskio.Unattributed:
 		return fmt.Sprintf(" The most (%s) was read while nothing Caprock counts was running.", Bytes(top.ReadBytes))
+	case diskio.Paging:
+		return fmt.Sprintf(" The most (%s) was the system reading the daemon's own memory and program back in after it set them aside: this Mac is short of memory.", Bytes(top.ReadBytes))
 	}
 	return fmt.Sprintf(" The most was read while %s ran (%s).", top.Name, Bytes(top.ReadBytes))
 }
