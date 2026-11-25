@@ -1379,7 +1379,13 @@ the agents of the period it is about; absent or `all`, all time:
   session rather than one per turn, in one statement: each session's agent
   and sidechain mark are asked per group inside it, not in two statements of
   their own per session (2026-11-24; `TestAgentSplitEqualsThePerSessionRead`
-  holds it to the per-session read).
+  holds it to the per-session read). The sidechain marks it read are kept,
+  with the events mark they were read at (`store.EventsMark`); the next split
+  reads the mark and the sessions that moved since (`MovedSince`) and asks
+  the mark only of those and of sessions it has not seen, so an all-time split
+  reads each session's first turn once instead of on every rebuild: 111 →
+  36 MB of pages of a cold 2.46 GB copy of the owner's database (2026-11-25;
+  `TestAgentSplitKeptSidechainsMatchARead`).
 - **`bill`** is `{input_usd, output_usd, cache_write_usd, cache_read_usd,
   unpriced_tokens}`: each model's summed tokens priced at its **current**
   pricing-table rates, the way the context tax is, so the four add up to
@@ -1507,7 +1513,11 @@ The background agents it holds open count as working in `live_subagents`, in
 whatever their own events say: Claude Code fires an agent's `SubagentStop`
 when it stops to wait on background work of its own, which read *1 done*, and
 such an agent can stay silent past the 15-minute quiet rule. Reads of the
-session's own rows since its newest process start: the calls through
+session's own rows since its newest process start — found through
+`idx_events_attr_work` too, which holds each row's kind, so only the
+`SessionStart` rows are read from the table (on `idx_events_session_ts`
+every event of the 12 hours was, payload and all: 4.3 against 0.2 MB of
+pages for the owner's longest session, 2026-11-25) — the calls through
 `idx_events_attr_work`, which holds each event's kind and tool, so only those
 tools' calls are fetched; the notifications through `idx_events_user_turn`;
 the newest main-thread Stop through `idx_events_turn_bounds`, its list's ids
@@ -2362,8 +2372,12 @@ and once a minute as the fallback for a daemon before them; it asked every
   `last_hour`. Code:
   `internal/diskio`. Every statement on the daemon's database is an
   operation named `sql <the function that asked>` (`sql
-  store.scanEventParts`; a commit is `sql commit`), every read of a
-  transcript one of `transcripts claude` (the tailer), `transcripts claude:
+  store.scanEventParts`; a commit is `sql commit`; a prepared statement's
+  every run too, since 2026-11-25 — before, those went past the counted
+  connection; the copy kept before an upgrade is `sql copy before upgrade`),
+  every read of a transcript one of `transcripts claude` (the tailer; its
+  walk of the transcript folders and the stat of every file every 30 s is
+  `transcripts claude: scan`), `transcripts claude:
   titles`, `transcripts codex`, `transcripts gemini` and so on, the other
   programs' databases one each (`cursor database`, `opencode database`,
   `hermes database`, `codex database`), and the dashboard's embedded files
@@ -2371,18 +2385,31 @@ and once a minute as the fallback for a daemon before them; it asked every
   counter (the one `disk_io` reads: macOS `ri_diskio_bytesread`, Linux
   `getrusage` `ru_inblock` × 512, which is `/proc/self/io`'s `read_bytes`,
   Windows `ReadTransferCount`) is read once, and what it moved since the
-  last reading goes to the operations then in flight in equal shares, or to
-  `unattributed` when none was. The shares add up to the counter, so a
-  source is exact while it runs alone and an even split of an overlap
-  otherwise; reads by code with no operation around it land on whatever
-  operation is running, or on `unattributed` — a large `unattributed` means
-  a reader that is not counted. `read_bytes` is the source's share; `ops` how
+  last reading goes to the operations then in flight in equal shares, or,
+  when none was, to `paging (no read running)` if the process took page
+  faults that read meanwhile (macOS `ri_pageins`, Linux `ru_majflt`, read in
+  the same call) and to `unattributed` if it did not. The shares add up to
+  the counter, so a source is exact while it runs alone and an even split of
+  an overlap otherwise; reads by code with no operation around it land on
+  whatever operation is running, or on `unattributed` — a large
+  `unattributed` means a reader that is not counted. `paging` is the system
+  reading the daemon's own program and memory back in after it evicted them,
+  which no code asks for: large on a Mac short of memory. The owner's daemon
+  read 1.36 GB an hour as `unattributed` on 2026-11-25 (16 GB of memory, 11
+  GB of 12 GB of swap in use, 4,194 pages free; its reads moved with its page-ins,
+  440 MB over 7,780 in 100 s); on a stand whose binary was evicted from the
+  OS cache every 2 s, `paging` read 1,049 MB in 288 s and `unattributed`
+  nothing listed, against 9.9 MB `unattributed` in 470 s unevicted. The same
+  faults during an operation are that operation's, so on such a machine the
+  per-source figures carry their share of it too. Windows counts no such
+  faults, and keeps them under `unattributed`. `read_bytes` is the source's share; `ops` how
   many operations it ran; `logical_bytes`, for file readers only, the bytes
   they asked for, page-cache hits included — high logical bytes with low
   disk bytes is a re-read the OS still answers from memory. Counting costs
   one system call and a mutex per operation boundary (about 1.7 µs a pair on
   an M1 Pro, 2026-11-21); nothing is written anywhere. The `disk_reads_high`
-  verdict names the top source.
+  verdict names the top source; with `paging` on top it says the Mac is short
+  of memory instead.
 - **`duplicates.daemons`** is every other `caprock up --foreground` of this
   user, the data directory it was started with (`--data-dir`, else
   `CAPROCK_DATA_DIR`; absent for the default) and its memory. `apps` is
@@ -9705,7 +9732,7 @@ CREATE TABLE rate_limit_latest  (window TEXT PRIMARY KEY, ts INTEGER, session_id
 CREATE TABLE rate_limit_history (ts INTEGER, window TEXT, used_percentage REAL, resets_at INTEGER);
 ```
 
-`rate_limit_latest` holds the current state per window (upserted); `rate_limit_history` is a throttled sample (≥30s apart) used to compute an honest "at current pace" forecast. Fed by the statusline (below).
+`rate_limit_latest` holds the current state per window (upserted); `rate_limit_history` is a throttled sample (≥30s apart) used to compute an honest "at current pace" forecast. Fed by the statusline (below). The slope is kept per window and reset with the samples it was counted from (count, first, last; `store.PaceSamples`) and, when the window has a newer sample, extended by the samples after them alone (`store.ReadPaceSamples`, a seek on `idx_rate_limit_history_window_ts`) rather than counted over the whole cycle again: a sample is only ever appended at least 30 s after the window's newest and none is changed, so the extended answer is the whole read's (`TestPaceSamplesExtendedMatchWhole`). On 0.196.0 the whole read was 102 MB of the owner's hour in 44 reads (2026-11-25).
 
 **Migration 0030** deleted samples from both tables whose reset lies more than eight days after the sample — the rule `api.plausibleRateWindow` applies on write. On the owner's database that was 8 history rows of a test fixture (resets_at 1900000000) posted by an unisolated unit test.
 

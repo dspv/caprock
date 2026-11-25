@@ -18,6 +18,9 @@
 // Reads made by code with no operation around it while another operation
 // runs land on that operation, which is why the list carries
 // "unattributed": when it is large, something that reads is not counted.
+// What was read while nothing ran but the process took page faults that
+// read is "paging (no read running)" instead (Paging): the system reading
+// the daemon's own evicted pages back, which no code of ours asked for.
 //
 // File readers also count the bytes they asked for (logical): a re-read of a
 // file the OS still holds costs the disk nothing, so a source with high
@@ -36,8 +39,17 @@ import (
 	"github.com/dspv/caprock/internal/procstat"
 )
 
-// Unattributed is the source of reads made while no operation was running.
+// Unattributed is the source of reads made while no operation was running
+// and the process took no page fault that read.
 const Unattributed = "unattributed"
+
+// Paging is the source of reads made while no operation was running and
+// the process took page faults that had to read: the system bringing back
+// pages of the daemon's own program and memory it had evicted, which no
+// code asks for and so no operation can name. It is large on a machine short
+// of memory. Only where the system counts such faults (macOS ri_pageins,
+// Linux ru_majflt); elsewhere those reads stay Unattributed.
+const Paging = "paging (no read running)"
 
 // maxSources bounds the table: past it new names are counted as "other".
 const maxSources = 512
@@ -56,20 +68,23 @@ type Source struct {
 }
 
 type meter struct {
-	mu       sync.Mutex
-	counter  func() uint64
-	last     uint64
-	started  bool
-	inflight map[string]int
-	n        int
-	totals   map[string]*Source
+	mu sync.Mutex
+	// counter is the process's bytes read and the page faults it has taken
+	// that read, both since it started.
+	counter    func() (read, faults uint64)
+	last       uint64
+	lastFaults uint64
+	started    bool
+	inflight   map[string]int
+	n          int
+	totals     map[string]*Source
 }
 
-func newMeter(counter func() uint64) *meter {
+func newMeter(counter func() (read, faults uint64)) *meter {
 	return &meter{counter: counter, inflight: map[string]int{}, totals: map[string]*Source{}}
 }
 
-var std = newMeter(procstat.SelfReadBytes)
+var std = newMeter(procstat.SelfReads)
 
 func (m *meter) source(name string) *Source {
 	s := m.totals[name]
@@ -89,18 +104,28 @@ func (m *meter) source(name string) *Source {
 // settle hands what the counter moved since the last reading to the
 // operations in flight. Called with mu held.
 func (m *meter) settle() {
-	now := m.counter()
+	now, faults := m.counter()
 	if !m.started {
-		m.last, m.started = now, true
+		m.last, m.lastFaults, m.started = now, faults, true
 		return
 	}
+	paged := faults > m.lastFaults
+	m.lastFaults = max(m.lastFaults, faults)
 	if now <= m.last {
 		return
 	}
 	d := now - m.last
 	m.last = now
 	if m.n == 0 {
-		m.source(Unattributed).ReadBytes += d
+		// Nothing counted was running. When the process took faults that
+		// read meanwhile, the reads are the system paging it back in (the
+		// whole interval's: inside one interval a fault's read and a read
+		// nothing counts cannot be told apart).
+		if paged {
+			m.source(Paging).ReadBytes += d
+		} else {
+			m.source(Unattributed).ReadBytes += d
+		}
 		return
 	}
 	share, rest := d/uint64(m.n), d%uint64(m.n)

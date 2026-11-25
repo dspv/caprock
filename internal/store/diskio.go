@@ -28,6 +28,7 @@ func pcName(pc uintptr) pcKind {
 	if fn := runtime.FuncForPC(pc - 1); fn != nil {
 		f := fn.Name()
 		if !strings.HasPrefix(f, "database/sql") && !strings.Contains(f, "internal/store.(*timed") &&
+			!strings.Contains(f, "internal/store.(*stmtCache)") &&
 			!strings.Contains(f, "internal/store.reportSlow") && !strings.Contains(f, "internal/store.recordPlan") &&
 			!strings.Contains(f, "internal/store.sqlSource") && !strings.HasPrefix(f, "runtime.") {
 			k = pcKind{name: "sql " + shortFunc(f)}

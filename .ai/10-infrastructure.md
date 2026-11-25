@@ -374,6 +374,48 @@ run; steady = samples from 240 s; three runs each, interleaved; median
   could not be told on a machine this loaded; the soft limit stays the only
   memory knob until it can.
 
+**Round two, the same day.** The live footprint's hour (read-only) still put
+1.36 GB of 5.5 GB under `unattributed`. His machine was short of memory (16
+GB, 11 of 12 GB of swap in use, 4,194 pages free), and the daemon's reads
+moved with its page-ins (`proc_pid_rusage`, sampled once a second from
+outside: 440 MB over 7,780 page-ins in 100 s). The stand above, unevicted,
+read 9.9 MB `unattributed` in eight minutes; with the stand's own copy of the
+binary dropped from the OS cache every 2 s (`mmap` + `msync(MS_INVALIDATE)`
+on that file alone), the new `paging (no read running)` source read 1,049 MB
+in 288 s and `unattributed` too little to list. So the bulk was the system
+paging the daemon's program back in while no statement ran; the footprint
+now says so (`internal/diskio`, § Footprint in 03-contracts.md), and also
+counts prepared statements, the pre-upgrade copy and the tailer's walk.
+Three readers were cut, each answer unchanged (tests compare each with the
+old read). The drive above gained a status-line post every 30 s, as working
+agents send; three runs each, interleaved, load average at most 13; steady
+window from 240 s; median (min–max), per hour:
+
+| Reader                                 | Before            | After            |
+| -------------------------------------- | ----------------- | ---------------- |
+| `newestRestart` MB                     | 39.5 (16.9–48.1)  | 0.3 (0.1–0.9)    |
+| `RateLimitPace` / `ReadPaceSamples` MB | 41.6 (15.8–185.5) | 0.0 (0.0–1.2)    |
+| `unattributed` MB                      | 22.8 (17.0–30.7)  | 1.0 (0.6–26.7)   |
+| `paging (no read running)` MB          | (not counted)     | 27.5 (11.4–27.7) |
+
+- **Statements** stayed where they were (about 950 `newestRestart` and 190
+  pace reads an hour on both builds; the agent split adds one events-mark
+  read per call, 190 → 380 an hour); footprint 281.5 (273.0–284.0) → 280.0
+  (274.0–282.5) MB and CPU 8.1 (7.9–8.7) → 7.9 (7.7–8.3)% of a core, the
+  same within the spread.
+- **The agent split** was not told apart on the stand: once its pages are in
+  the OS cache a rebuild reads little either way (393 vs 154 MB an hour,
+  ranges overlapping). On a cold copy, by SQLite's own page count, the
+  all-time split read 111 MB and reads 36 MB once its sidechain marks are
+  kept (`sqlite3 .stats`, two runs each, identical).
+- **Not cut:** `LastPermissionMode` is one seek on its partial index, 0.5–9
+  KB an ask on the stand; a cache would need a statement of its own to know
+  the session moved, the same count. `BrainCandidates` scans `sessions` (9.9
+  MB), but from the copy's first brain read on, 10,220 of its 11,074
+  sessions are in its window, so an index on `last_event_at` would read as
+  much. `readSessionCalls` and `UsualSince`
+  are already kept and extended, or refreshed every 10 minutes.
+
 ## Release checklist
 
 Cadence: about one release a day bundling every merged pull request, an out-of-band patch only for breakage ([docs/RELEASING.md § How often to release](../docs/RELEASING.md#how-often-to-release-2026-11-24)).

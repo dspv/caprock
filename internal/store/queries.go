@@ -3058,38 +3058,84 @@ func RateLimitsWithPrefix(ctx context.Context, q Querier, prefix string) ([]Rate
 // the honesty gate for the "at current pace" forecast. It never extrapolates
 // across a reset boundary and never reports a flat/declining slope.
 func RateLimitPace(ctx context.Context, q Querier, window string, resetsAt int64) (pctPerHour float64, ok bool, err error) {
-	rows, err := q.QueryContext(ctx, `
-		SELECT ts, used_percentage FROM rate_limit_history
-		WHERE window = ? AND resets_at = ? ORDER BY ts ASC`, window, resetsAt)
+	s, err := ReadPaceSamples(ctx, q, window, resetsAt, 0, PaceSamples{})
 	if err != nil {
 		return 0, false, err
 	}
+	pctPerHour, ok = s.Pace()
+	return pctPerHour, ok, nil
+}
+
+// PaceSamples is what RateLimitPace reads of one window's reset cycle — how
+// many samples, the first and the last — kept so a later read can take only
+// the samples after it (ReadPaceSamples).
+type PaceSamples struct {
+	N                 int
+	FirstTs, LastTs   int64
+	FirstPct, LastPct float64
+	// Through is the newest sample time of the window (any cycle) this read
+	// covered.
+	Through int64
+	// read is set once a read went into it: the zero value has read nothing.
+	read bool
+}
+
+// Pace is RateLimitPace's answer from the samples.
+func (s PaceSamples) Pace() (pctPerHour float64, ok bool) {
+	spanMs := s.LastTs - s.FirstTs
+	deltaPct := s.LastPct - s.FirstPct
+	if s.N < 2 || spanMs < 60_000 || deltaPct <= 0 {
+		return 0, false // not enough data / not rising → no honest forecast
+	}
+	hours := float64(spanMs) / float64(3_600_000)
+	return deltaPct / hours, true
+}
+
+// ReadPaceSamples is prev with the window's samples of the reset cycle that
+// came after it: every sample when prev has read nothing, else the ones newer
+// than prev.Through, a seek on idx_rate_limit_history_window_ts. mark is the
+// window's RateLimitHistoryMark, read before this call, so a sample written
+// while the cycle is read is taken by the next read rather than missed:
+// Through never passes what was seen. A sample is only ever appended at least
+// 30 s later than the window's newest (RecordRateLimit), and none is changed
+// or deleted, so prev extended is what a whole read gives
+// (TestPaceSamplesExtendedMatchWhole).
+//
+// Why: each new sample — every 30 s while an agent works — had the summary
+// read the whole cycle again, a seven-day one tens of thousands of rows:
+// 102 MB an hour over 44 reads on the owner's daemon (2026-11-25).
+func ReadPaceSamples(ctx context.Context, q Querier, window string, resetsAt, mark int64, prev PaceSamples) (PaceSamples, error) {
+	s := prev
+	after := int64(math.MinInt64)
+	if prev.read {
+		after = prev.Through
+	}
+	rows, err := q.QueryContext(ctx, `
+		SELECT ts, used_percentage FROM rate_limit_history
+		WHERE window = ? AND resets_at = ? AND ts > ? ORDER BY ts ASC`, window, resetsAt, after)
+	if err != nil {
+		return prev, err
+	}
 	defer rows.Close()
-	var firstTs, lastTs int64
-	var firstPct, lastPct float64
-	n := 0
 	for rows.Next() {
 		var ts int64
 		var pct float64
 		if err := rows.Scan(&ts, &pct); err != nil {
-			return 0, false, err
+			return prev, err
 		}
-		if n == 0 {
-			firstTs, firstPct = ts, pct
+		if s.N == 0 {
+			s.FirstTs, s.FirstPct = ts, pct
 		}
-		lastTs, lastPct = ts, pct
-		n++
+		s.LastTs, s.LastPct = ts, pct
+		s.N++
+		s.Through = max(s.Through, ts)
 	}
 	if err := rows.Err(); err != nil {
-		return 0, false, err
+		return prev, err
 	}
-	spanMs := lastTs - firstTs
-	deltaPct := lastPct - firstPct
-	if n < 2 || spanMs < 60_000 || deltaPct <= 0 {
-		return 0, false, nil // not enough data / not rising → no honest forecast
-	}
-	hours := float64(spanMs) / float64(3_600_000)
-	return deltaPct / hours, true, nil
+	s.Through = max(s.Through, mark, after)
+	s.read = true
+	return s, nil
 }
 
 // RateLimitHistoryMark is the newest history sample's time for a window, 0

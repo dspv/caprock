@@ -185,6 +185,62 @@ func (c *timedConn) QueryContext(ctx context.Context, query string, args []drive
 	return &timedRows{Rows: r, query: query, start: start, log: c.log, end: end}, nil
 }
 
+// PrepareContext's statement is timed and counted as QueryContext and
+// ExecContext are, each time it runs. A prepared statement's runs went
+// straight to the driver's statement, past this connection, so what they
+// read landed on "unattributed" (internal/diskio): the Obsidian import and
+// the brain's vault scan run every statement prepared (store.Prepared).
+func (c *timedConn) PrepareContext(ctx context.Context, query string) (driver.Stmt, error) {
+	st, err := c.fullConn.PrepareContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	if fs, ok := st.(fullStmt); ok {
+		return &timedStmt{fullStmt: fs, query: query, log: c.log}, nil
+	}
+	return st, nil // a driver without the context methods: uncounted
+}
+
+// fullStmt is what the sqlite driver's statement implements.
+type fullStmt interface {
+	driver.Stmt
+	driver.StmtExecContext
+	driver.StmtQueryContext
+}
+
+type timedStmt struct {
+	fullStmt
+	query string
+	log   *slog.Logger
+}
+
+func (s *timedStmt) ExecContext(ctx context.Context, args []driver.NamedValue) (driver.Result, error) {
+	recordPlan(s.query, args)
+	end := diskio.Begin(sqlSource())
+	defer end()
+	start := slowClock()
+	r, err := s.fullStmt.ExecContext(ctx, args)
+	var n int64
+	if err == nil {
+		n, _ = r.RowsAffected()
+	}
+	reportSlow(s.log, s.query, start, n, err)
+	return r, err
+}
+
+func (s *timedStmt) QueryContext(ctx context.Context, args []driver.NamedValue) (driver.Rows, error) {
+	recordPlan(s.query, args)
+	end := diskio.Begin(sqlSource())
+	start := slowClock()
+	r, err := s.fullStmt.QueryContext(ctx, args)
+	if err != nil {
+		end()
+		reportSlow(s.log, s.query, start, 0, err)
+		return nil, err
+	}
+	return &timedRows{Rows: r, query: s.query, start: start, log: s.log, end: end}, nil
+}
+
 // BeginTx's transaction counts its commit as a source of its own: a commit
 // can run the WAL's automatic checkpoint, which reads the log back.
 func (c *timedConn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, error) {

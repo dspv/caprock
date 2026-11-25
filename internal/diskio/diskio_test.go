@@ -9,10 +9,11 @@ import (
 	"testing"
 )
 
-// fakeCounter is a process counter the test moves by hand.
-type fakeCounter struct{ n uint64 }
+// fakeCounter is the process counters (bytes read, page faults that read)
+// the test moves by hand.
+type fakeCounter struct{ n, faults uint64 }
 
-func (c *fakeCounter) read() uint64 { return c.n }
+func (c *fakeCounter) read() (uint64, uint64) { return c.n, c.faults }
 
 func TestMeterSplitsByWhatRan(t *testing.T) {
 	c := &fakeCounter{}
@@ -56,6 +57,35 @@ func TestMeterSplitsAnOddRemainder(t *testing.T) {
 	got := m.snapshot()
 	if a, b := got["a"].ReadBytes, got["b"].ReadBytes; a+b != 10 || a < 6 {
 		t.Errorf("a %d b %d, want 10 in all with a's two operations holding two thirds", a, b)
+	}
+}
+
+// What is read while nothing runs is paging when the process took faults
+// that read meanwhile, and unattributed when it did not; a fault inside an
+// operation is that operation's.
+func TestMeterNamesPagingWhileNothingRuns(t *testing.T) {
+	c := &fakeCounter{n: 100, faults: 7}
+	m := newMeter(c.read)
+	m.begin("a") // the baseline
+	c.n += 40
+	c.faults += 3 // a fault while a runs: a's
+	m.end("a", 0)
+	c.n += 20
+	c.faults += 2 // nothing running, faults that read: paging
+	m.begin("b")
+	m.end("b", 0)
+	c.n += 6 // nothing running, no fault: unattributed
+	m.begin("b")
+	m.end("b", 0)
+	c.faults++ // a fault that read nothing the counter saw: no bytes to give
+	m.begin("b")
+	m.end("b", 0)
+	c.n += 9 // the fault above was already settled: unattributed
+	got := m.snapshot()
+	for name, want := range map[string]uint64{"a": 40, Paging: 20, Unattributed: 15, "b": 0} {
+		if got[name].ReadBytes != want {
+			t.Errorf("%s read %d, want %d", name, got[name].ReadBytes, want)
+		}
 	}
 }
 

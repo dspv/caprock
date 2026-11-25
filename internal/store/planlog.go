@@ -86,6 +86,7 @@ func callerFrame() (runtime.Frame, bool) {
 		f, more := frames.Next()
 		fn := f.Function
 		if !strings.HasPrefix(fn, "database/sql") && !strings.Contains(fn, "internal/store.(*timed") &&
+			!strings.Contains(fn, "internal/store.(*stmtCache)") &&
 			!strings.Contains(fn, "internal/store.reportSlow") && !strings.Contains(fn, "internal/store.recordPlan") &&
 			!strings.HasPrefix(fn, "runtime.") {
 			return f, true
