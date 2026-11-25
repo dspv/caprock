@@ -7079,15 +7079,31 @@ machine's alone (`403` from any device).
   `{docs: [{id, data, created_at, updated_at}], next?}` by id, 100 by default,
   at most 1000; `next` is the last id when the page is full. A list answer
   carries `ETag` and `Cache-Control: no-cache`, and a request whose
-  `If-None-Match` names the current tag is a **304 with no body and nothing
-  read** (2026-11-22). The tag is the collection's generation in this daemon
-  — kept in memory per (module, collection), moved by every `PUT`, `PATCH`
-  (again after its transaction commits) and `DELETE` the daemon makes,
-  Telegram's and the attention document's included, and started from a
-  random value at every start, so a tag from before a restart never matches
-  — with a hash of the module, collection, `after` and `limit`: another page
-  is another tag. Only the daemon writes `module_docs`, so the counter sees
-  every change. Why: the Ops module pages through its collections at
+  `If-None-Match` names the page's current tag is a **304 with no body and
+  nothing read** (2026-11-22). The tag is the collection's generation in this
+  daemon when the page was read — kept in memory per (module, collection),
+  moved by every `PUT`, `PATCH` (again after its transaction commits) and
+  `DELETE` the daemon makes, Telegram's and the attention document's
+  included, and started from a random value at every start, so a tag from
+  before a restart never matches — with a hash of the module, collection,
+  `after` and `limit`: another page is another tag. Only the daemon writes
+  `module_docs`, so the counter sees every change. **A page's tag holds
+  until a write touches a document the page covers** (2026-11-25): the
+  daemon keeps which document each of a collection's newest 512 writes
+  touched, and a page covers the ids after its `after` up to its last id —
+  every id after `after` when the page was not full, since a new document
+  there would join it. A write of a document on another page, or past a
+  full page's last id, leaves the page, its tag and its kept bytes as they
+  were; a page read before the 512 kept writes is read again. Before, every
+  write moved every page's tag: the owner's busiest collection, twelve
+  pages, took about 2,000 writes an hour, all to documents on two of its
+  pages, and each one sent all twelve back to the database — still 1.44 GB
+  of the daemon's 5.2 GB of disk reads in an hour on 0.196.0
+  (`store.ModuleDocsPageCurrent`). On a copy of his database with that
+  traffic replayed (a write every 1.25 s on those two pages, tagless
+  listings every 5 s), `ListModuleDocs` went from 7,865 to 1,260 reads an
+  hour, median of three runs each (10-infrastructure.md § Profiling the
+  daemon, 2026-11-25). Why: the Ops module pages through its collections at
   `limit=1000` about seven times a second on the owner's Mac, and one
   collection is ~18 MB, read whole each time. On a stand paging an 18 MB
   collection that way (a client keeping ETags as a browser does, one write
@@ -7097,12 +7113,12 @@ machine's alone (`403` from any device).
   being in the page cache on that machine. A browser revalidates on its
   own; a module that sends `If-None-Match` itself gets the 304. **A client
   that sends no tag is answered from memory** (2026-11-24): each page is kept
-  with the tag it was read at, and while the collection's tag is unchanged
-  the same bytes go out with nothing read — 32 MiB at most (the owner's
+  with the tag it was read at, and while that tag holds the same bytes go
+  out with nothing read — 32 MiB at most (the owner's
   Ops module lists ~26 MB in all, its biggest collection 21 MB in twelve
   pages), least recently answered first out, a page over 8 MiB never kept,
-  nothing at all on a machine with no module, a page whose tag moved
-  on dropped when next asked (`internal/api/modulelistcache.go`). Listing a
+  nothing at all on a machine with no module, a page a write changed
+  dropped when next asked (`internal/api/modulelistcache.go`). Listing a
   21 MB collection of twelve pages with no tag took 62 ms and twelve reads,
   and takes 11 ms and none; with four such listings and one write a minute,
   720 reads became 180 (in-process, 2026-11-24). After the

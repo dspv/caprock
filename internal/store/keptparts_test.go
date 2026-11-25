@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"testing"
 	"time"
+	"unsafe"
 )
 
 // A range started from parts_kept and brought up to date is the range read
@@ -131,5 +132,46 @@ func TestKeptPartsRoundTrip(t *testing.T) {
 	}
 	if len(rp.sids) == 0 {
 		t.Fatal("fixture read no parts")
+	}
+}
+
+// A read's parts, fresh or from the stored form, keep one copy of each name
+// across sessions (interner): the kinds of every session point at the same
+// bytes, so the names cost once per read, not once per session.
+func TestPartsShareTheirNames(t *testing.T) {
+	f := newPartsFixture(t)
+	f.fill()
+	ctx := context.Background()
+	db := f.s.DB()
+	rp, err := readParts(ctx, db, 0, 0, 0, partsScope{all: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	blob, err := encodeKept(rp, EventsMark{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, _, err := decodeKept(blob)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, parts := range map[string]rangeParts{"fresh": rp, "stored": decoded} {
+		seen := map[string]*byte{}
+		shared := 0
+		for _, p := range parts.sids {
+			for _, k := range p.kinds {
+				ptr := unsafe.StringData(k.kind)
+				if at, ok := seen[k.kind]; ok {
+					if at != ptr {
+						t.Fatalf("%s: kind %q held twice", name, k.kind)
+					}
+					shared++
+				}
+				seen[k.kind] = ptr
+			}
+		}
+		if shared == 0 {
+			t.Fatalf("%s: no kind seen in two sessions; the fixture tests nothing", name)
+		}
 	}
 }
