@@ -133,6 +133,9 @@ func bodyLines(a Alert, d Details) []string {
 		if a.Queued != "" {
 			lines = append(lines, "Queued: "+clip(a.Queued, queuedMaxRunes))
 		}
+		if l := gaveUpLine(d.AutoResumes); l != "" && a.Trigger.Kind == event.KindThrottle {
+			lines = append(lines, l)
+		}
 		lines = append(lines, runLines(d, func(s string) string { return s })...)
 		if r := clip(plainReply(d.Reply), replyMaxRunes); r != "" {
 			lines = append(lines, "“"+r+"”")

@@ -635,6 +635,9 @@ func (d *Daemon) run(ctx context.Context) error {
 	d.queue.startup(ctx)
 	// Messages a session never got are kept 7 days, then deleted.
 	d.goBg(func() { d.queue.pruneLoop(ctx) })
+	// Resume after an API error (ADR-105): types through the queue, so it
+	// starts once the queue and the reattached sessions are there.
+	d.goBg(func() { d.apiResumeLoop(ctx) })
 
 	// The projects list: seeded once from the repositories sessions ran in,
 	// then each repository's .git watched for changes (never polled).
@@ -1935,43 +1938,44 @@ func (a *settingsAdapter) Get() api.Settings {
 		ReportChatID:     c.ReportChatID,
 		// The token itself never crosses this boundary — only whether one
 		// exists, which is what a screen needs to render a state.
-		ReportBotSet:     c.ReportBotToken != "",
-		ReportBotToken:   c.ReportBotToken,
-		ReportBotWhere:   a.d.secretWhere(telegramSecret, c.ReportBotToken != "", c.ReportBotStored),
-		GeminiAPIKey:     c.GeminiAPIKey,
-		GeminiKeySet:     gemini.Available(c.GeminiAPIKey),
-		GeminiKeyFromEnv: gemini.EnvKeyValue() != "",
-		DeepSeekKeySet:   c.DeepSeekAPIKey != "",
-		DeepSeekKeyHint:  api.MaskKey(c.DeepSeekAPIKey),
-		DeepSeekAPIKey:   c.DeepSeekAPIKey,
-		DeepSeekKeyWhere: a.d.secretWhere(deepSeekSecret, c.DeepSeekAPIKey != "", c.DeepSeekKeyStored),
-		KimiKeySet:       c.KimiAPIKey != "",
-		KimiKeyHint:      api.MaskKey(c.KimiAPIKey),
-		KimiAPIKey:       c.KimiAPIKey,
-		KimiKeyWhere:     a.d.secretWhere(kimiSecret, c.KimiAPIKey != "", c.KimiKeyStored),
-		LimitAction:      config.NormalizeLimitAction(c.LimitAction),
-		LimitFallbacks:   append([]string{}, c.LimitFallbacks...),
-		LimitReturn:      c.LimitReturnAfterReset,
-		ReportLastError:  a.d.reportLastError(),
-		ReportLastSentMs: a.d.reportLastSent(),
-		AlertApproval:    c.AlertApprovalOn(),
-		AlertFinished:    c.AlertFinishedOn(),
-		AlertReply:       c.AlertReplyOn(),
-		AlertDone:        c.AlertDoneOn(),
-		TelegramChat:     c.TelegramChatOn(),
-		TelegramCode:     c.TelegramCodeOn(),
-		NotifyApproval:   c.NotifyApprovalOn(),
-		NotifyFinished:   c.NotifyFinishedOn(),
-		Prompts:          maps.Clone(c.Prompts),
-		AlertLastError:   alertErr,
-		AlertLastSentMs:  alertSent,
-		AlertUntested:    alertErr == "" && a.d.phone.isUntested(),
-		KeepAwake:        keepawake.Normalize(c.KeepAwake),
-		WorktreeCleanup:  projects.NormalizeCleanup(c.WorktreeCleanup),
-		EndIdleAfter:     config.NormalizeEndIdle(c.EndIdleAfter),
-		StatuslineMode:   config.NormalizeStatusline(c.StatuslineMode),
-		QuickReplies:     config.EffectiveQuickReplies(c.QuickReplies),
-		AppUpdate:        config.NormalizeAppUpdate(c.AppUpdate),
+		ReportBotSet:        c.ReportBotToken != "",
+		ReportBotToken:      c.ReportBotToken,
+		ReportBotWhere:      a.d.secretWhere(telegramSecret, c.ReportBotToken != "", c.ReportBotStored),
+		GeminiAPIKey:        c.GeminiAPIKey,
+		GeminiKeySet:        gemini.Available(c.GeminiAPIKey),
+		GeminiKeyFromEnv:    gemini.EnvKeyValue() != "",
+		DeepSeekKeySet:      c.DeepSeekAPIKey != "",
+		DeepSeekKeyHint:     api.MaskKey(c.DeepSeekAPIKey),
+		DeepSeekAPIKey:      c.DeepSeekAPIKey,
+		DeepSeekKeyWhere:    a.d.secretWhere(deepSeekSecret, c.DeepSeekAPIKey != "", c.DeepSeekKeyStored),
+		KimiKeySet:          c.KimiAPIKey != "",
+		KimiKeyHint:         api.MaskKey(c.KimiAPIKey),
+		KimiAPIKey:          c.KimiAPIKey,
+		KimiKeyWhere:        a.d.secretWhere(kimiSecret, c.KimiAPIKey != "", c.KimiKeyStored),
+		LimitAction:         config.NormalizeLimitAction(c.LimitAction),
+		LimitFallbacks:      append([]string{}, c.LimitFallbacks...),
+		LimitReturn:         c.LimitReturnAfterReset,
+		ResumeAfterAPIError: c.ResumeAfterAPIErrorOn(),
+		ReportLastError:     a.d.reportLastError(),
+		ReportLastSentMs:    a.d.reportLastSent(),
+		AlertApproval:       c.AlertApprovalOn(),
+		AlertFinished:       c.AlertFinishedOn(),
+		AlertReply:          c.AlertReplyOn(),
+		AlertDone:           c.AlertDoneOn(),
+		TelegramChat:        c.TelegramChatOn(),
+		TelegramCode:        c.TelegramCodeOn(),
+		NotifyApproval:      c.NotifyApprovalOn(),
+		NotifyFinished:      c.NotifyFinishedOn(),
+		Prompts:             maps.Clone(c.Prompts),
+		AlertLastError:      alertErr,
+		AlertLastSentMs:     alertSent,
+		AlertUntested:       alertErr == "" && a.d.phone.isUntested(),
+		KeepAwake:           keepawake.Normalize(c.KeepAwake),
+		WorktreeCleanup:     projects.NormalizeCleanup(c.WorktreeCleanup),
+		EndIdleAfter:        config.NormalizeEndIdle(c.EndIdleAfter),
+		StatuslineMode:      config.NormalizeStatusline(c.StatuslineMode),
+		QuickReplies:        config.EffectiveQuickReplies(c.QuickReplies),
+		AppUpdate:           config.NormalizeAppUpdate(c.AppUpdate),
 	}
 	out.MorningSummary, out.MorningSummaryAt = c.MorningSummaryOn(), morning.NormalizeAt(c.MorningSummaryAt)
 	out.MorningSummaryLastError, out.MorningSummaryLastMs = a.d.morningState.get()
@@ -2019,6 +2023,9 @@ func (a *settingsAdapter) Set(in api.Settings) error {
 	}
 	a.d.opt.Config.LimitFallbacks = slices.Clone(in.LimitFallbacks)
 	a.d.opt.Config.LimitReturnAfterReset = in.LimitReturn
+	// A pointer, so a config written before the setting existed gets it on.
+	resume := in.ResumeAfterAPIError
+	a.d.opt.Config.ResumeAfterAPIError = &resume
 	justEnabled := in.UpdateChecks && !a.d.opt.Config.UpdateChecks
 	a.d.opt.Config.UpdateChecks = in.UpdateChecks
 	// Stored as a pointer so "never set" stays distinguishable from "turned
@@ -2320,7 +2327,7 @@ func (a *agentAdapter) Spawn(ctx context.Context, req any) (string, string, erro
 }
 
 func (a *agentAdapter) Input(id string, data []byte) error     { return a.m.Input(id, data) }
-func (a *agentAdapter) Write(id string, data []byte) error     { return a.m.Input(id, data) }
+func (a *agentAdapter) Write(id string, data []byte) error     { return a.m.Key(id, data) }
 func (a *agentAdapter) Resize(id string, cols, rows int) error { return a.m.Resize(id, cols, rows) }
 
 // PasteMode reports whether the session turned bracketed paste on (api/pathinput.go).

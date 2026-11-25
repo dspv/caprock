@@ -39,3 +39,34 @@ func TestInputSeqIsAppliedOnceWithoutAHolder(t *testing.T) {
 		t.Fatal("a session Caprock did not start must be refused")
 	}
 }
+
+// A person's keys are kept as the session's last key (ADR-105); Caprock's
+// own typing, a focus report and a mouse report are not.
+func TestLastKeyIsAPersonsTyping(t *testing.T) {
+	m, _, _ := newMgr(t)
+	a, err := m.Spawn(context.Background(), SpawnRequest{Cwd: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := a.SessionID
+	if err := m.Input(id, []byte("continue")); err != nil {
+		t.Fatal(err)
+	}
+	for _, data := range []string{"\x1b[I", "\x1b[O", "\x1b[<0;10;5M", "\x1b[M !!"} {
+		if err := m.Key(id, []byte(data)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !m.LastKey(id).IsZero() {
+		t.Fatal("Caprock's typing or the terminal's own reports counted as a key")
+	}
+	if err := m.Key(id, []byte("x")); err != nil {
+		t.Fatal(err)
+	}
+	if m.LastKey(id).IsZero() {
+		t.Fatal("a key from the terminal was not kept")
+	}
+	if !m.LastKey("nobody").IsZero() {
+		t.Fatal("a session that is not Caprock's has no last key")
+	}
+}

@@ -172,6 +172,10 @@ type Agent struct {
 	// the past drawn again, and counting it would make every restart look
 	// like activity to the idle end (daemon/endidle.go).
 	ioAt atomic.Int64
+	// keyAt is when someone last typed into the session from a terminal
+	// (Key, InputSeq), unix ns; 0 before. Caprock's own typing (Input) does
+	// not count: it says whether a person is at the session (ADR-105).
+	keyAt atomic.Int64
 	// quietUntil is, for a reattached session, the unix ns until which
 	// output is the holder's replay, not new activity; 0 otherwise.
 	quietUntil int64
@@ -1000,6 +1004,52 @@ func (m *Manager) Input(sessionID string, data []byte) error {
 	return err
 }
 
+// Key is Input for what a person typed in a terminal (the dashboard's, v1 or
+// v2 without a client id): the same bytes, also kept as the session's last
+// key (LastKey).
+func (m *Manager) Key(sessionID string, data []byte) error {
+	if a, ok := m.Get(sessionID); ok {
+		a.noteKey(data, m.now())
+	}
+	return m.Input(sessionID, data)
+}
+
+// LastKey is when someone last typed into an owned session from a terminal;
+// zero before, and for a session that is not Caprock's.
+func (m *Manager) LastKey(sessionID string) time.Time {
+	a, ok := m.Get(sessionID)
+	if !ok {
+		return time.Time{}
+	}
+	if ns := a.keyAt.Load(); ns != 0 {
+		return time.Unix(0, ns)
+	}
+	return time.Time{}
+}
+
+// noteKey keeps t as the last key, unless data is only what a terminal
+// sends by itself: a focus report or a mouse event.
+func (a *Agent) noteKey(data []byte, t time.Time) {
+	if !personTyped(data) {
+		return
+	}
+	a.keyAt.Store(t.UnixNano())
+}
+
+// personTyped reports whether terminal input is a person's: anything but a
+// focus report (ESC [ I, ESC [ O) or a mouse report (ESC [ <…, ESC [ M…),
+// which xterm.js sends on its own when the program asked for them.
+func personTyped(data []byte) bool {
+	s := string(data)
+	switch {
+	case s == "", s == "\x1b[I", s == "\x1b[O":
+		return false
+	case strings.HasPrefix(s, "\x1b[<"), strings.HasPrefix(s, "\x1b[M"):
+		return false
+	}
+	return true
+}
+
 // InputSeq types sequenced input (terminal protocol v2) exactly once per
 // client, and returns the client's last applied sequence. Sequence 0 types
 // nothing and only asks for it. A pty-host keeps the numbering itself, so it
@@ -1012,6 +1062,7 @@ func (m *Manager) InputSeq(sessionID, client string, seq uint64, data []byte) (u
 	if seq > 0 {
 		m.typedInput(a, data)
 		a.typedAny.Store(true)
+		a.noteKey(data, m.now())
 	}
 	if sw, ok := a.sess.(ptyman.SeqWriter); ok {
 		last, err := sw.WriteSeq(client, seq, data)

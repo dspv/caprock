@@ -517,6 +517,11 @@ func TestMigration0080IsTheFence(t *testing.T) {
 		`DROP TRIGGER events_gen_update`, `DROP TRIGGER events_gen_delete`, `ALTER TABLE session_gen DROP COLUMN calls_gen`,
 		// 0092
 		`DROP INDEX idx_brain_runs_reader`, `ALTER TABLE brain_runs DROP COLUMN reader`, `ALTER TABLE brain_runs DROP COLUMN no_usage`,
+		// 0095
+		`DROP INDEX idx_sessions_api_error`, `ALTER TABLE sessions DROP COLUMN api_error_at`, `ALTER TABLE sessions DROP COLUMN api_error`,
+		`ALTER TABLE sessions DROP COLUMN api_error_retry`, `ALTER TABLE sessions DROP COLUMN api_resume_tries`,
+		`ALTER TABLE sessions DROP COLUMN api_resume_at`, `ALTER TABLE sessions DROP COLUMN api_resume_for`,
+		`ALTER TABLE sessions DROP COLUMN api_resume_state`,
 	} {
 		if _, err := st.DB().Exec(q); err != nil {
 			t.Fatal(err)

@@ -414,6 +414,11 @@ type Settings struct {
 	LimitAction    string   `json:"limit_action"`
 	LimitFallbacks []string `json:"limit_fallbacks"`
 	LimitReturn    bool     `json:"limit_return_after_reset"`
+	// ResumeAfterAPIError is Settings → After an API error (ADR-105): a
+	// session Caprock started whose turn ended on a transient API error gets
+	// "continue" typed in, after a pause, at most three times. On unless
+	// turned off.
+	ResumeAfterAPIError bool `json:"resume_after_api_error"`
 	// ReportLastError is why the last send failed, empty when it did not.
 	//
 	// A weekly message that silently stops arriving is the failure mode this
@@ -2139,6 +2144,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		LimitAction    *string   `json:"limit_action"`
 		LimitFallbacks *[]string `json:"limit_fallbacks"`
 		LimitReturn    *bool     `json:"limit_return_after_reset"`
+		ResumeAPIError *bool     `json:"resume_after_api_error"`
 		AlertApproval  *bool     `json:"alert_approval"`
 		AlertFinished  *bool     `json:"alert_finished"`
 		AlertReply     *bool     `json:"alert_reply"`
@@ -2334,6 +2340,9 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if patch.LimitReturn != nil {
 		in.LimitReturn = *patch.LimitReturn
+	}
+	if patch.ResumeAPIError != nil {
+		in.ResumeAfterAPIError = *patch.ResumeAPIError
 	}
 	if patch.AlertApproval != nil {
 		in.AlertApproval = *patch.AlertApproval
