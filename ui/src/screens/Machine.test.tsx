@@ -4,7 +4,7 @@ import { MachineScreen, MachinesScreen } from './Machine'
 import { clearShared } from '@/lib/refresh'
 import { AppActionsContext, type SetupReport } from '@/lib/setup'
 import { ApiError, type SessionSummary } from '@/lib/api'
-import { machinesApi, type Machine } from '@/lib/machines'
+import { MACHINE_READ_MS, machinesApi, readTimeout, type Machine } from '@/lib/machines'
 
 const ID = 'f7kc4QaG4HRPYEjg19Pr-au-FeTljmKHkikFrAmRTzM'
 const mini: Machine = { id: ID, name: 'Mac mini', relay: 'wss://relay.example', added_at: 1, status: 'online', kind: 'machine', role: 'controller', streams: 0 }
@@ -36,13 +36,45 @@ describe('MachineScreen — another computer’s sessions (ADR-067)', () => {
   })
 
   it('says offline with the reason and offers to try again', async () => {
-    vi.spyOn(machinesApi, 'list').mockResolvedValue([mini])
+    vi.spyOn(machinesApi, 'list').mockResolvedValue([{ ...mini, status: 'offline' }])
     vi.spyOn(machinesApi, 'sessions').mockRejectedValue(new ApiError(503, '503', { error: 'the computer is offline', status: 'offline' }))
     render(<MachineScreen id={ID} />)
     const alert = await screen.findByRole('alert')
     expect(alert.textContent).toContain('Mac mini is offline. It is not at its relay')
     expect(alert.getAttribute('title')).toBe('the computer is offline')
     expect(alert.textContent).toContain('Try again')
+  })
+
+  // Win PC1, 2026-11-26: online, nothing running, and the page's own read
+  // never answered — the page sat on grey rows for good.
+  it('online with nothing running says so from the shared list, while its own read is still out', async () => {
+    const win = { ...mini, name: 'Win PC1', version: '0.196.0' }
+    vi.spyOn(machinesApi, 'list').mockResolvedValue([win])
+    vi.spyOn(machinesApi, 'allSessions').mockResolvedValue([{ id: ID, name: 'Win PC1', status: 'online', sessions: [], at: 1, last_ok: 1 }])
+    vi.spyOn(machinesApi, 'sessions').mockReturnValue(new Promise(() => {}))
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response('{}', { status: 404 }))
+    render(<MachineScreen id={ID} />)
+    expect(await screen.findByText('Nothing runs on Win PC1 now.')).toBeTruthy()
+    expect(document.querySelector('[data-machine-spec] [data-machine-state]')!.textContent).toBe('online')
+    expect(document.querySelector('.skeleton-pulse')).toBeNull()
+  })
+
+  it('a read that never answers ends in an error with Try again, never an endless skeleton', async () => {
+    vi.spyOn(machinesApi, 'list').mockResolvedValue([{ ...mini, name: 'Win PC1' }])
+    vi.spyOn(machinesApi, 'allSessions').mockRejectedValue(readTimeout(MACHINE_READ_MS))
+    const read = vi.spyOn(machinesApi, 'sessions').mockRejectedValueOnce(readTimeout(MACHINE_READ_MS))
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response('{}', { status: 404 }))
+    render(<MachineScreen id={ID} />)
+    const alert = await screen.findByRole('alert')
+    expect(alert.getAttribute('data-machine-error')).toBe('timeout')
+    expect(alert.textContent).toContain('Win PC1 is online but did not answer in time.')
+    // Still online: the channel says so; a slow read is not offline.
+    expect(document.querySelector('[data-machine-band]')!.getAttribute('data-machine-band')).toBe('online')
+    expect(document.querySelector('[data-machine-offline-note]')).toBeNull()
+    read.mockResolvedValueOnce([])
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(await screen.findByText('Nothing runs on Win PC1 now.')).toBeTruthy()
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 
   it('draws no frame for a computer that removed this one, and says what to do', async () => {

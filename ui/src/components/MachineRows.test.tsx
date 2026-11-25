@@ -43,8 +43,34 @@ describe('MachineRows — the sidebar’s other computers (ADR-067)', () => {
     expect(onOpen).toHaveBeenCalledWith(`#/m/${ID}`)
   })
 
-  it('says offline when the proxy does, and never asks a computer that removed this one', async () => {
-    vi.spyOn(machinesApi, 'list').mockResolvedValue([mini, { ...mini, id: `${ID.slice(0, -1)}B`, name: 'Linux box', status: 'revoked' }])
+  // Win PC1, 2026-11-26: the daemon said online and its list was empty; the
+  // row said offline with a red dot while the page said online.
+  it('an online computer with nothing running is online: green dot, never offline', async () => {
+    vi.spyOn(machinesApi, 'list').mockResolvedValue([{ ...mini, name: 'Win PC1', version: '0.196.0', last_seen: Date.now() }])
+    vi.spyOn(machinesApi, 'allSessions').mockResolvedValue([{ id: ID, name: 'Win PC1', status: 'online', sessions: [], at: 1, last_ok: 1 }])
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response('{}', { status: 404 }))
+    render(<MachineRows onOpen={vi.fn()} dashboardActive={false} />)
+    const line = await screen.findByText('idle')
+    expect(line.hasAttribute('data-machine-row-state')).toBe(false)
+    const dot = document.querySelector(`[data-machine-row="${ID}"] [aria-hidden]`)!
+    expect(dot.className).toContain('bg-ok')
+    expect(screen.queryByText(/offline/)).toBeNull()
+  })
+
+  it('a read that failed or ran out of time does not make an online computer offline', async () => {
+    for (const status of ['offline', 'timeout']) {
+      vi.spyOn(machinesApi, 'list').mockResolvedValue([mini])
+      vi.spyOn(machinesApi, 'allSessions').mockResolvedValue([{ id: ID, name: 'Mac mini', status, error: 'did not answer in 8s', last_ok: 5 }])
+      render(<MachineRows onOpen={vi.fn()} dashboardActive={false} />)
+      await vi.waitFor(() => expect(document.querySelector(`[data-machine-row="${ID}"] [aria-hidden]`)!.className).toContain('bg-ok'))
+      expect(screen.queryByText(/^offline/)).toBeNull()
+      cleanup()
+      clearShared()
+    }
+  })
+
+  it('says offline when the channel does, and never asks a computer that removed this one', async () => {
+    vi.spyOn(machinesApi, 'list').mockResolvedValue([{ ...mini, status: 'offline' }, { ...mini, id: `${ID.slice(0, -1)}B`, name: 'Linux box', status: 'revoked' }])
     const all = vi.spyOn(machinesApi, 'allSessions').mockResolvedValue([
       { id: ID, name: 'Mac mini', status: 'offline', error: 'the computer is offline', last_ok: 5 },
       { id: `${ID.slice(0, -1)}B`, name: 'Linux box', status: 'revoked' },

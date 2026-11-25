@@ -25,7 +25,7 @@
 import { useState } from 'react'
 import { errText } from '@/lib/api'
 import { machineLook, machinesApi, useMachineSessions, useMachines, type Machine, type MachineSessions } from '@/lib/machines'
-import { machineLine, machineState, useMachineSpec } from '@/lib/machinespec'
+import { machineLine, machineState, stateStatus, useMachineSpec } from '@/lib/machinespec'
 import { useNow } from '@/lib/useNow'
 import { useRoute, type SettingsSection } from '@/lib/router'
 import { needLabel, needsYou, oldestFirst } from '@/lib/needs'
@@ -87,14 +87,14 @@ export function MachineRows({ onOpen, onSettingsSection, dashboardActive }: {
 }
 
 function MachineRow({ m, read, onOpen, activeMachine, activeSession }: { m: Machine; read?: MachineSessions; onOpen: (hash: string) => void; activeMachine: boolean; activeSession?: string }) {
-  const look = machineLook(m)
   const now = useNow(60_000)
+  // One word for how it stands, the same as its page and its card say
+  // (machineState): online or offline is the channel's, never a failed read's.
   const st = machineState(m, read)
-  // What the proxy said last outranks the list's state: it was asked later.
-  const failed = read?.status === 'offline' || read?.status === 'revoked' || read?.status === 'refused' ? read.status : ''
-  const state = st.offline ? '' : failed === 'revoked' ? 'removed there' : failed === 'refused' ? 'refused' : look.tone === 'ok' || look.tone === 'muted' ? '' : look.label
+  const look = machineLook({ ...m, status: stateStatus(m, read, st) })
+  const state = st.offline || look.tone === 'ok' || look.tone === 'muted' ? '' : look.label
   // Online green, offline greyed, a state that needs something in its tone.
-  const dot = st.offline ? 'bg-fg-faint opacity-60' : failed || look.tone === 'bad' ? 'bg-danger' : look.tone === 'warn' ? 'bg-warn' : st.online ? 'bg-ok' : 'bg-fg-faint'
+  const dot = st.offline ? 'bg-fg-faint opacity-60' : look.tone === 'bad' ? 'bg-danger' : look.tone === 'warn' ? 'bg-warn' : st.online ? 'bg-ok' : 'bg-fg-faint'
   const spec = useMachineSpec(m.id, !st.down, 120_000)
   const live = (read?.sessions ?? []).filter((s) => s.status !== 'ended')
   // Needing you first, oldest first, as this machine's own rows (lib/needs).

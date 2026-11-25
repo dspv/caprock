@@ -15,7 +15,8 @@
  * said as last time. A computer whose Caprock predates either route answers
  * 404 for it: that half is simply absent.
  */
-import { machineBase, type Machine, type MachineSessions } from './machines'
+import { useEffect, useRef } from 'react'
+import { MACHINE_READ_MS, fetchWithin, machineBase, type Machine, type MachineSessions } from './machines'
 import { done, item, readyAgents, type SetupReport } from './setup'
 import type { ResourceReport } from './resources'
 import { useApi, type Loaded } from './useApi'
@@ -31,7 +32,9 @@ export interface MachineSpec {
 
 async function getJSON<T>(url: string): Promise<T | undefined> {
   try {
-    const res = await fetch(url, { headers: { Accept: 'application/json' } })
+    // Bounded: a read that never answers would hold this computer's figures,
+    // and every view sharing them, for good.
+    const res = await fetchWithin(url, { headers: { Accept: 'application/json' } }, MACHINE_READ_MS)
     return res.ok ? ((await res.json()) as T) : undefined
   } catch { return undefined }
 }
@@ -53,7 +56,16 @@ export async function fetchMachineSpec(id: string): Promise<MachineSpec> {
 export function useMachineSpec(id: string, active: boolean, intervalMs = 60_000): Loaded<MachineSpec> {
   // A computer known to be down is not asked at all, its first read included:
   // the kept answer stands, and the read comes when it is back.
-  return useApi(() => (active ? fetchMachineSpec(id) : Promise.reject(new Error('down'))), [id], { live: false, intervalMs, active, cache: `machine-spec:${id}`, keepUnchanged: true })
+  const got = useApi(() => (active ? fetchMachineSpec(id) : Promise.reject(new Error('down'))), [id], { live: false, intervalMs, active, cache: `machine-spec:${id}`, keepUnchanged: true })
+  // Back up: asked at once, not at the next interval (two minutes in the
+  // sidebar), so a computer that was down a moment never keeps an empty line.
+  const was = useRef(active)
+  const { refresh } = got
+  useEffect(() => {
+    if (active && !was.current) refresh()
+    was.current = active
+  }, [active, refresh])
+  return got
 }
 
 export function osName(os: string | undefined): string {
@@ -100,16 +112,42 @@ export function projectsThere(r: SetupReport | undefined): number | undefined {
 }
 
 /**
- * How a computer stands for these views. `down` is a computer that cannot
- * be read now: offline, or a state that needs something (waiting for Allow,
- * removed there, refused). What its session list said last outranks the
- * list's state: it was asked later.
+ * How a computer stands, for every view of it — its sidebar row, its page and
+ * its card on All computers — so no two of them disagree.
+ *
+ * - **Online or offline is the channel's** (`m.status`, GET /v1/machines):
+ *   only the channel knows whether the computer is at its relay. A read of
+ *   its sessions that failed (`read.status` offline, timeout, error) does
+ *   not make an online computer offline: the sidebar did, and called Win PC1
+ *   offline while its page, the channel and the computer all said online
+ *   (2026-11-26). Nor does a read that answered make an offline one
+ *   online: the list is re-read the moment the daemon says the channel came
+ *   up. A read that answered only counts for a channel not opened yet
+ *   (idle, connecting, closed), which a read is what opens.
+ * - **Down** is a computer that cannot be read now: offline, or a state that
+ *   needs its owner — waiting for Allow, removed there, refused — said by
+ *   either; the list learns those too, a read may say them first.
  */
 export function machineState(m: Pick<Machine, 'status'>, read?: Pick<MachineSessions, 'status'>): { online: boolean; offline: boolean; down: boolean } {
-  const bad = (s?: string) => s === 'offline' || s === 'revoked' || s === 'refused' || s === 'pending'
-  const down = bad(read?.status) || bad(m.status)
-  const offline = read?.status === 'offline' || (!bad(read?.status) && m.status === 'offline')
-  return { online: !down && (m.status === 'online' || read?.status === 'online'), offline, down }
+  const needs = (s?: string) => s === 'revoked' || s === 'refused' || s === 'pending'
+  const blocked = needs(read?.status) || needs(m.status)
+  const answered = read?.status === 'online'
+  const online = !blocked && (m.status === 'online' || (answered && m.status !== 'offline'))
+  const offline = !blocked && !online && (m.status === 'offline' || read?.status === 'offline')
+  return { online, offline, down: blocked || offline }
+}
+
+/**
+ * The status a view words a computer by (machineLook), agreeing with
+ * machineState: a state that needs its owner, which a read may say before
+ * the list does; else online or offline as machineState has it; else the
+ * list's own (linked, connecting).
+ */
+export function stateStatus(m: Pick<Machine, 'status'>, read: Pick<MachineSessions, 'status'> | undefined, st: { online: boolean; offline: boolean }): Machine['status'] {
+  const r = read?.status
+  if (r === 'revoked' || r === 'refused' || r === 'pending') return r
+  if (m.status === 'revoked' || m.status === 'refused' || m.status === 'pending') return m.status
+  return st.online ? 'online' : st.offline ? 'offline' : m.status
 }
 
 /** "seen 3d ago", or "not seen yet". */
