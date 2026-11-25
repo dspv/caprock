@@ -1,6 +1,6 @@
 /**
  * The team offer appears only when a second person commits to the same code,
- * leads with this machine's figure, quotes no price, and dismissal is a month
+ * leads with this machine's figure, quotes no price, and dismissal is two weeks
  * of silence. The dialog behind it must not call the team version anything
  * but the product (rule 11).
  */
@@ -50,16 +50,16 @@ describe('TeamsBanner', () => {
     expect(container.textContent).toBe('')
   })
 
-  it('stays away for a month once dismissed', async () => {
+  it('stays away for two weeks once dismissed', async () => {
     team(3)
     const { unmount } = render(<TeamsBanner fact={FACT} now={NOW} />)
     fireEvent.click(await screen.findByText('Not now'))
     unmount()
-    const later = render(<TeamsBanner fact={FACT} now={NOW + 29 * DAY} />)
+    const later = render(<TeamsBanner fact={FACT} now={NOW + 13 * DAY} />)
     await new Promise((r) => setTimeout(r, 20))
     expect(later.container.textContent).toBe('')
     later.unmount()
-    render(<TeamsBanner fact={FACT} now={NOW + 31 * DAY} />)
+    render(<TeamsBanner fact={FACT} now={NOW + 15 * DAY} />)
     expect(await screen.findByText('Not now')).toBeTruthy()
   })
 

@@ -9,7 +9,7 @@
  *
  * The same rules as every offer here (lib/nudges.ts): the reader's own figure
  * first, no price, nothing over an empty dashboard, one offer on screen at a
- * time, and "not now" is a month of silence. Rule 11: the team version is
+ * time, and "not now" is two weeks of silence. Rule 11: the team version is
  * presented as the product it is.
  */
 import { useState } from 'react'
@@ -44,7 +44,7 @@ export function TeamsBanner({ fact, now }: { fact: TeamsFact; now: number }) {
       actions={<>
         <BannerButton onClick={() => openExternal(TEAMS_URL)} title={extTitle()}>Caprock for Teams ↗</BannerButton>
         <button type="button" onClick={() => setOpen(true)} className="bn-link">What teams get</button>
-        <BannerDismiss onClick={() => markAnswered(KIND, now)} title="Hide this for a month">Not now</BannerDismiss>
+        <BannerDismiss onClick={() => markAnswered(KIND, now)} title="Hide this for two weeks">Not now</BannerDismiss>
       </>}
     >
       {open && <TeamsModal fact={fact} onClose={() => setOpen(false)} />}
