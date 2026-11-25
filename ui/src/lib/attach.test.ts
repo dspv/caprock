@@ -2,7 +2,48 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { ApiError } from './api'
-import { ATTACH_ACCEPT, ATTACH_LIMIT_BYTES, FILES_ACCEPT, IMAGE_EXTS, MEDIA_LOOKALIKE_EXTS, PASTE_EXTS, PHOTOS_ACCEPT, attachLabels, attachRefusal, attachRefusalOf, attachableName, baseName, droppedItems, isPhotoFile } from './attach'
+import { ATTACH_ACCEPT, ATTACH_LIMIT_BYTES, FILES_ACCEPT, IMAGE_EXTS, MEDIA_LOOKALIKE_EXTS, PASTE_EXTS, PHOTOS_ACCEPT, attachLabels, attachRefusal, attachRefusalOf, attachableName, baseName, droppedItems, isPhotoFile, isVideoName, videoParts } from './attach'
+
+describe('videoParts — a video path in a prompt', () => {
+  const lib = '/Users/me/Library/Application Support/caprock/paste/drop-1795599021771608000/Screen Recording 2026-11-25 at 11.30.20.mov'
+
+  it('finds a quoted path, as Caprock types a dropped file, between the words', () => {
+    expect(videoParts(`"${lib}" what does this show?`)).toEqual([
+      { kind: 'video', path: lib, raw: `"${lib}"` },
+      { kind: 'text', text: ' what does this show?' },
+    ])
+    expect(videoParts(`look: '/tmp/a b.MP4'`)).toEqual([
+      { kind: 'text', text: 'look: ' },
+      { kind: 'video', path: '/tmp/a b.MP4', raw: `'/tmp/a b.MP4'` },
+    ])
+  })
+
+  it('takes a bare path, its escaped spaces unescaped, and a Windows one', () => {
+    expect(videoParts('see /Users/me/My\\ Clip.webm.')).toEqual([
+      { kind: 'text', text: 'see ' },
+      { kind: 'video', path: '/Users/me/My Clip.webm', raw: '/Users/me/My\\ Clip.webm' },
+      { kind: 'text', text: '.' },
+    ])
+    expect(videoParts('"C:\\Users\\me\\clip.m4v"')).toEqual([{ kind: 'video', path: 'C:\\Users\\me\\clip.m4v', raw: '"C:\\Users\\me\\clip.m4v"' }])
+  })
+
+  it('leaves images, documents, relative names and lookalikes as text', () => {
+    for (const t of ['"/tmp/shot.png"', 'clip.mov', 'notes/clip.mov', '/tmp/clip.mov.txt', 'https://example.com/clip.mp4', '"/tmp/clip.movie"']) {
+      expect(videoParts(t)).toEqual([{ kind: 'text', text: t }])
+    }
+    expect(videoParts('')).toEqual([{ kind: 'text', text: '' }])
+  })
+
+  it('finds two videos in one prompt, in order', () => {
+    const paths = videoParts('"/a/1.mov" "/a/2.mp4" compare').flatMap((p) => (p.kind === 'video' ? [p.path] : []))
+    expect(paths).toEqual(['/a/1.mov', '/a/2.mp4'])
+  })
+
+  it('isVideoName knows the four containers, in any case', () => {
+    expect(['a.mov', 'b.MP4', 'c.m4v', 'd.webm'].every(isVideoName)).toBe(true)
+    expect(['a.png', 'b.mkv', 'c.mov.txt'].some(isVideoName)).toBe(false)
+  })
+})
 
 /** The extensions in paste.go's pasteKinds, in order. */
 function goExts(): string[] {

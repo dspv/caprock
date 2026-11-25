@@ -1076,6 +1076,8 @@ func New(d Deps) *Server {
 	m.HandleFunc("POST /v1/brain/backfill", s.handleBrainBackfill)
 	// AI;DR (tldr.go, ADR-072): one answer squeezed by the user's own claude.
 	m.HandleFunc("POST /v1/events/{id}/tldr", s.handleEventTLDR)
+	// A video a prompt names, for the chat's tile (video.go).
+	m.HandleFunc("GET /v1/events/{id}/video", s.handleEventVideo)
 	m.HandleFunc("POST /v1/shells", s.handleStartShell)
 	m.HandleFunc("GET /v1/shells", s.handleShells)
 	m.HandleFunc("POST /v1/shutdown", s.handleShutdown)

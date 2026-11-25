@@ -720,6 +720,31 @@ describe('ChatView: a turn at work', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Show 4 more lines' }))
     expect(block.textContent).toContain('line 10')
   })
+
+  it('a video path in a prompt is a video tile, read from the daemon by that prompt, and its path again when it cannot play', async () => {
+    const path = '/Users/me/Library/Application Support/caprock/paste/drop-1/Screen Recording.mov'
+    store.events = [msg(1, `"${path}" what goes wrong here?`), stop(2)]
+    render(<ChatView sessionId="s" canType={false} />)
+    await waitFor(() => expect(renderedIds()).toEqual([1]))
+    const bubble = log().querySelector('[data-msg-id="1"]')!
+    const tile = bubble.querySelector('[data-video-tile]')!
+    expect(tile).not.toBeNull()
+    const video = tile.querySelector('video')!
+    expect(video.getAttribute('src')).toBe(`/v1/events/1/video?path=${encodeURIComponent(path)}#t=0.1`)
+    expect(video.getAttribute('preload')).toBe('metadata')
+    expect(video.hasAttribute('controls')).toBe(true)
+    expect(tile.textContent).toContain('Screen Recording.mov')
+    expect(bubble.textContent).toContain('what goes wrong here?')
+    expect(bubble.textContent).not.toContain(path)
+    // A length once the metadata is in.
+    Object.defineProperty(video, 'duration', { configurable: true, value: 83.4 })
+    fireEvent.loadedMetadata(video)
+    expect(tile.textContent).toContain('1:23')
+    // A file gone, or a codec the webview cannot play: the path as typed.
+    fireEvent.error(video)
+    expect(bubble.querySelector('[data-video-tile]')).toBeNull()
+    expect(bubble.querySelector('[data-video-fallback]')!.textContent).toBe(`"${path}"`)
+  })
 })
 
 describe('ChatView: what you send', () => {

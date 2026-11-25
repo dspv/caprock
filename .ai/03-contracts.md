@@ -6119,6 +6119,33 @@ POST /v1/events/{id}/tldr   (body {}) → 200 {tldr: string, cached: bool} | 404
 - **Who.** The machine, and a paired controller phone (`controllerRoutes`);
   a viewer gets `403`.
 
+### A prompt's video
+
+The bytes of a video a prompt names, for the chat's video tile
+([04-ui.md](04-ui.md) § Chat attachments; owner, 2026-11-25). A video dropped
+on a terminal is typed into the session as its path and the file stays where
+it was; Claude Code cannot watch it, so the session still gets only the path.
+Code: `internal/api/video.go`, `store.PromptText`.
+
+```
+GET /v1/events/{id}/video?path=<absolute path>   → 200 | 206 the file's bytes | 400 {error} | 404 {error}
+```
+
+- **`path`** is absolute and ends in `.mov`, `.mp4`, `.m4v` or `.webm`, in
+  any case; anything else is `400`.
+- **Only what the prompt names.** `{id}` is a `turn.user` event, and its
+  words (`prompt`, else `text`) contain `path` as written, or with each space
+  backslash-escaped as a shell types a dropped file. Any other path, an id
+  that is no prompt, or a file that is gone is `404`; a path that is not a
+  regular file once symlinks are followed is `400`.
+- **Served** with `http.ServeContent`: `Accept-Ranges: bytes` and `206` for a
+  `Range`, which a WebKit `<video>` needs before it plays; `HEAD` too.
+  Headers: the type from the extension (`video/quicktime`, `video/mp4` for
+  `.mp4` and `.m4v`, `video/webm`), `X-Content-Type-Options: nosniff`,
+  `Cache-Control: private, no-cache`.
+- **Who.** The machine only: not in `pairedDeviceRoutes`, so a paired device
+  gets `403`; its `<video>` could not carry the device token anyway.
+
 ### Queued messages
 
 What the chat field sends to a session Caprock started ([ADR-053](08-decisions.md)).
