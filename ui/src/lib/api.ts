@@ -3138,6 +3138,8 @@ export const api = {
    * user's data directory.
    */
   paste: (file: { name: string; type: string; data: string }) => post<{ path: string }>('/v1/paste', file),
+  /** Opens a video a prompt names in the system's own player (the chat's video tile). */
+  openVideo: (eventId: number, path: string) => post<void>(`/v1/events/${eventId}/video/open`, { path }),
   agentInput: (id: string, data: string) => post<void>(`/v1/agents/${encodeURIComponent(id)}/input`, { data }),
   /** Saved files (paste) typed in as the desktop terminal types a dropped one:
    *  each image its own bracketed paste when the session asked for paste. */
