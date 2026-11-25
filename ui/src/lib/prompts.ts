@@ -61,8 +61,10 @@ const PERIOD_MS: Record<PromptKind, number> = {
   // a day well above this machine's normal.
   'premium-limit': 14 * DAY,
   'premium-cap': 14 * DAY,
-  'teams-banner': 30 * DAY,
-  'teams-nudge': 30 * DAY,
+  // The team card shows only to someone whose repositories have other committers, the one reader it
+  // fits, so it comes back after two weeks like the contextual Premium nudges (owner, 2026-11-26).
+  'teams-banner': 14 * DAY,
+  'teams-nudge': 14 * DAY,
   'star-dismissed': 30 * DAY,
   // "I starred it" is final.
   'star-done': Number.POSITIVE_INFINITY,

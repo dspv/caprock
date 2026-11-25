@@ -32,14 +32,14 @@ describe('star strip eligibility', () => {
 })
 
 describe('snooze', () => {
-  it('Premium nudges come back after two weeks, the team card after a month', () => {
+  it('Premium nudges come back after two weeks, the team card too', () => {
     markAnswered('premium-limit', T0)
     markAnswered('premium-cap', T0)
     markAnswered('teams-nudge', T0)
     expect(isDue('premium-limit', T0 + 13 * DAY)).toBe(false)
     expect(isDue('premium-cap', T0 + 14 * DAY)).toBe(true)
-    expect(isDue('teams-nudge', T0 + 29 * DAY)).toBe(false)
-    expect(isDue('teams-nudge', T0 + 30 * DAY)).toBe(true)
+    expect(isDue('teams-nudge', T0 + 13 * DAY)).toBe(false)
+    expect(isDue('teams-nudge', T0 + 14 * DAY)).toBe(true)
   })
 
   it('takes the later answer from the daemon and ignores unknown ids', () => {
