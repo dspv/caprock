@@ -12,6 +12,97 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.196.0] - 2026-11-25
+
+### Changed
+
+- **cockpit:** In the hour after a release, the unfolded Release section now
+  shows a green seal with the release's version, *0.195.0 is out*, as its
+  largest line. Under it are the age and, when an agent cost was recorded,
+  *$3.81 on 2 pull requests*. Below that, the five finished steps fold into a
+  thin green track from *Merged* to *Out*; hover or focus it to see each step
+  and its time. The one-time burst now comes from the seal. The folded line
+  is unchanged.
+- **daemon:** the memory status no longer reads every handed session's
+  events once a minute. A session's first edit is kept once found, and one
+  with none yet is read again only after its events moved. On the stand a
+  refresh was 322 statements and 5.8 MB of reads; later refreshes now read
+  only the sessions that moved. On the owner's Mac this was about 1 GB of
+  disk reads an hour.
+- **daemon:** the summaries' per-session figures are kept in the database
+  across restarts (migration 0093), so a start reads only what moved since
+  the last run instead of all of history. On a copy of a 2.4 GB database,
+  about 255 MB less read at each start.
+- **app:** the macOS menu bar popover is made on its first open instead of
+  at start, where it was kept as a second web page whether opened or not. With the popover never opened the app uses about 46 MB
+  less (188.9 → 143.3 MB at start on the bench). A first open shows a
+  loading mark until the page draws.
+- **daemon:** a private module's document list asked for again without a
+  tag is answered from memory while the collection is unchanged. Listing a
+  21 MB collection of twelve pages took 62 ms and twelve database reads; it
+  now takes 11 ms and none (four tagless listings and one write a minute:
+  720 reads → 180). Who asks is logged at debug level.
+- **daemon:** the daemon holds about half the memory it did. SQLite's page
+  cache per connection is 4 MiB instead of 16 MiB: on a stand at the owner's
+  scale (1.18M events, 2.8 GB) its steady footprint went from 518 MB to
+  276 MB, SQLite's share from 366 MB to 100 MB, with every timed endpoint as
+  fast and its CPU about the same (10.2% → 10.7% of a core).
+- **app:** the session lists carry an ETag, and an unchanged one costs a
+  304 with no body instead of the whole list (293 KB on the stand, 424 KB
+  on the owner's Mac), nor is it merged into the sidebar again.
+- **app:** opening a session's inspector transfers less. The daemon leaves
+  out the tool results the inspector never shows (`slim=1`): 38% smaller on
+  a hook-driven session and 70% on a long one on the stand (612 KB → 184 KB).
+- **app:** the window does less while agents work. The live session list is
+  asked when a frame names a session the window does not hold, and every
+  15 s, not on every live tick; session frames are applied once a second.
+  On the stand with four tabs and four agents: 984 → 593 redraws and
+  996 → 383 KB of requests a minute. Agents' text still arrives as it did.
+- **daemon:** the Work board's per-session cache keeps only the fields its
+  readers look at, and drops a session the board no longer lists. On the
+  stand's database, 256 sessions' cached events went from 30.5 MB of
+  payloads to 2.4 MB, with every state read the same.
+- **new agent:** the dialog fits a 1440×900 screen, First message and Start
+  included (about 930 px tall before with another computer linked and a
+  GitHub project, 766 px now). Every control keeps its look; Machine sits
+  beside Project, Where beside Agent, Model beside Effort; *From an issue or
+  PR…* and *Add subscription* moved to the end of their label rows; and the
+  instructions card's explanation lines are now its hover text. A window
+  shorter than the dialog still scrolls its middle under a fixed title and
+  Start, and a narrow window stacks the fields in one column.
+- **app:** the macOS `.dmg` window has a new look, light drafting paper with
+  *Mission control for your agents* and the crew walking under an arc to
+  Applications, and it is sharp on Retina screens: the background now ships
+  at 1x and 2x in one multi-resolution picture. The release check now also
+  fails if the mounted disk would lose its Caprock icon and show a generic
+  disk.
+- **app:** a terminal tab out of sight for 30 seconds now packs its older
+  scrollback into a compact form and unpacks it, exactly as it was, the
+  moment the tab is shown again. xterm keeps every line at the terminal's
+  full width, about 2 KB a line in the app's web view, so each tab full of
+  output held about 20 MB while hidden. Packed, eight full tabs took the page
+  from about 375 MB to about 265 MB in a WebKit measurement. Switching tabs
+  is as fast as before and nothing in the scrollback is lost; a tab hidden
+  ten minutes still keeps its last 1,000 lines, as before.
+
+### Fixed
+
+- **app:** the Mac app no longer quits about once a week with "panic in a
+  function that cannot unwind". An assertion inside macOS's own window code
+  (seen while a display was being reconfigured) raised an exception that
+  macOS would have logged and survived, but it unwound into the app's event
+  handler and aborted it. That handler now catches such an exception, writes
+  it to `app.log` with the stack it was raised on, and the app carries on.
+  Release builds now unwind, so a panic in a menu, tray, window or
+  notification callback is logged and the app goes on. Every panic in
+  `app.log` now has its thread and a backtrace, and an abort that is still
+  fatal names the last Objective-C exception raised.
+- **daemon:** the first Week and At a glance after a restart answer sooner.
+  The all-time glance is counted as the daemon starts, and two indexes
+  (migration 0094) let the Week match pull requests to sessions without
+  reading event rows. On a cold copy of a 2.4 GB database, asked 8 s after
+  start: the Week 3.2 s → 1.3 s, the glance 2 s → 4 ms.
+
 ## [0.195.0] - 2026-11-24
 
 ### Changed

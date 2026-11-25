@@ -532,6 +532,16 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-11-25 — 0.196.0: lighter, steadier, and a new install window
+
+A minor release, #1070. The app uses less memory: a terminal tab hidden for
+half a minute packs its old scrollback and puts it back exactly when shown,
+and session lists, events and the Work board are cached. The first Week and
+At a glance after a restart answer sooner. An AppKit exception under an event
+no longer closes the app, and every panic is logged in full. New agent fits
+one 1440x900 screen with the same look, and the .dmg opens on a new,
+Retina-sharp window with a Caprock volume icon.
+
 ### 2026-11-24 — 0.195.0: switching tabs is instant
 
 A minor release, #1061. Going back to one of the last four session tabs shows
