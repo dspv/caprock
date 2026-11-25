@@ -91,6 +91,22 @@ If something is still missing there, the laptop says which: *Home PC needs
 one more step: Claude Code is not signed in there. Open Caprock on it and
 finish its checklist, or run `caprock setup` there over SSH.*
 
+In the app's sidebar, under **Computers**, each computer takes two lines:
+its name, with how many agents run there in a badge, and under it *macOS ·
+36 GB · 2 running* — or, greyed, *offline · seen 3d ago*. Click one for its
+page: its system, memory, cores and Caprock version, bars for the memory in
+use and the processor (Windows gives no load, so there it says *No
+figure*), what is ready there, the agents running, and **Start an agent
+there**. **All N**, beside the heading, opens **All computers**: one card
+each with the same bars.
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="computers-light.webp">
+  <img alt="A computer's page in the app: the sidebar lists three computers on two lines each, and the MacBook Pro's page shows online, macOS, 36 GB memory, 12 cores and its Caprock version, Start an agent there, memory 78% used, processor 43%, Claude Code signed in and two agents running" src="computers.webp">
+</picture>
+
+*Example figures.*
+
 To rename a computer on the laptop, right-click it in the sidebar →
 **Rename**.
 
