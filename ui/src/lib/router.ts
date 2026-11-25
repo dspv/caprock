@@ -1,5 +1,5 @@
 // Hash router — zero dependencies, good enough for five screens.
-// Routes: #/ (Home; #/home and the older #/now are the same screen) · #/session/:id · #/cost · #/history · #/week · #/tasks · #/queue · #/start · #/settings[/phone|/telegram|/computers|/voice] · #/mail · #/brain[?node=] · #/pipeline[?repo=&of=&pr=] · #/work · #/jarvis · #/chats[?archived=1] · #/chats/:id · #/x/:id[?to=] · #/m/:machine[/session/:id]
+// Routes: #/ (Home; #/home and the older #/now are the same screen) · #/session/:id · #/cost · #/history · #/week · #/tasks · #/queue · #/start · #/settings[/phone|/telegram|/computers|/voice] · #/mail · #/brain[?node=] · #/pipeline[?repo=&of=&pr=] · #/work · #/jarvis · #/chats[?archived=1] · #/chats/:id · #/x/:id[?to=] · #/m · #/m/:machine[/session/:id]
 import { useEffect, useState } from 'react'
 
 export type Route =
@@ -48,6 +48,9 @@ export type Route =
   // Another computer this one reaches (ADR-067): its sessions, or one of
   // them — the Session view and terminal through /v1/m/{id}/… (screens/Machine).
   | { name: 'machine'; id: string; session?: string; tab?: string }
+  // All computers (#/m): one card per linked computer, opened from the
+  // sidebar's Computers heading (screens/Machine).
+  | { name: 'machines' }
   // The Files tab on the dashboard (ADR-089): a project's two panels, read-only on a device.
   | { name: 'files'; project?: string; wt?: string }
 
@@ -124,6 +127,7 @@ export function parseHash(hash: string): Route {
     }
     case 'm': {
       const id = parts[1] ?? ''
+      if (!id) return { name: 'machines' }
       if (!/^[A-Za-z0-9_-]{16,128}$/.test(id)) return { name: 'now' }
       if (parts[2] === 'session' && parts[3]) return { name: 'machine', id, session: decodeURIComponent(parts[3]), ...(tab ? { tab } : {}) }
       return { name: 'machine', id }
@@ -168,6 +172,7 @@ export function href(r: Route): string {
     case 'chat': return `#/chats/${encodeURIComponent(r.id)}`
     case 'module': return r.to && isModuleHref(r.to) ? `#/x/${r.id}?to=${encodeURIComponent(r.to)}` : `#/x/${r.id}`
     case 'machine': return r.session ? `#/m/${r.id}/session/${encodeURIComponent(r.session)}${r.tab ? `?tab=${encodeURIComponent(r.tab)}` : ''}` : `#/m/${r.id}`
+    case 'machines': return '#/m'
     case 'files': {
       const q = new URLSearchParams()
       if (r.project) q.set('project', r.project)

@@ -8,14 +8,24 @@
  * the Session view and its terminal as they are on the other computer's own
  * screen, typed into as this machine's paired device there.
  *
+ * A computer's page is the owner's pick of 2026-11-25 (page B, *Machine
+ * card*): a band with its OS mark and live dot, its name large and a spec
+ * line (state, OS, memory, cores, Caprock version), **Start an agent there**
+ * where New agent can open on it (the app); then its memory and processor
+ * bars and how many agents run, what is ready there, and its sessions.
+ * Offline, the figures it had last time, said as last time. All computers
+ * (#/m) is one card each with the same figures (components/MachineCard).
+ *
  * States say what to do: offline (and why), waiting for Allow there, removed
  * there, refused. A terminal that drops with the channel reopens by itself
  * and resumes where it was (terminal protocol v2).
  */
-import { MachineReadiness } from '@/components/MachineReadiness'
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { ApiError, type SessionSummary } from '@/lib/api'
-import { machineLook, machinePageURL, offlineWhy, machinesApi, useMachines, type Machine } from '@/lib/machines'
+import { machineLook, machinePageURL, offlineWhy, machinesApi, useMachineSessions, useMachines, type Machine, type MachineSessions as MachineRead } from '@/lib/machines'
+import { gb, machineState, osName, seenAgo, useMachineSpec } from '@/lib/machinespec'
+import { ready, useAppActions } from '@/lib/setup'
+import { MachineCard, MachineMeters, MachineReadyList, OsGlyph } from '@/components/MachineCard'
 import { href, navigate } from '@/lib/router'
 import { useApi } from '@/lib/useApi'
 import { useNow } from '@/lib/useNow'
@@ -38,7 +48,7 @@ export function MachineScreen({ id, session, tab }: { id: string; session?: stri
 }
 
 /** The computer's name and how it stands, above its list or its session. */
-function MachineHead({ m, back, children }: { m: Machine; back?: boolean; children?: React.ReactNode }) {
+function MachineHead({ m, back, children }: { m: Machine; back?: boolean; children?: ReactNode }) {
   const look = machineLook(m)
   const tone = { ok: 'text-ok', muted: 'text-fg-muted', warn: 'text-warn', bad: 'text-danger' }[look.tone]
   return (
@@ -56,16 +66,56 @@ function MachineHead({ m, back, children }: { m: Machine; back?: boolean; childr
 function MachineSessions({ m }: { m: Machine }) {
   const now = useNow(30_000)
   const look = machineLook(m)
+  const actions = useAppActions()
   const sessions = useApi(() => machinesApi.sessions(m.id, false), [m.id], { live: false, intervalMs: 15_000, active: look.reachable })
   const failure = sessions.error instanceof ApiError ? (sessions.error.body as { error?: string; status?: string } | undefined) : undefined
+  // What its session list said last outranks the list's state: it was asked later.
+  const st = machineState(m, failure?.status ? { status: failure.status } : sessions.data ? { status: 'online' } : undefined)
+  const spec = useMachineSpec(m.id, look.reachable && !st.down, 15_000)
   const all = sessions.data ?? []
   const running = all.filter((s) => s.status !== 'ended')
   const recent = all.filter((s) => s.status === 'ended').slice(0, 20)
+  const rep = spec.data?.setup
+  const f = spec.data?.machine
+  // Figures kept from before and not yet confirmed, or the computer is down: last time's.
+  const lastTime = st.down || spec.stale
+  // New agent opens on this computer only in the app (AppActionsContext).
+  const canStart = !!actions.newAgentOn && st.online && ready(rep)
+  const lastKnown = [f?.mem_total ? `${gb(f.mem_total)} GB memory` : '', f?.cpus ? `${f.cpus} cores` : '', m.version ? `Caprock ${m.version}` : ''].filter(Boolean).join(', ')
   return (
-    <div className="mx-auto grid w-full max-w-4xl gap-4" data-machine={m.id}>
-      <MachineHead m={m}>
+    <div className="mx-auto grid w-full max-w-4xl gap-5" data-machine={m.id}>
+      <div className="flex justify-end gap-3">
+        <a href={href({ name: 'machines' })} className="text-[12.5px] text-fg-muted hover:text-fg">All computers</a>
         <a href={href({ name: 'settings', section: 'computers' })} className="text-[12.5px] text-fg-muted hover:text-fg">Settings → Computers</a>
-      </MachineHead>
+      </div>
+      <header
+        className="grid grid-cols-1 items-center gap-5 rounded-[10px] border border-border px-6 py-6 sm:grid-cols-[auto_minmax(0,1fr)]"
+        style={st.online ? { background: 'linear-gradient(180deg, color-mix(in srgb, var(--color-ok) 7%, var(--color-bg)), var(--color-bg))' } : undefined}
+        data-machine-band={st.online ? 'online' : st.offline ? 'offline' : m.status}
+      >
+        <span aria-hidden className="relative grid h-[84px] w-[84px] place-items-center rounded-[18px] border border-border-strong bg-panel text-fg-muted">
+          <OsGlyph os={rep?.os} />
+          <span className={`absolute -bottom-1 -right-1 h-[18px] w-[18px] rounded-full border-[3px] border-bg ${st.online ? 'bg-ok' : 'bg-fg-faint'}`} data-machine-live={st.online ? 'on' : 'off'} />
+        </span>
+        <div className="min-w-0">
+          <h1 className="truncate text-[32px] font-bold leading-none tracking-[-0.015em] text-fg sm:text-[40px]">{m.name}</h1>
+          <div className="mt-2.5 flex tabular-nums flex-wrap gap-x-[18px] gap-y-1.5 text-[14px] text-fg-muted" data-machine-spec>
+            <span data-machine-state={m.status}>
+              <b className={`font-semibold ${st.online || st.offline ? 'text-fg' : look.tone === 'warn' ? 'text-warn' : look.tone === 'bad' ? 'text-danger' : 'text-fg'}`}>{st.offline ? 'offline' : st.online ? 'online' : look.label}</b>
+              {st.offline ? ` · ${seenAgo(m.last_seen, now)}` : st.online && ready(rep) ? ' · ready' : ''}
+            </span>
+            {rep?.os && <span><b className="font-semibold text-fg">{osName(rep.os)}</b></span>}
+            {f?.mem_total ? <span><b className="font-semibold text-fg">{gb(f.mem_total)} GB</b> memory</span> : null}
+            {f?.cpus ? <span><b className="font-semibold text-fg">{f.cpus}</b> cores</span> : null}
+            {m.version && <span>Caprock <b className="font-semibold text-fg">{m.version}</b></span>}
+          </div>
+          {canStart && (
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button type="button" onClick={() => actions.newAgentOn!(m.id)} className="rounded-[6px] bg-accent px-3.5 py-2 text-[13.5px] font-semibold text-panel hover:brightness-110" data-start-there>Start an agent there</button>
+            </div>
+          )}
+        </div>
+      </header>
       {!failure?.status && look.detail && look.tone !== 'ok' && look.tone !== 'muted' && <p className="text-[13px] text-fg-muted">{look.detail}</p>}
       {failure?.status && (
         <p role="alert" className="text-[13px] text-danger" data-machine-error={failure.status} title={failure.error}>
@@ -75,20 +125,69 @@ function MachineSessions({ m }: { m: Machine }) {
         </p>
       )}
       {sessions.error && !failure?.status && <p role="alert" className="text-[13px] text-danger">{sessions.error.message}</p>}
-      {/* Whether it can run agents yet, read from it (ADR-099); nothing from an older Caprock there. */}
-      {look.reachable && !failure?.status && <MachineReadiness m={m} intervalMs={15_000} />}
+      {(spec.data || st.offline) && (
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+          {st.offline ? (
+            <div className="grid content-start gap-1 rounded-[7px] border border-border bg-panel px-4 py-3.5 text-[13.5px] text-fg-muted" data-machine-offline-note>
+              <b className="font-semibold text-fg">Offline, {seenAgo(m.last_seen, now)}.</b>
+              <span>It shows up again by itself when that computer is on and Caprock runs there.{lastKnown && ` Last known: ${lastKnown}.`}</span>
+            </div>
+          ) : st.down ? null : <MachineMeters spec={spec.data} running={running.length} />}
+          <MachineReadyList m={m} spec={spec.data} lastTime={lastTime} />
+        </div>
+      )}
       {look.reachable && !sessions.data && !sessions.error && <Skeleton rows={4} />}
-      {sessions.data && (
+      {sessions.data && !st.offline && (
         <>
           <SessionGroup title="Running" items={running} m={m} now={now} empty={`Nothing runs on ${m.name} now.`} />
           {recent.length > 0 && <SessionGroup title="Recent" items={recent} m={m} now={now} />}
-          <p className="text-[12px] text-fg-faint">
-            To start one on {m.name}, open New agent (<span className="mono">{keys('⇧⌘N')}</span>) and pick {m.name} under Machine.
-          </p>
+          {!actions.newAgentOn && (
+            <p className="text-[12px] text-fg-faint">
+              To start one on {m.name}, open New agent (<span className="mono">{keys('⇧⌘N')}</span>) and pick {m.name} under Machine.
+            </p>
+          )}
         </>
       )}
     </div>
   )
+}
+
+/** All computers (#/m): one card each, the same figures as their pages; a card opens the page. */
+export function MachinesScreen() {
+  const list = useMachines()
+  const machines = list.data
+  const reads = useMachineSessions(machines)
+  const now = useNow(60_000)
+  if (!machines) return list.error ? <Empty title="Cannot reach the daemon">{list.error.message}</Empty> : <Skeleton rows={4} />
+  if (machines.length === 0) {
+    return (
+      <Empty title="No other computer linked">
+        Link one in <a href={href({ name: 'settings', section: 'computers' })} className="text-accent hover:underline">Settings → Computers</a>.
+      </Empty>
+    )
+  }
+  const states = machines.map((m) => machineState(m, reads.get(m.id)))
+  const online = states.filter((x) => x.online).length
+  const running = machines.reduce((n, m, i) => n + (states[i]!.down ? 0 : (reads.get(m.id)?.sessions ?? []).filter((s) => s.status !== 'ended').length), 0)
+  return (
+    <div className="mx-auto grid w-full max-w-5xl gap-4" data-machines-all-screen>
+      <div className="flex flex-wrap items-baseline gap-3">
+        <h1 className="text-[28px] font-bold text-fg">All computers</h1>
+        <span className="text-[13.5px] tabular-nums text-fg-muted" data-machines-summary>
+          {machines.length} linked · {online} online · {running} {running === 1 ? 'agent' : 'agents'} running
+        </span>
+      </div>
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(250px,1fr))] gap-3">
+        {machines.map((m, i) => <MachineCardRead key={m.id} m={m} read={reads.get(m.id)} down={states[i]!.down} now={now} />)}
+      </div>
+    </div>
+  )
+}
+
+/** One card with its own spec read, shared with the sidebar's and the page's. */
+function MachineCardRead({ m, read, down, now }: { m: Machine; read?: MachineRead; down: boolean; now: number }) {
+  const spec = useMachineSpec(m.id, !down, 30_000)
+  return <MachineCard m={m} read={read} spec={spec.data} now={now} />
 }
 
 function SessionGroup({ title, items, m, now, empty }: { title: string; items: SessionSummary[]; m: Machine; now: number; empty?: string }) {

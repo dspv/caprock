@@ -182,6 +182,7 @@ export function screenName(r: Route): string {
     case 'chat': return 'Chat'
     case 'module': return moduleName(r.id)
     case 'machine': return r.session ? 'Another computer’s session' : 'Another computer'
+    case 'machines': return 'All computers'
   }
 }
 

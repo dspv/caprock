@@ -1,5 +1,7 @@
 /**
- * Whether a linked computer is ready to run agents, read from it (ADR-099):
+ * Whether a linked computer is ready to run agents, read from it (ADR-099),
+ * under its row in Settings → Computers (its own page draws the same read as
+ * components/MachineCard):
  * its `GET /v1/setup` and `GET /v1/resources` through `/v1/m/<id>/…`. Chips
  * for what it has — online, each agent switched on there and ready, N
  * projects (optional: never a step left), its OS and memory — and **Start an
