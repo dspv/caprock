@@ -720,6 +720,69 @@ describe('ChatView: a turn at work', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Show 4 more lines' }))
     expect(block.textContent).toContain('line 10')
   })
+
+  it('a video tile keeps its first frame as a picture and lets go of the file, so the rest is never read', async () => {
+    const path = '/tmp/rec/clip.mp4'
+    store.events = [msg(1, `"${path}"`), stop(2)]
+    const ctx = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage: vi.fn() } as unknown as CanvasRenderingContext2D)
+    const url = vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue('data:image/jpeg;base64,AAAA')
+    const load = vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => {})
+    try {
+      render(<ChatView sessionId="s" canType={false} />)
+      await waitFor(() => expect(renderedIds()).toEqual([1]))
+      const tile = log().querySelector('[data-video-tile]')!
+      const video = tile.querySelector('video')!
+      Object.defineProperty(video, 'videoWidth', { configurable: true, value: 1280 })
+      Object.defineProperty(video, 'videoHeight', { configurable: true, value: 720 })
+      fireEvent.loadedData(video)
+      expect(video.hasAttribute('src')).toBe(false)
+      expect(load).toHaveBeenCalled()
+      expect(tile.querySelector('video')).toBeNull()
+      expect(tile.querySelector('img')!.getAttribute('src')).toBe('data:image/jpeg;base64,AAAA')
+      // Letting go fires no fallback: the tile stays.
+      fireEvent.error(video)
+      expect(log().querySelector('[data-video-tile]')).not.toBeNull()
+    } finally {
+      ctx.mockRestore(); url.mockRestore(); load.mockRestore()
+    }
+  })
+
+  it('a video path in a prompt is a picture of the video that opens it in the system player, and its path again when it cannot be read', async () => {
+    const { api } = await import('@/lib/api')
+    const open = vi.spyOn(api, 'openVideo').mockResolvedValue(undefined)
+    const path = '/Users/me/Library/Application Support/caprock/paste/drop-1/Screen Recording.mov'
+    store.events = [msg(1, `"${path}" what goes wrong here?`), stop(2)]
+    render(<ChatView sessionId="s" canType={false} />)
+    await waitFor(() => expect(renderedIds()).toEqual([1]))
+    const bubble = log().querySelector('[data-msg-id="1"]')!
+    const tile = bubble.querySelector('[data-video-tile]')!
+    expect(tile).not.toBeNull()
+    const video = tile.querySelector('video')!
+    expect(video.getAttribute('src')).toBe(`/v1/events/1/video?path=${encodeURIComponent(path)}#t=0.1`)
+    // The first frame and nothing more: no controls, no autoplay, muted.
+    expect(video.getAttribute('preload')).toBe('metadata')
+    expect(video.hasAttribute('controls')).toBe(false)
+    expect(video.hasAttribute('autoplay')).toBe(false)
+    expect(video.muted).toBe(true)
+    expect(tile.textContent).toContain('Screen Recording.mov')
+    // A click opens the file in the default player; nothing plays here.
+    const play = vi.spyOn(HTMLMediaElement.prototype, 'play')
+    fireEvent.click(screen.getByRole('button', { name: 'Open Screen Recording.mov in the default player' }))
+    expect(open).toHaveBeenCalledWith(1, path)
+    expect(play).not.toHaveBeenCalled()
+    play.mockRestore()
+    open.mockRestore()
+    expect(bubble.textContent).toContain('what goes wrong here?')
+    expect(bubble.textContent).not.toContain(path)
+    // A length once the metadata is in.
+    Object.defineProperty(video, 'duration', { configurable: true, value: 83.4 })
+    fireEvent.loadedMetadata(video)
+    expect(tile.textContent).toContain('1:23')
+    // A file gone, or a codec the webview cannot play: the path as typed.
+    fireEvent.error(video)
+    expect(bubble.querySelector('[data-video-tile]')).toBeNull()
+    expect(bubble.querySelector('[data-video-fallback]')!.textContent).toBe(`"${path}"`)
+  })
 })
 
 describe('ChatView: what you send', () => {

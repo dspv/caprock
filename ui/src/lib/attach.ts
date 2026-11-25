@@ -67,6 +67,48 @@ export function isImageName(name: string): boolean {
   return /\.(png|jpe?g|gif|webp)$/i.test(name)
 }
 
+/** Whether a name or a path is a video the chat can play (`GET /v1/events/{id}/video`). */
+export function isVideoName(name: string): boolean {
+  return /\.(mov|mp4|m4v|webm)$/i.test(name)
+}
+
+/** One piece of a prompt's words: text, or the path of a video in them. */
+export type VideoPart = { kind: 'text'; text: string } | { kind: 'video'; path: string; raw: string }
+
+const VIDEO_EXT = String.raw`\.(?:mov|mp4|m4v|webm)`
+const ABS = String.raw`(?:\/|[A-Za-z]:[\\/])`
+/**
+ * A video path as a terminal types a dropped file: double- or single-quoted
+ * (Caprock's drop, so a space in "Application Support" stays one argument),
+ * or bare after a space with each space backslash-escaped (a shell's drop).
+ */
+const VIDEO_PATH = new RegExp(
+  String.raw`"(${ABS}[^"\n]*?${VIDEO_EXT})"|'(${ABS}[^'\n]*?${VIDEO_EXT})'|(^|[\s(])(${ABS}(?:\\ |[^\s"'])*?${VIDEO_EXT})(?=$|[\s"',;:)\]]|\.(?:\s|$))`,
+  'gi',
+)
+
+/**
+ * `text` split around the absolute video paths in it, in order (owner,
+ * 2026-11-25: a video dropped into a session showed as its path). Each
+ * video keeps `raw`, the characters as written, to fall back to; `path` is
+ * the file's, unquoted and unescaped. No video: one text part.
+ */
+export function videoParts(text: string): VideoPart[] {
+  const out: VideoPart[] = []
+  let at = 0
+  for (const m of text.matchAll(VIDEO_PATH)) {
+    const lead = m[3] ?? ''
+    const start = m.index + lead.length
+    if (start > at) out.push({ kind: 'text', text: text.slice(at, start) })
+    const raw = m[0].slice(lead.length)
+    const path = m[1] ?? m[2] ?? (m[4] ?? '').replace(/\\ /g, ' ')
+    out.push({ kind: 'video', path, raw })
+    at = m.index + m[0].length
+  }
+  if (at < text.length || out.length === 0) out.push({ kind: 'text', text: text.slice(at) })
+  return out
+}
+
 /** Whether a picked file is a photo: by type, or by name where the type is empty. */
 export function isPhotoFile(f: { name: string; type: string }): boolean {
   return f.type.startsWith('image/') || isImageName(f.name)

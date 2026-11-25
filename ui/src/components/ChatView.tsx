@@ -20,7 +20,8 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { api, errText, type Event, type QueueView } from '@/lib/api'
 import { downscalePhoto } from '@/lib/downscale'
-import { attachRefusal, droppedItems } from '@/lib/attach'
+import { attachRefusal, droppedItems, videoParts } from '@/lib/attach'
+import { VideoTile, videoTiles } from './VideoTile'
 import { shell } from '@/lib/shell'
 import { dialogOnScreen, DROP_PATHS_EVENT, DROP_ZONE_ATTR, dropZoneAt, type DroppedPaths } from '@/lib/xtermInput'
 import { compareEvents, isMessageEvent, mergeEvents, toMessages, toolInputText, type ChatMessage } from '@/lib/chat'
@@ -708,8 +709,8 @@ const Message = memo(function Message({ m, onPath, plain = false }: { m: ChatMes
   if (m.kind === 'user') {
     return (
       <div data-msg-id={m.id} className="flex flex-col items-end py-1.5">
-        <div className="grid max-w-[85%] min-w-0 gap-1.5 whitespace-pre-wrap rounded-[12px] rounded-br-[4px] bg-panel-2 px-3 py-2 text-[14px] leading-relaxed text-fg [overflow-wrap:anywhere]" title={m.ts}>
-          <PromptText text={m.text} />
+        <div className="grid max-w-[85%] min-w-0 grid-cols-[minmax(0,1fr)] gap-1.5 whitespace-pre-wrap rounded-[12px] rounded-br-[4px] bg-panel-2 px-3 py-2 text-[14px] leading-relaxed text-fg [overflow-wrap:anywhere]" title={m.ts}>
+          <PromptText text={m.text} eventId={m.id} />
         </div>
         {m.via === 'telegram' && <div className="mt-0.5 text-[11px] text-fg-faint" data-via="telegram">from Telegram</div>}
       </div>
@@ -915,12 +916,27 @@ function QuestionLine({ m, onOpenTerminal }: { m: ChatMessage; onOpenTerminal?: 
 const PASTE_FOLD_LINES = 6
 
 /** A prompt as typed: the person's words as they are, each paste as a quiet block. */
-function PromptText({ text }: { text: string }) {
+function PromptText({ text, eventId }: { text: string; eventId: number }) {
   const parts = promptParts(text)
   if (parts.length === 0) return <LinkedText text={text} />
   return (
     <>
-      {parts.map((p, i) => (p.kind === 'text' ? <span key={i}><LinkedText text={p.text} /></span> : <PastedBlock key={i} text={p.text} lines={p.lines} />))}
+      {parts.map((p, i) => (p.kind === 'text' ? <PromptWords key={i} text={p.text} eventId={eventId} /> : <PastedBlock key={i} text={p.text} lines={p.lines} />))}
+    </>
+  )
+}
+
+/** The person's own words, each video path in them a tile (VideoTile). */
+function PromptWords({ text, eventId }: { text: string; eventId: number }) {
+  const parts = videoTiles() ? videoParts(text) : []
+  if (!parts.some((p) => p.kind === 'video')) return <span><LinkedText text={text} /></span>
+  return (
+    <>
+      {parts.map((p, i) => {
+        if (p.kind === 'video') return <VideoTile key={i} eventId={eventId} path={p.path} raw={p.raw} />
+        const t = p.text.trim()
+        return t ? <span key={i}><LinkedText text={t} /></span> : null
+      })}
     </>
   )
 }

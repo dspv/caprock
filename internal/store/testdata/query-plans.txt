@@ -1764,6 +1764,10 @@ SELECT COALESCE(NULLIF(s.repo_root,''), s.cwd) AS d, s.session_id, (SELECT e.kin
 SELECT project_id, path FROM project_repos ORDER BY project_id, path
     SCAN project_repos USING COVERING INDEX sqlite_autoindex_project_repos_1
 
+## store.PromptText
+SELECT (CASE WHEN typeof(payload) = 'blob' THEN zjson(payload) ELSE payload END) FROM events WHERE id = ? AND kind = 'turn.user'
+    SEARCH events USING INTEGER PRIMARY KEY (rowid=?)
+
 ## store.PromptTexts
 SELECT id, payload FROM events WHERE id IN (?)
     SEARCH events USING INTEGER PRIMARY KEY (rowid=?)

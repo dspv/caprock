@@ -6119,6 +6119,51 @@ POST /v1/events/{id}/tldr   (body {}) → 200 {tldr: string, cached: bool} | 404
 - **Who.** The machine, and a paired controller phone (`controllerRoutes`);
   a viewer gets `403`.
 
+### A prompt's video
+
+A video a prompt names, for the chat's video tile ([04-ui.md](04-ui.md)
+§ Chat attachments; owner, 2026-11-25): its bytes, for the first frame and
+the length, and opening it in the system's own player, the tile's click. A
+video dropped on a terminal is typed into the session as its path and the
+file stays where it was; Claude Code cannot watch it, so the session still
+gets only the path. Code: `internal/api/video.go`, `store.PromptText`.
+
+```
+GET  /v1/events/{id}/video?path=<absolute path>   → 200 | 206 the file's bytes | 400 {error} | 404 {error}
+POST /v1/events/{id}/video/open   {path}          → 204 | 400 {error} | 403 {error} | 404 {error} | 502 {error}
+```
+
+- **`path`** is absolute and ends in `.mov`, `.mp4`, `.m4v` or `.webm`, in
+  any case; anything else is `400`.
+- **Only what the prompt names.** `{id}` is a `turn.user` event, and its
+  words (`prompt`, else `text`) contain `path` as written, or with each space
+  backslash-escaped as a shell types a dropped file. Any other path, an id
+  that is no prompt, or a file that is gone is `404`; a path that is not a
+  regular file once symlinks are followed is `400`.
+- **Served** with `http.ServeContent`: `Accept-Ranges: bytes` and `206` for a
+  `Range`, which a WebKit `<video>` needs before it reads anything; `HEAD`
+  too. **A megabyte at a time**: one range `bytes=a-` or `bytes=a-b` longer
+  than 1 MiB is answered with its first 1 MiB, the `Content-Range` saying
+  so, and the element asks for the next range it needs. WebKit asks for the
+  whole file (`bytes=0-<last>`) to draw a poster and read all 34 MB of a
+  test recording (2026-11-25); the tile wants only the first frame and the
+  length. A suffix range (`bytes=-n`), several ranges, or no `Range` are
+  served as asked.
+  Headers: the type from the extension (`video/quicktime`, `video/mp4` for
+  `.mp4` and `.m4v`, `video/webm`), `X-Content-Type-Options: nosniff`,
+  `Cache-Control: private, no-cache`.
+- **Open** takes the same path under the same rules and hands the resolved
+  file to the operating system's default app for its type — `open` on
+  macOS, `rundll32 url.dll,FileProtocolHandler` on Windows (what `caprock
+  up` opens the dashboard with), `xdg-open` on Linux — and answers `204`
+  once that opener has started. `502` when it could not be started (no
+  `xdg-open`, say). Caprock starts the player and never signals or types
+  into it.
+- **Who.** The machine only: neither is in `pairedDeviceRoutes`, so a paired
+  device gets `403`; its `<video>` could not carry the device token, and the
+  player would open on the machine, not in the hand. Open also refuses a
+  request that is not `isLocal` (`403`), as opening an editor does.
+
 ### Queued messages
 
 What the chat field sends to a session Caprock started ([ADR-053](08-decisions.md)).
