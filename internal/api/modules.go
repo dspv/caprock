@@ -278,10 +278,6 @@ func (s *Server) handleModuleDocList(w http.ResponseWriter, r *http.Request) {
 		limit = n
 	}
 	after := r.URL.Query().Get("after")
-	// The collection's version is read before its rows, so a write during
-	// the read leaves a tag behind what was read, never ahead of it.
-	tag := moduleListTag(id, coll, after, limit)
-	w.Header().Set("ETag", tag)
 	w.Header().Set("Cache-Control", "no-cache")
 	key := id + "\x00" + coll + "\x00" + after + "\x00" + strconv.Itoa(limit)
 	answer := "read"
@@ -294,16 +290,31 @@ func (s *Server) handleModuleDocList(w http.ResponseWriter, r *http.Request) {
 				"client", asker, "answer", answer)
 		}
 	}()
-	if etagMatches(r.Header.Get("If-None-Match"), tag) {
-		answer = "not modified"
-		w.WriteHeader(http.StatusNotModified)
-		return
-	}
-	if body, ok := s.modList.get(key, tag); ok {
+	// A kept page no write has touched since it was read: its own tag, and
+	// its bytes, with nothing read.
+	if p, ok := s.modList.get(key); ok {
+		tag := p.tag()
+		w.Header().Set("ETag", tag)
+		if etagMatches(r.Header.Get("If-None-Match"), tag) {
+			answer = "not modified"
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
 		answer = "from memory"
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write(body)
+		_, _ = w.Write(p.body)
+		return
+	}
+	// The collection's mark is read before its rows, so a write during the
+	// read leaves a tag behind what was read, never ahead of it.
+	mark := store.ModuleDocsMarkNow(id, coll)
+	tag := moduleListTag(id, coll, after, limit, mark)
+	w.Header().Set("ETag", tag)
+	if etagMatches(r.Header.Get("If-None-Match"), tag) {
+		// Nothing written to the collection since the client's copy.
+		answer = "not modified"
+		w.WriteHeader(http.StatusNotModified)
 		return
 	}
 	docs, err := listModuleDocs(r.Context(), s.d.Store.DB(), id, coll, after, limit)
@@ -313,8 +324,12 @@ func (s *Server) handleModuleDocList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out := map[string]any{"docs": docs}
-	if len(docs) == limit {
-		out["next"] = docs[len(docs)-1].ID
+	page := &moduleListPage{key: key, module: id, coll: coll, after: after, limit: limit, mark: mark, full: len(docs) == limit}
+	if len(docs) > 0 {
+		page.last = docs[len(docs)-1].ID
+	}
+	if page.full {
+		out["next"] = page.last
 	}
 	body, err := encodeJSON(out)
 	if err != nil {
@@ -322,7 +337,8 @@ func (s *Server) handleModuleDocList(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, out)
 		return
 	}
-	s.modList.put(key, tag, body)
+	page.body = body
+	s.modList.put(page)
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(body)
@@ -332,14 +348,16 @@ func (s *Server) handleModuleDocList(w http.ResponseWriter, r *http.Request) {
 var listModuleDocs = store.ListModuleDocs
 
 // moduleListTag is the ETag of one page of a collection's list: the
-// collection's version in this process (store.ModuleDocsVersion, which moves
-// on every write and starts from a random value at every start) and the page
-// asked for. A module paging through a collection it already holds gets a
-// 304 per page and nothing is read.
-func moduleListTag(module, coll, after string, limit int) string {
+// collection's mark in this process when the page was read
+// (store.ModuleDocsMarkNow, which moves on every write and starts from a
+// random value at every start) and the page asked for. The tag holds while
+// no write touches a document the page covers (moduleListCache), so a module
+// paging through a collection it already holds gets a 304 for every page a
+// write did not change, and nothing is read.
+func moduleListTag(module, coll, after string, limit int, mark store.ModuleDocsMark) string {
 	h := fnv.New64a()
 	_, _ = io.WriteString(h, module+"\x00"+coll+"\x00"+after+"\x00"+strconv.Itoa(limit))
-	return `"` + store.ModuleDocsVersion(module, coll) + "." + strconv.FormatUint(h.Sum64(), 36) + `"`
+	return `"` + mark.String() + "." + strconv.FormatUint(h.Sum64(), 36) + `"`
 }
 
 // etagMatches reports whether an If-None-Match header names tag: a list of
@@ -425,7 +443,7 @@ func (s *Server) handleModuleDocUpdate(w http.ResponseWriter, r *http.Request) {
 	})
 	// The write moved the collection's version before the commit; moved
 	// again after it, a list read in between is not kept as the current one.
-	store.TouchModuleDocs(id, coll)
+	store.TouchModuleDoc(id, coll, doc)
 	if errors.Is(err, store.ErrModuleDocNotFound) {
 		s.failCode(w, http.StatusNotFound, err)
 		return

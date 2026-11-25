@@ -6,19 +6,28 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/dspv/caprock/internal/store"
 )
 
 // moduleListCache keeps the answers to a private module's document lists by
-// page, each with the tag it was read at. While the collection's generation
-// holds (store.ModuleDocsVersion), the tag is the same and so is the page, so
-// a client that asks again without If-None-Match is answered from here with
-// nothing read.
+// page, each with the collection's mark it was read at and the ids it covers.
+// While no write since that mark touched a document the page covers
+// (store.ModuleDocsPageCurrent), the page is what a read would give, so a
+// client that asks again — with the page's tag or without one — is answered
+// from here with nothing read.
 //
 // Why: the 0.188.0 ETag reached the clients that keep ETags — a browser, the
 // Ops scripts while one runs — but most of the asking comes from short-lived
 // processes that start with no tag. On the owner's Mac module lists were
 // still ~7,100 an hour and 37% of all the daemon's disk reads (744 MB in 11
 // minutes, the 2026-11-24 audit).
+//
+// By page, not by collection, since 2026-11-25: the owner's busiest
+// collection, twelve pages, takes about 2,000 writes an hour, all to
+// documents on two of its pages, and with a tag for the whole collection
+// every write sent all twelve back to the database. That was still 1.44 GB
+// of the daemon's 5.2 GB of disk reads in an hour.
 //
 // Bounded by bytes: the least recently answered pages go first, and a page
 // larger than a quarter of the budget is never kept.
@@ -32,9 +41,22 @@ type moduleListCache struct {
 	seen map[string]time.Time
 }
 
+// moduleListPage is one page of a collection's list as it was read.
 type moduleListPage struct {
-	key, tag string
-	body     []byte
+	key                 string
+	module, coll, after string
+	limit               int
+	mark                store.ModuleDocsMark
+	// last is the page's last id; full whether it held limit documents
+	// (store.ModuleDocsPageCurrent).
+	last string
+	full bool
+	body []byte
+}
+
+// tag is the page's ETag (moduleListTag at the mark it was read at).
+func (p *moduleListPage) tag() string {
+	return moduleListTag(p.module, p.coll, p.after, p.limit, p.mark)
 }
 
 // moduleListCacheBytes is the cache's budget. The owner's Ops module lists
@@ -46,8 +68,8 @@ func newModuleListCache(max int) *moduleListCache {
 	return &moduleListCache{max: max, order: list.New(), pages: map[string]*list.Element{}, seen: map[string]time.Time{}}
 }
 
-// get returns the page kept under key when it was read at tag.
-func (c *moduleListCache) get(key, tag string) ([]byte, bool) {
+// get returns the page kept under key while it is current.
+func (c *moduleListCache) get(key string) (*moduleListPage, bool) {
 	if c == nil {
 		return nil, false
 	}
@@ -58,27 +80,27 @@ func (c *moduleListCache) get(key, tag string) ([]byte, bool) {
 		return nil, false
 	}
 	p := el.Value.(*moduleListPage)
-	if p.tag != tag {
-		// The collection moved on: this page will never be asked for again.
+	if !store.ModuleDocsPageCurrent(p.module, p.coll, p.mark, p.after, p.last, p.full) {
+		// A write changed it: this page will never be answered again.
 		c.remove(el)
 		return nil, false
 	}
 	c.order.MoveToFront(el)
-	return p.body, true
+	return p, true
 }
 
-// put keeps a page read at tag.
-func (c *moduleListCache) put(key, tag string, body []byte) {
-	if c == nil || len(body) > c.max/4 {
+// put keeps a page.
+func (c *moduleListCache) put(p *moduleListPage) {
+	if c == nil || len(p.body) > c.max/4 {
 		return
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if el, ok := c.pages[key]; ok {
+	if el, ok := c.pages[p.key]; ok {
 		c.remove(el)
 	}
-	c.pages[key] = c.order.PushFront(&moduleListPage{key: key, tag: tag, body: body})
-	c.size += len(body)
+	c.pages[p.key] = c.order.PushFront(p)
+	c.size += len(p.body)
 	for c.size > c.max {
 		c.remove(c.order.Back())
 	}

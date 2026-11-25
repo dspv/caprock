@@ -25,7 +25,7 @@ var ErrModuleDocNotFound = errors.New("no such document")
 
 // moduleGens is a generation per (module, collection), moved by every write
 // this process makes to it (SetModuleDoc, UpdateModuleDoc through it,
-// DeleteModuleDoc, and TouchModuleDocs once a transaction commits). A list
+// DeleteModuleDoc, and TouchModuleDoc once a transaction commits). A list
 // read at one generation is the same list while the generation holds, so the
 // list endpoint answers a client that already has it with a 304 and no read
 // (§ Private modules in 03-contracts.md). The Ops module pages through its
@@ -36,11 +36,31 @@ var ErrModuleDocNotFound = errors.New("no such document")
 // write. boot is drawn at random when the process starts: a counter that
 // starts again at zero after a restart is never mistaken for one an older
 // process handed out.
+//
+// Each collection also keeps which document its newest writes touched
+// (moduleWritesKept of them), so a page of its list can tell whether a write
+// since it was read could have changed it (ModuleDocsPageCurrent): a write to
+// one document leaves every page that does not cover it as it was.
 var moduleGens = struct {
 	sync.Mutex
 	boot uint64
-	m    map[[2]string]uint64
-}{boot: randomBoot(), m: map[[2]string]uint64{}}
+	m    map[[2]string]*moduleGen
+}{boot: randomBoot(), m: map[[2]string]*moduleGen{}}
+
+// moduleGen is one collection's generation and its newest writes.
+type moduleGen struct {
+	gen uint64
+	// writes are the newest writes, oldest first: writes[i] moved the
+	// generation to gen-len(writes)+1+i. A write of the whole collection
+	// (TouchModuleDocs) is an empty id.
+	writes []string
+}
+
+// moduleWritesKept is how many of a collection's newest writes are kept by
+// document. A page read further back than that is read again. The owner's
+// busiest collection took about 2,000 writes an hour (2026-11-25), so 512 is
+// a quarter of an hour of them, and a page is asked for every few seconds.
+const moduleWritesKept = 512
 
 func randomBoot() uint64 {
 	var b [8]byte
@@ -52,28 +72,106 @@ func randomBoot() uint64 {
 // generation back at zero.
 func reseedModuleGens() {
 	moduleGens.Lock()
-	moduleGens.boot, moduleGens.m = randomBoot(), map[[2]string]uint64{}
+	moduleGens.boot, moduleGens.m = randomBoot(), map[[2]string]*moduleGen{}
 	moduleGens.Unlock()
 }
 
-// TouchModuleDocs moves a collection's generation. The writes here do it
-// themselves; a caller that writes inside a transaction calls it again once
-// the transaction commits, so a list read between the write and the commit
-// (the old rows, at the new generation) is not taken for the current one.
+// touchModuleGen moves a collection's generation for a write of doc ("" for
+// the whole collection). Called with moduleGens held.
+func touchModuleGen(module, collection, doc string) {
+	k := [2]string{module, collection}
+	g := moduleGens.m[k]
+	if g == nil {
+		g = &moduleGen{}
+		moduleGens.m[k] = g
+	}
+	g.gen++
+	if len(g.writes) == moduleWritesKept {
+		copy(g.writes, g.writes[1:])
+		g.writes = g.writes[:moduleWritesKept-1]
+	}
+	g.writes = append(g.writes, doc)
+}
+
+// TouchModuleDocs moves a collection's generation as a write of any of its
+// documents would: every page of its list is read again.
 func TouchModuleDocs(module, collection string) {
 	moduleGens.Lock()
-	moduleGens.m[[2]string{module, collection}]++
+	touchModuleGen(module, collection, "")
 	moduleGens.Unlock()
+}
+
+// TouchModuleDoc moves a collection's generation for a write of one
+// document. The writes here do it themselves; a caller that writes inside a
+// transaction calls it again once the transaction commits, so a list read
+// between the write and the commit (the old rows, at the new generation) is
+// not taken for the current one.
+func TouchModuleDoc(module, collection, doc string) {
+	moduleGens.Lock()
+	touchModuleGen(module, collection, doc)
+	moduleGens.Unlock()
+}
+
+// ModuleDocsMark is a collection's generation at a moment of this process.
+type ModuleDocsMark struct {
+	Boot, Gen uint64
+}
+
+// String names the mark: boot and generation in base 36.
+func (m ModuleDocsMark) String() string {
+	return strconv.FormatUint(m.Boot, 36) + "." + strconv.FormatUint(m.Gen, 36)
+}
+
+// ModuleDocsMarkNow is a collection's mark now. Read it before reading the
+// collection, so a write landing during the read moves it past what was read
+// rather than under it.
+func ModuleDocsMarkNow(module, collection string) ModuleDocsMark {
+	moduleGens.Lock()
+	defer moduleGens.Unlock()
+	m := ModuleDocsMark{Boot: moduleGens.boot}
+	if g := moduleGens.m[[2]string{module, collection}]; g != nil {
+		m.Gen = g.gen
+	}
+	return m
 }
 
 // ModuleDocsVersion names a collection's contents as this process last
-// wrote them: an equal version, an equal collection. Read it before reading
-// the collection, so a write landing during the read moves it past what was
-// read rather than under it.
+// wrote them: an equal version, an equal collection.
 func ModuleDocsVersion(module, collection string) string {
+	return ModuleDocsMarkNow(module, collection).String()
+}
+
+// ModuleDocsPageCurrent reports whether a page of a collection's list read at
+// mark is still what a read now would give: no write since touched a document
+// the page covers. A page is the documents after `after`, by id, up to its
+// last, last; a page that was not full (fewer than its limit) covers every id
+// after `after`, since a new document there would join it. A write of a
+// document past a full page's last changes nothing on it: the page still
+// holds the same first documents after `after`. A mark from another start,
+// or further back than the writes kept, is never current.
+func ModuleDocsPageCurrent(module, collection string, mark ModuleDocsMark, after, last string, full bool) bool {
 	moduleGens.Lock()
 	defer moduleGens.Unlock()
-	return strconv.FormatUint(moduleGens.boot, 36) + "." + strconv.FormatUint(moduleGens.m[[2]string{module, collection}], 36)
+	if mark.Boot != moduleGens.boot {
+		return false
+	}
+	g := moduleGens.m[[2]string{module, collection}]
+	if g == nil {
+		return mark.Gen == 0
+	}
+	if mark.Gen > g.gen {
+		return false
+	}
+	since := g.gen - mark.Gen
+	if since > uint64(len(g.writes)) {
+		return false
+	}
+	for _, doc := range g.writes[uint64(len(g.writes))-since:] {
+		if doc == "" || (doc > after && (!full || doc <= last)) {
+			return false
+		}
+	}
+	return true
 }
 
 func scanModuleDoc(sc interface{ Scan(...any) error }) (ModuleDoc, error) {
@@ -122,7 +220,7 @@ func SetModuleDoc(ctx context.Context, q Querier, module, collection, id string,
 		module, collection, id, string(data), now, now); err != nil {
 		return ModuleDoc{}, err
 	}
-	TouchModuleDocs(module, collection)
+	TouchModuleDoc(module, collection, id)
 	return GetModuleDoc(ctx, q, module, collection, id)
 }
 
@@ -158,7 +256,7 @@ func DeleteModuleDoc(ctx context.Context, q Querier, module, collection, id stri
 	if err != nil {
 		return false, err
 	}
-	TouchModuleDocs(module, collection)
+	TouchModuleDoc(module, collection, id)
 	n, err := res.RowsAffected()
 	return n > 0, err
 }
