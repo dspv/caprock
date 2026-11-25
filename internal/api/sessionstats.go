@@ -57,15 +57,26 @@ const statsComposeTimeout = 20 * time.Second
 // Branches view, kept 2 minutes) and its newest 100 runs (one read, kept 30
 // minutes), counted into the tab's figures. Nothing is sent while GitHub is
 // not connected (rule 4). The composed answer is kept (deckcache.go).
+//
+// ?fresh=1 composes it now, the pull request list read again unless it is
+// under a few seconds old (github.RepoPullsFresh): the cockpit asks it once
+// when the session's own pull requests show one the list does not have yet
+// — just opened — so its PRs view lists it within seconds, not up to two
+// minutes later (#1078, 2026-11-26).
 func (s *Server) handleSessionCIStats(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	connected := s.githubConnected()
-	s.serveDeckWithin(w, r, deckKey("stats", id, connected, 0), statsComposeTimeout, func(ctx context.Context) (deckAnswer, error) {
-		return s.composeSessionCIStats(ctx, id, connected)
+	key := deckKey("stats", id, connected, 0)
+	fresh := r.URL.Query().Get("fresh") == "1" && connected
+	if fresh {
+		s.deck.drop(key)
+	}
+	s.serveDeckWithin(w, r, key, statsComposeTimeout, func(ctx context.Context) (deckAnswer, error) {
+		return s.composeSessionCIStats(ctx, id, connected, fresh)
 	}, s.notFoundOrFail)
 }
 
-func (s *Server) composeSessionCIStats(ctx context.Context, id string, connected bool) (deckAnswer, error) {
+func (s *Server) composeSessionCIStats(ctx context.Context, id string, connected, fresh bool) (deckAnswer, error) {
 	var where SessionRepoCI
 	repo, localDefault, ok, err := s.sessionRepo(ctx, id, &where)
 	if err != nil {
@@ -77,7 +88,11 @@ func (s *Server) composeSessionCIStats(ctx context.Context, id string, connected
 	}
 	gh, cancel := context.WithTimeout(ctx, statsGitHubBudget)
 	defer cancel()
-	prs, e := s.d.GitHub.RepoPulls(gh, repo)
+	pulls := s.d.GitHub.RepoPulls
+	if fresh {
+		pulls = s.d.GitHub.RepoPullsFresh
+	}
+	prs, e := pulls(gh, repo)
 	if e != nil {
 		out.Error = e
 		return out, nil //nolint:nilerr // GitHub's refusal is part of the answer

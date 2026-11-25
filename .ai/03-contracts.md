@@ -3610,7 +3610,11 @@ read it (`pairedDeviceRoutes`); nothing on it writes. `repo` and `reason` as `Se
 is the repository's own pull requests — the `BranchPR` list the Branches
 view reads (`GET …/pulls?state=all&sort=updated&direction=desc&per_page=50`,
 kept 2 min; `github.RepoPulls` shares the read with `PullsByBranch`), most
-recently updated first, a fork's left out. `stats` is `github.RepoStats`
+recently updated first, a fork's left out. `?fresh=1` composes the answer
+now, past the kept one, and reads that list again unless it is under 3 s old
+(`github.RepoPullsFresh`): the cockpit's CI block asks it once per pull
+request the session just opened that `prs` does not list yet (04-ui.md §
+CI in the cockpit); a paired device may ask it too. `stats` is `github.RepoStats`
 over the 14 local calendar days ending today:
 
 - **Merges** — `days[]` (`2006-01-02`, oldest first), `merged[]` (pull

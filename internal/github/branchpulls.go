@@ -23,6 +23,11 @@ const (
 	// branchPullsKept is how long that list is reused. A conditional request
 	// after it costs GitHub a 304 when nothing changed.
 	branchPullsKept = 2 * time.Minute
+	// branchPullsForced is the age past which RepoPullsFresh reads the list
+	// again rather than hand back the kept one: a pull request a session
+	// just opened reaches the list at once, and a burst of forced reads
+	// still asks GitHub once.
+	branchPullsForced = 3 * time.Second
 )
 
 // BranchPR is the pull request a branch is the head of.
@@ -128,6 +133,12 @@ func ownPulls(repo Repo, list []apiPull) []ownPull {
 // its 50 most recently updated, kept branchPullsKept. A failed read keeps the
 // last answer, if any. Nothing is sent while GitHub is not connected.
 func (s *Service) PullsByBranch(ctx context.Context, repo Repo) (map[string]BranchPR, *Error) {
+	return s.pullsByBranch(ctx, repo, branchPullsKept)
+}
+
+// pullsByBranch is PullsByBranch with the kept list reused while younger
+// than kept.
+func (s *Service) pullsByBranch(ctx context.Context, repo Repo, kept time.Duration) (map[string]BranchPR, *Error) {
 	s.init()
 	key := repo.FullName()
 	now := s.Now()
@@ -137,7 +148,7 @@ func (s *Service) PullsByBranch(ctx context.Context, repo Repo) (map[string]Bran
 	}
 	e, have := s.branchPulls.m[key]
 	s.branchPulls.mu.Unlock()
-	if have && now.Sub(e.at) < branchPullsKept {
+	if have && now.Sub(e.at) < kept {
 		return e.m, nil
 	}
 	if s.source() == "" {
@@ -234,7 +245,19 @@ func (s *Service) CachedBranchPR(repo Repo, branch string) (BranchPR, bool) {
 // so asking for both costs one read. Nothing is sent while GitHub is not
 // connected.
 func (s *Service) RepoPulls(ctx context.Context, repo Repo) ([]BranchPR, *Error) {
-	if _, e := s.PullsByBranch(ctx, repo); e != nil {
+	return s.repoPulls(ctx, repo, branchPullsKept)
+}
+
+// RepoPullsFresh is RepoPulls read again now unless the kept list is under
+// branchPullsForced old: the cockpit asks it once when a session's own pull
+// request is not in the list yet (it was just opened), so the PRs view
+// lists it within seconds rather than up to branchPullsKept later.
+func (s *Service) RepoPullsFresh(ctx context.Context, repo Repo) ([]BranchPR, *Error) {
+	return s.repoPulls(ctx, repo, branchPullsForced)
+}
+
+func (s *Service) repoPulls(ctx context.Context, repo Repo, kept time.Duration) ([]BranchPR, *Error) {
+	if _, e := s.pullsByBranch(ctx, repo, kept); e != nil {
 		return nil, e
 	}
 	s.branchPulls.mu.Lock()

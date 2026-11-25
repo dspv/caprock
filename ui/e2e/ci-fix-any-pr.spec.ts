@@ -38,7 +38,7 @@ test('Fix CI is offered on a failing PR the session did not record, unfolded and
   test.setTimeout(90_000)
   let stats: object = STATS
   let own = true
-  await page.route(/\/v1\/sessions\/[^/]+\/ci\/stats$/, (r) => r.fulfill(json(stats)))
+  await page.route(/\/v1\/sessions\/[^/]+\/ci\/stats(\?fresh=1)?$/, (r) => r.fulfill(json(stats)))
   await page.route(/\/v1\/sessions\/([^/]+)\/prs$/, (r) => {
     const id = /\/v1\/sessions\/([^/]+)\/prs$/.exec(r.request().url())![1]
     if (!own) return r.fulfill(json({ connected: true, fetched_at: Date.now(), prs: [] }))

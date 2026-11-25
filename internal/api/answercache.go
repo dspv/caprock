@@ -545,6 +545,15 @@ func (c *answerCache) failure(key string) (time.Time, error) {
 // wait blocks until every background refresh started so far has finished.
 func (c *answerCache) wait() { c.bg.Wait() }
 
+// drop forgets key's answer, so its next read computes it afresh while the
+// caller waits. A computation still running for it finishes for whoever
+// waits on it and is not installed (refresh sees it replaced).
+func (c *answerCache) drop(key string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.m, key)
+}
+
 // forget drops every answer, so the next read of each key computes it afresh.
 // For the rare write that changes history rather than adds to it — removing a
 // session — not for ingest (see the package comment).

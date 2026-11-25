@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -145,5 +147,90 @@ func TestSessionCIStats(t *testing.T) {
 	// A number nobody listed stays out of reach of the force actions.
 	if w := call(t, s, machine, "", "POST", "/v1/sessions/s1/prs/77/rerun", ""); w.Code != http.StatusNotFound {
 		t.Fatalf("rerun #77: %d %s", w.Code, w.Body.String())
+	}
+}
+
+// ?fresh=1 reads the pull request list again at once, so a pull request just
+// opened is listed without waiting out the list's two minutes (#1078 sat in
+// the session's own list while the PRs view read a list from before it); a
+// second forced read seconds later asks GitHub nothing, and a plain read
+// never forces one.
+func TestSessionCIStatsFresh(t *testing.T) {
+	start := time.Now()
+	inner := statsRoutes(start)
+	var lists atomic.Int32
+	var opened atomic.Bool
+	route := func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/repos/ada/repo/pulls" {
+			inner(w, r)
+			return
+		}
+		lists.Add(1)
+		rec := httptest.NewRecorder()
+		inner(rec, r)
+		body := rec.Body.String()
+		if opened.Load() {
+			body = `[{"number":10,"html_url":"https://github.com/ada/repo/pull/10","title":"Just opened","state":"open","created_at":"` +
+				start.UTC().Format(time.RFC3339) + `","head":{"ref":"feat/ten","sha":"sha10"},"base":{"ref":"main"}},` + strings.TrimPrefix(strings.TrimSpace(body), "[")
+		}
+		for k, v := range rec.Header() {
+			w.Header()[k] = v
+		}
+		w.WriteHeader(rec.Code)
+		_, _ = w.Write([]byte(body))
+	}
+	s, _, _, _, _, _ := githubServer(t, route)
+	var clock atomic.Int64
+	clock.Store(start.UnixMilli())
+	now := func() time.Time { return time.UnixMilli(clock.Load()) }
+	s.d.GitHub.Now = now
+	s.deck = newDeckCache(now)
+	ctx := context.Background()
+	if err := store.UpsertSession(ctx, s.d.Store.DB(), "s1", store.SessionPatch{Cwd: "/work/repo", Agent: "claude", StartedAt: 1000, LastEventAt: 2000}); err != nil {
+		t.Fatal(err)
+	}
+	s.repos.lookup = func(_ context.Context, dir string) (gitremote.Repo, bool) {
+		return gitremote.Repo{Root: dir, URL: "https://github.com/ada/repo"}, true
+	}
+	if w := call(t, s, machine, "", "POST", "/v1/github/connect", `{"source":"token","token":"ghp_good"}`); w.Code != http.StatusOK {
+		t.Fatalf("connect: %d %s", w.Code, w.Body.String())
+	}
+	read := func(q string) SessionCIStats {
+		t.Helper()
+		w := call(t, s, machine, "", "GET", "/v1/sessions/s1/ci/stats"+q, "")
+		var got SessionCIStats
+		if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil || w.Code != http.StatusOK {
+			t.Fatalf("%d %s", w.Code, w.Body.String())
+		}
+		s.deck.wait()
+		return got
+	}
+	has := func(a SessionCIStats, n int) bool {
+		for _, p := range a.PRs {
+			if p.Number == n {
+				return true
+			}
+		}
+		return false
+	}
+	if got := read(""); !got.Connected || has(got, 10) || lists.Load() != 1 {
+		t.Fatalf("first: %d lists %+v", lists.Load(), got.PRs)
+	}
+	// #10 is opened; a plain read past the deck's two seconds is answered
+	// from the list kept two minutes: no new read, #10 missing.
+	opened.Store(true)
+	clock.Add((5 * time.Second).Milliseconds())
+	read("")
+	if got := read(""); has(got, 10) || lists.Load() != 1 {
+		t.Fatalf("plain read: %d lists %+v", lists.Load(), got.PRs)
+	}
+	// Forced: the list is read again and #10 is in the answer.
+	if got := read("?fresh=1"); !has(got, 10) || lists.Load() != 2 {
+		t.Fatalf("fresh: %d lists %+v", lists.Load(), got.PRs)
+	}
+	// Forced again a second later: composed anew, GitHub not asked.
+	clock.Add(time.Second.Milliseconds())
+	if got := read("?fresh=1"); !has(got, 10) || lists.Load() != 2 {
+		t.Fatalf("fresh again: %d lists %+v", lists.Load(), got.PRs)
 	}
 }
