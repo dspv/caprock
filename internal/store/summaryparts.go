@@ -222,6 +222,7 @@ func scanEventParts(ctx context.Context, q Querier, from int64, where string, ar
 		acc      partAcc
 		carryDir string
 		carried  bool
+		names    = interner{}
 	)
 	flush := func() {
 		if cur == nil {
@@ -244,6 +245,8 @@ func scanEventParts(ctx context.Context, q Querier, from int64, where string, ar
 			&tin, &tout, &cr, &cw, &cost, &ts); err != nil {
 			return err
 		}
+		// The names a part keeps, one copy each per read (interner).
+		kind, model, dir, tool = names.of(kind), names.of(model), names.of(dir), names.of(tool)
 		if cur == nil || sid != curSid {
 			flush()
 			cur, curSid = &sessionPart{}, sid
@@ -294,6 +297,27 @@ func scanEventParts(ctx context.Context, q Querier, from int64, where string, ar
 	}
 	flush()
 	return nil
+}
+
+// interner hands back one copy of each string it is given. The parts keep a
+// kind, model, tool and directory name per session and range, and the driver
+// makes a new string for every row it scans, so without it the parts held
+// the same few names once per session: "turn.assistant", "Bash", a model,
+// a repository's directory. On a copy of the owner's database (11,000
+// sessions, 2026-11-25) those copies were about 8.5 MB of the Go heap the
+// summary parts keep for the life of the daemon. One interner per read, so
+// it holds no more than the names that read met.
+type interner map[string]string
+
+func (in interner) of(s string) string {
+	if s == "" {
+		return s
+	}
+	if v, ok := in[s]; ok {
+		return v
+	}
+	in[s] = s
+	return s
 }
 
 // partAcc gathers one session's part while its rows are scanned.

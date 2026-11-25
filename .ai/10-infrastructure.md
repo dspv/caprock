@@ -331,6 +331,49 @@ same stand and dropped: the footprint fell 25 MB for a minute or two and
 was back as soon as the live heap's churn under load (70–127 MB) refilled
 it.
 
+**On a copy of the owner's database, 2026-11-25.** After 0.196.0 the live
+daemon read 5.2 GB an hour and held a 448 MB footprint (`GET /v1/footprint`,
+read-only). The stand: a `.backup` copy of his 2.46 GB database (1.19M
+events, 11,018 sessions, every one marked ended and its paths pointed away
+from his home), a build with `-tags memory.counters` and the pty-host
+sweep compiled out, `env -i`, a temp HOME, `CAPROCK_PPROF`; a throwaway
+admin key so the Ops module's collections could be listed. Load, the same
+in every run: four hook agents at two hooks a second, a window's polling
+(lists, Work, glance, summary, three long sessions' events and calls),
+and the Ops module's traffic as his showed it — a write to `mentions`
+every 1.25 s on the two pages his last hour wrote, a tagless listing of
+three collections every 5 s and a tagged one every 30 s. Eight minutes a
+run; steady = samples from 240 s; three runs each, interleaved; median
+(min–max):
+
+- **Before:** footprint 308 MB (303–311); the Go runtime 272 MB mapped
+  (265–278), pressed against its 256 MiB soft limit, for 103 MB live after a
+  collection (102–113); SQLite's allocator 62 MB. Go allocated 30 MB a
+  second (30–31), 82–84% of it listing module documents; 12.2% of a core
+  (10.2–14.0), 1.8% of it the collector's marking; 7,865 `ListModuleDocs`
+  reads an hour (7,803–8,086). Live heap by owner: the module list pages
+  kept in memory (~22 MB, by design, 32 MiB at most), the summary parts
+  (~27 MB, 8.5 MB of it repeated name strings), the session summaries' event
+  cache (~18 MB), the payload encoder's history (8 MB, kept since the parts
+  were compressed through it).
+- **After** (pages re-read only when a write touches them; one copy of each
+  name in the parts; the parts' own encoder): footprint 278 MB (265–286),
+  Go 233 MB mapped (225–237), 91 MB live (79–100); Go allocated 10.2 MB a
+  second (10.1–10.3); 8.6% of a core (7.1–10.0), 0.4% marking; 1,260
+  `ListModuleDocs` reads an hour (1,219–1,274), −84%. No range overlaps the
+  one before it.
+- **Disk bytes** read on the stand moved with the machine's page cache
+  more than with the build (the owner's agents ran meanwhile, load average
+  up to 240), so the reads are counted as statements. Endpoint times were
+  the same or shorter within each pair run under the same load (slow
+  queries logged 19 and 18, 123 and 115, 46 and 51); a pair run while the
+  load average passed 200 was discarded and run again below 20.
+- **Tried, not kept: `GOGC=50`** on the after build (two runs): footprint
+  235 MB (234–237), CPU 9.4% (7.7–11.1), marking 0.9% of a core. The collector's
+  share doubles back towards where it was, and whether the reads got slower
+  could not be told on a machine this loaded; the soft limit stays the only
+  memory knob until it can.
+
 ## Release checklist
 
 Cadence: about one release a day bundling every merged pull request, an out-of-band patch only for breakage ([docs/RELEASING.md § How often to release](../docs/RELEASING.md#how-often-to-release-2026-11-24)).

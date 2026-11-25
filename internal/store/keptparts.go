@@ -150,31 +150,33 @@ func toGobPart(p *sessionPart) gobPart {
 	return g
 }
 
-func fromGobPart(g gobPart) *sessionPart {
+// fromGobPart is a stored part as kept in memory, its names through names
+// (interner): gob makes a string per occurrence, as the driver does per row.
+func fromGobPart(g gobPart, names interner) *sessionPart {
 	p := &sessionPart{unlinked: g.Unlinked}
 	for _, k := range g.Kinds {
-		p.kinds = append(p.kinds, kindPart{k.Kind, k.N, k.Tin, k.Tout, k.Cr, k.Cw, k.Cost, k.Paid})
+		p.kinds = append(p.kinds, kindPart{names.of(k.Kind), k.N, k.Tin, k.Tout, k.Cr, k.Cw, k.Cost, k.Paid})
 	}
 	for _, m := range g.Models {
-		p.models = append(p.models, modelPart{m.Model, m.Tokens, m.Cost, m.Turns, m.Out, m.CacheRead})
+		p.models = append(p.models, modelPart{names.of(m.Model), m.Tokens, m.Cost, m.Turns, m.Out, m.CacheRead})
 	}
 	for _, c := range g.Unpriced {
-		p.unpriced = append(p.unpriced, countPart{c.Model, c.Turns, c.Tokens})
+		p.unpriced = append(p.unpriced, countPart{names.of(c.Model), c.Turns, c.Tokens})
 	}
 	for _, c := range g.Background {
-		p.background = append(p.background, countPart{c.Model, c.Turns, c.Tokens})
+		p.background = append(p.background, countPart{names.of(c.Model), c.Turns, c.Tokens})
 	}
 	for _, h := range g.Hours {
 		p.hours = append(p.hours, hourPart{h.Bucket, h.Hr, h.Tokens, h.Input, h.Turns, h.Priced, h.Cost})
 	}
 	for _, a := range g.Attr {
-		p.attr = append(p.attr, attrPart{a.Dir, a.HasDir, a.Work, a.HasWork, a.Tokens, a.Cost, a.Turns})
+		p.attr = append(p.attr, attrPart{names.of(a.Dir), a.HasDir, a.Work, a.HasWork, a.Tokens, a.Cost, a.Turns})
 	}
 	for _, t := range g.Tools {
-		p.tools = append(p.tools, toolPart{t.Tool, t.Calls, t.Bytes})
+		p.tools = append(p.tools, toolPart{names.of(t.Tool), t.Calls, t.Bytes})
 	}
 	for _, u := range g.Usage {
-		p.usage = append(p.usage, usagePart{u.Model, u.Sub, usageCount{Records: u.Records, Requests: u.Requests, CostUSD: u.CostUSD}})
+		p.usage = append(p.usage, usagePart{names.of(u.Model), u.Sub, usageCount{Records: u.Records, Requests: u.Requests, CostUSD: u.CostUSD}})
 	}
 	for _, h := range g.Hermes {
 		p.hermes = append(p.hermes, hermesPart{h.Basis, h.Source, h.Background, h.Turns, h.Unpriced, h.USD})
@@ -196,7 +198,21 @@ func encodeKept(rp rangeParts, mark EventsMark) ([]byte, error) {
 	if err := gob.NewEncoder(&buf).Encode(g); err != nil {
 		return nil, err
 	}
-	return zEncoder().EncodeAll(buf.Bytes(), nil), nil
+	// An encoder of its own, dropped after: an encoder keeps the history
+	// buffer of the largest input it compressed for as long as it lives, and
+	// a range's parts are megabytes where a payload is kilobytes. Through the
+	// shared payload encoder (zEncoder) that was 8 MB of Go heap held for the
+	// life of the daemon on a copy of the owner's database (2026-11-25). The
+	// same level, so the same frames.
+	enc, err := zstd.NewWriter(nil,
+		zstd.WithEncoderLevel(zstd.SpeedDefault),
+		zstd.WithEncoderConcurrency(1),
+		zstd.WithLowerEncoderMem(true))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = enc.Close() }()
+	return enc.EncodeAll(buf.Bytes(), nil), nil
 }
 
 // keptDecoder reads the stored parts, which can be larger than any payload.
@@ -218,8 +234,9 @@ func decodeKept(b []byte) (rangeParts, EventsMark, error) {
 		return rangeParts{}, EventsMark{}, err
 	}
 	rp := rangeParts{sids: make(map[int64]*sessionPart, len(g.Sids)), base: g.Base, width: g.Width}
+	names := interner{}
 	for sid, p := range g.Sids {
-		rp.sids[sid] = fromGobPart(p)
+		rp.sids[sid] = fromGobPart(p, names)
 	}
 	gens := g.Gens
 	if gens == nil {
