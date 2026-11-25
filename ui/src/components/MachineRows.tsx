@@ -4,10 +4,13 @@
  * - **None linked:** one quiet row, **+ Add a machine**, opening Settings →
  *   Computers with the steps for the other computer (the owner's install
  *   hook, 2026-10-15). No badge, no count, no modal.
- * - **Linked:** a Computers heading, each computer by its name here with its
- *   state when it is not simply reachable, and under it the sessions running
- *   there, each tagged by that computer: a row opens the session through
- *   `/v1/m/{id}/…` (#/m/<id>/session/<sid>, screens/Machine).
+ * - **Linked:** a Computers heading with **All N**, opening All computers
+ *   (`#/m`); each computer on two lines — a status dot, its name and how many
+ *   run there in an accent badge, then *macOS · 36 GB · 2 running* (its setup
+ *   check and resource report, lib/machinespec.ts) or *offline · seen 3d
+ *   ago*, greyed — and under it the sessions running there, each tagged by
+ *   that computer: a row opens the session through `/v1/m/{id}/…`
+ *   (#/m/<id>/session/<sid>, screens/Machine).
  *
  * A computer's row has the sidebar's row menu (right-click, Shift+F10 or the
  * context-menu key): **Open** and **Rename**, renamed in place with `PATCH
@@ -22,6 +25,8 @@
 import { useState } from 'react'
 import { errText } from '@/lib/api'
 import { machineLook, machinesApi, useMachineSessions, useMachines, type Machine, type MachineSessions } from '@/lib/machines'
+import { machineLine, machineState, useMachineSpec } from '@/lib/machinespec'
+import { useNow } from '@/lib/useNow'
 import { useRoute, type SettingsSection } from '@/lib/router'
 import { needLabel, needsYou, oldestFirst } from '@/lib/needs'
 import { ExternalIcon, PencilIcon, PlusIcon } from './AppIcons'
@@ -56,10 +61,21 @@ export function MachineRows({ onOpen, onSettingsSection, dashboardActive }: {
     )
   }
   const at = dashboardActive && route.name === 'machine' ? route : undefined
+  const allOn = dashboardActive && route.name === 'machines'
   return (
     <div data-machine-rows className="mt-2">
       <div className="flex h-[28px] items-center gap-1.5 px-2 pt-1.5">
-        <h2 className="text-[11px] font-semibold uppercase tracking-[0.07em] text-fg-faint">Computers</h2>
+        <h2 className="flex-1 text-[11px] font-semibold uppercase tracking-[0.07em] text-fg-faint">Computers</h2>
+        <button
+          type="button"
+          data-machines-all
+          aria-current={allOn ? 'true' : undefined}
+          onClick={() => onOpen('#/m')}
+          title="All computers: one card each"
+          className={`rounded-[4px] px-1 text-[12px] tabular-nums hover:underline ${allOn ? 'text-accent-strong' : 'text-accent'}`}
+        >
+          All {machines.length}
+        </button>
       </div>
       <ul className="grid grid-cols-1 gap-px">
         {machines.map((m) => (
@@ -72,14 +88,19 @@ export function MachineRows({ onOpen, onSettingsSection, dashboardActive }: {
 
 function MachineRow({ m, read, onOpen, activeMachine, activeSession }: { m: Machine; read?: MachineSessions; onOpen: (hash: string) => void; activeMachine: boolean; activeSession?: string }) {
   const look = machineLook(m)
+  const now = useNow(60_000)
+  const st = machineState(m, read)
   // What the proxy said last outranks the list's state: it was asked later.
   const failed = read?.status === 'offline' || read?.status === 'revoked' || read?.status === 'refused' ? read.status : ''
-  const state = failed === 'offline' ? 'offline' : failed === 'revoked' ? 'removed there' : failed === 'refused' ? 'refused' : look.tone === 'ok' || look.tone === 'muted' ? '' : look.label
-  const dot = failed || look.tone === 'bad' ? 'bg-danger' : look.tone === 'warn' ? 'bg-warn' : (read?.sessions.length ?? 0) > 0 ? 'bg-ok' : 'bg-fg-faint'
+  const state = st.offline ? '' : failed === 'revoked' ? 'removed there' : failed === 'refused' ? 'refused' : look.tone === 'ok' || look.tone === 'muted' ? '' : look.label
+  // Online green, offline greyed, a state that needs something in its tone.
+  const dot = st.offline ? 'bg-fg-faint opacity-60' : failed || look.tone === 'bad' ? 'bg-danger' : look.tone === 'warn' ? 'bg-warn' : st.online ? 'bg-ok' : 'bg-fg-faint'
+  const spec = useMachineSpec(m.id, !st.down, 120_000)
   const live = (read?.sessions ?? []).filter((s) => s.status !== 'ended')
   // Needing you first, oldest first, as this machine's own rows (lib/needs).
   const waiting = oldestFirst(live.filter((s) => needsYou(s)))
   const running = [...waiting, ...live.filter((s) => !needsYou(s))]
+  const line = machineLine({ offline: st.offline, state, lastSeen: m.last_seen, spec: spec.data, running: running.length, now })
   const [menu, setMenu] = useState<MenuAt | null>(null)
   const [renaming, setRenaming] = useState(false)
   const [name, setName] = useState(m.name)
@@ -126,13 +147,14 @@ function MachineRow({ m, read, onOpen, activeMachine, activeSession }: { m: Mach
         }}
         onClick={() => onOpen(`#/m/${m.id}`)}
         title={look.detail ? `${m.name}: ${look.label}. ${look.detail}` : `${m.name}: its sessions`}
-        className={`app-row flex h-[32px] w-full min-w-0 items-center gap-2 rounded-[7px] pl-2.5 pr-2 text-left text-[13px] ${activeMachine ? 'app-row-selected' : ''}`}
+        className={`app-row grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2 rounded-[7px] py-1 pl-2.5 pr-2 text-left ${activeMachine ? 'app-row-selected' : ''}`}
       >
         <span aria-hidden className={`inline-block h-[7px] w-[7px] shrink-0 rounded-full ${dot}`} />
-        <span className="min-w-0 flex-1 truncate text-fg">{m.name}</span>
-        {state ? <span className="shrink-0 text-[11px] text-fg-faint" data-machine-row-state>{state}</span>
-          : waiting.length > 0 ? <span className="shrink-0 text-[11px] text-warn" data-machine-row-waiting>{waiting.length} need{waiting.length === 1 ? 's' : ''} you</span>
-            : running.length > 0 && <span className="num shrink-0 text-[11.5px] text-fg-faint">{running.length}</span>}
+        <span className={`min-w-0 truncate text-[13px] ${st.offline ? 'text-fg-faint' : 'text-fg'}`}>{m.name}</span>
+        {waiting.length > 0 ? <span className="shrink-0 text-[11px] text-warn" data-machine-row-waiting>{waiting.length} need{waiting.length === 1 ? 's' : ''} you</span>
+          : running.length > 0 && !st.down ? <span className="num shrink-0 rounded-[9px] bg-accent px-1.5 text-[11px] font-medium leading-[17px] text-panel" data-machine-row-count>{running.length}</span>
+            : <span />}
+        <span className={`tabular-nums col-start-2 col-end-4 min-w-0 truncate text-[11.5px] ${state ? 'text-fg-muted' : 'text-fg-faint'}`} data-machine-row-line {...(state || st.offline ? { 'data-machine-row-state': '' } : {})}>{line}</span>
       </button>
       )}
       {err && <div role="alert" className="pl-[22px] pr-2 text-[11px] text-danger">{err}</div>}

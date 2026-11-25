@@ -112,6 +112,10 @@ describe('another computer (ADR-067)', () => {
   })
   it('sends a malformed id home', () => {
     expect(parseHash('#/m/../etc')).toEqual({ name: 'now' })
-    expect(parseHash('#/m/')).toEqual({ name: 'now' })
+  })
+  it('opens All computers at #/m, with or without the slash', () => {
+    expect(parseHash('#/m')).toEqual({ name: 'machines' })
+    expect(parseHash('#/m/')).toEqual({ name: 'machines' })
+    expect(href({ name: 'machines' })).toBe('#/m')
   })
 })

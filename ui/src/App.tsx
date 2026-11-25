@@ -19,7 +19,7 @@ import { JarvisScreen } from '@/screens/Jarvis'
 import { FilesScreen } from '@/screens/Files'
 import { ChatsScreen } from '@/screens/Chats'
 import { ChatScreen } from '@/screens/Chat'
-import { MachineScreen } from '@/screens/Machine'
+import { MachineScreen, MachinesScreen } from '@/screens/Machine'
 import { NewProjectScreen } from '@/components/NewProject'
 import { PhoneHome } from '@/components/PhoneHome'
 import { LanOnlyNotice } from '@/components/LanOnlyNotice'
@@ -150,6 +150,7 @@ export function Dashboard({ route, inApp = false, shown = true, scroller = pageS
       case 'chats': return <ChatsScreen key={r.archived ? 'archived' : 'open'} archived={r.archived} />
       case 'chat': return <ChatScreen key={r.id} id={r.id} />
       case 'module': return <Suspense fallback={null}><ModuleScreen key={r.id} id={r.id} to={r.to} /></Suspense>
+      case 'machines': return <MachinesScreen />
       case 'machine': return <MachineScreen key={`${r.id}/${r.session ?? ''}`} id={r.id} session={r.session} tab={r.tab} />
     }
   }

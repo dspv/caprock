@@ -98,6 +98,9 @@ test('New agent with another computer and a GitHub project still fits 1440×900'
   await page.route(/\/v1\/machines(\?.*)?$/, (r) => r.fulfill(json({ machines: [{ id: 'm1', name: 'Studio', relay: 'wss://relay.invalid', added_at: Date.now(), status: 'online', role: 'controller' }] })))
   await page.route(/\/v1\/machines\/sessions$/, (r) => r.fulfill(json({ machines: [] })))
   await page.route(/\/v1\/m\/m1\//, (r) => r.fulfill({ status: 503, contentType: 'application/json', body: '{"error":"offline"}' }))
+  // The sidebar's Computers row reads what it is (OS · memory); answered here, it asks nothing of a relay.
+  await page.route(/\/v1\/m\/m1\/v1\/setup$/, (r) => r.fulfill(json({ os: 'darwin', items: [] })))
+  await page.route(/\/v1\/m\/m1\/v1\/resources$/, (r) => r.fulfill(json({ at: Date.now(), sessions: [], machine: { cpus: 8, mem_total: 16 * 2 ** 30, mem_available: 8 * 2 ** 30 } })))
   await page.route(/\/v1\/github$/, (r) => r.request().method() === 'GET'
     ? r.fulfill(json({ connected: true, source: 'gh', user: { login: 'acme' }, scopes: ['repo'], scopes_known: true, sources: { gh: true, stored: false, store: '', oauth: false }, health: {}, notify: false }))
     : r.fallback())

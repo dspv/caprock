@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { MachineRows } from './MachineRows'
 import { type SessionSummary } from '@/lib/api'
 import { machinesApi, type Machine } from '@/lib/machines'
+import { clearShared } from '@/lib/refresh'
 
 const ID = 'f7kc4QaG4HRPYEjg19Pr-au-FeTljmKHkikFrAmRTzM'
 const mini: Machine = { id: ID, name: 'Mac mini', relay: 'wss://relay.example', added_at: 1, status: 'online', kind: 'machine', role: 'controller', streams: 0 }
@@ -12,6 +13,8 @@ describe('MachineRows — the sidebar’s other computers (ADR-067)', () => {
   afterEach(() => {
     cleanup()
     vi.restoreAllMocks()
+    clearShared()
+    localStorage.clear()
   })
 
   it('with none linked, is one quiet "Add a machine" row that opens Settings → Computers', async () => {
@@ -47,7 +50,7 @@ describe('MachineRows — the sidebar’s other computers (ADR-067)', () => {
       { id: `${ID.slice(0, -1)}B`, name: 'Linux box', status: 'revoked' },
     ])
     render(<MachineRows onOpen={vi.fn()} dashboardActive={false} />)
-    await vi.waitFor(() => expect(screen.getAllByText('offline').length).toBe(1))
+    await vi.waitFor(() => expect(screen.getAllByText(/^offline · /).length).toBe(1))
     expect(screen.getByText('removed there')).toBeTruthy()
     // One request for every computer: the daemon reads each one.
     expect(all).toHaveBeenCalledTimes(1)
@@ -88,5 +91,30 @@ describe('MachineRows — the sidebar’s other computers (ADR-067)', () => {
     fireEvent.keyDown(await screen.findByRole('button', { name: /^Mac mini/ }), { key: 'F10', shiftKey: true })
     expect(screen.getByRole('menuitem', { name: 'Rename' })).toBeTruthy()
     expect(screen.getByRole('menuitem', { name: 'Open' })).toBeTruthy()
+  })
+
+  // The owner's pick of 2026-11-25 (list A): two lines a computer, a count badge, and All N.
+  it('draws each computer on two lines — OS · memory · running — with a count badge and All N', async () => {
+    vi.spyOn(machinesApi, 'list').mockResolvedValue([mini])
+    vi.spyOn(machinesApi, 'allSessions').mockResolvedValue([{ id: ID, name: 'Mac mini', status: 'online', at: 1, sessions: [session('s1', 'One'), session('s2', 'Two')] }])
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (u) => String(u).endsWith('/v1/setup')
+      ? new Response(JSON.stringify({ os: 'darwin', items: [] }), { status: 200 })
+      : new Response(JSON.stringify({ machine: { cpus: 12, mem_total: 36 * 2 ** 30, mem_available: 8 * 2 ** 30 } }), { status: 200 }))
+    const onOpen = vi.fn()
+    render(<MachineRows onOpen={onOpen} dashboardActive={false} />)
+    await vi.waitFor(() => expect(document.querySelector('[data-machine-row-line]')?.textContent).toBe('macOS · 36 GB · 2 running'))
+    expect(document.querySelector('[data-machine-row-count]')?.textContent).toBe('2')
+    fireEvent.click(screen.getByRole('button', { name: 'All 1' }))
+    expect(onOpen).toHaveBeenCalledWith('#/m')
+  })
+
+  it('greys an offline computer and says when it was last seen, with no badge', async () => {
+    vi.spyOn(machinesApi, 'list').mockResolvedValue([{ ...mini, status: 'offline', last_seen: Date.now() - 3 * 86_400_000 }])
+    vi.spyOn(machinesApi, 'allSessions').mockResolvedValue([{ id: ID, name: 'Mac mini', status: 'offline', error: 'the computer is offline' }])
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response('{}', { status: 503 }))
+    render(<MachineRows onOpen={vi.fn()} dashboardActive={false} />)
+    await vi.waitFor(() => expect(document.querySelector('[data-machine-row-line]')?.textContent).toBe('offline · seen 3d ago'))
+    expect(document.querySelector('[data-machine-row-line]')!.className).toContain('text-fg-faint')
+    expect(document.querySelector('[data-machine-row-count]')).toBeNull()
   })
 })
