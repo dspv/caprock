@@ -35,7 +35,7 @@ import { createPortal } from 'react-dom'
 import type { ReleaseCI, SessionCIStats, SessionRepoCI, Work, WorkEntry, WorkRepo } from '@/lib/api'
 import { asBoard, type ShipsBy } from '@/lib/prboard'
 import { HINT_ROWS, mainChecks, nextHint, OUT_RECENT_MS, prKind, releaseFold, releaseStatus, STATUS_TEXT, tagUnpublished, type BatchPR, type NextHint, type ReleaseFold, type ReleaseStatus } from '@/lib/releasestatus'
-import { batchOf, groupNotes, notesHeading, notesOf, notInIt, viaLine, type NotesHeading, type NotInIt, type ViaLine } from '@/lib/releasenotes'
+import { batchOf, groupNotes, notesHeading, notesOf, notInIt, viaLine, withNext, type NotesHeading, type NotInIt, type ViaLine } from '@/lib/releasenotes'
 import { stageWords, stripStages, type StripStage } from '@/lib/releasestatus'
 import { fmtWhen } from '@/lib/format'
 import { LastRelease, ReleaseInFlight, ReleaseStages, ReleaseStrip, ReleaseWhy } from './ReleaseStatus'
@@ -794,11 +794,13 @@ export function CockpitRelease({ sessionId, repoRoot }: { sessionId: string; rep
       </section>
     )
   }
-  const head = notesHeading(status, repo?.tags?.last ?? plan.last, now)
-  const entries = notesOf(repo, head, status)
+  const base = notesHeading(status, repo?.tags?.last ?? plan.last, now)
   const others = notInIt(plan.rows, batchPR?.number)
-  // What the open pull requests would make the version (owner, 2026-11-23, variant 1A).
-  const hint = head.state === 'waiting' ? nextHint(status, others.prs) : undefined
+  // What the open pull requests would make the version (owner, 2026-11-23,
+  // variant 1A), said by the heading as its one number (owner, 2026-11-25).
+  const hint = base.state === 'waiting' ? nextHint(status, others.prs) : undefined
+  const head = withNext(base, hint)
+  const entries = notesOf(repo, head, status)
   // The words beside the dots name the batch and its state while the
   // release waits for it (*Waiting for #977 · CI red*): the via line would
   // say the same again (owner, 2026-11-20), so it goes, and the words open
@@ -837,7 +839,7 @@ export function CockpitRelease({ sessionId, repoRoot }: { sessionId: string; rep
             : <NotesHead head={head} />}
           {head.state !== 'idle' && !sealed && <ReleaseStrip status={status} out={out} words={!outFold} cards={board?.cards} batch={batch} main={main} now={now}
             href={wordsHref} kept={keptText ? `${keptText}, being read again` : undefined} />}
-          {hint && <NextHintLine hint={hint} rows={hintRows} root={plan.root} waited={waitedInRows ? waited : undefined} />}
+          {hint && hintRows.length > 0 && <NextHintLine hint={hint} rows={hintRows} root={plan.root} waited={waitedInRows ? waited : undefined} />}
         </div>
         {entries.length > 0 && (
           <div data-release-group="entries" className="min-w-0 border-t border-[var(--app-hairline)] pt-2"><ReleaseNotes entries={entries} /></div>
@@ -1127,7 +1129,10 @@ function NotesHead({ head: h }: { head: NotesHeading }) {
       <div className="flex min-w-0 items-baseline gap-x-1.5 whitespace-nowrap text-[11.5px] text-fg-muted">
         <h3 data-release-version title={h.title} aria-label={h.text}
           className={`num cursor-help ${big ? 'shrink-0 text-[13px] font-semibold text-fg' : 'min-w-0 truncate text-[12px] text-fg-muted'}`}>{narrow(h.text, h.short, 'hidden @[340px]/head:inline')}</h3>
-        {h.why && <>{dot}<span data-release-why title={h.why.title} className="shrink-0 cursor-help">{h.why.text}</span></>}
+        {h.why && <>{dot}<span data-release-why title={h.why.title} className="shrink-0 cursor-help">{h.why.short
+          // Below 340px two numbers become a count (*waits for 2 PRs*), as the version's *release* goes.
+          ? <><span data-release-why-wide className="hidden @[340px]/head:inline">{h.why.text}</span><span data-release-why-short className="@[340px]/head:hidden">{h.why.short}</span></>
+          : h.why.text}</span></>}
         {h.age && (h.ageWide
           // Only where it has room (owner, 2026-11-23): narrow, a bare *27m ago* read as the version's age.
           ? <span data-release-since data-release-since-wide title={h.age} className="hidden min-w-0 items-baseline gap-x-1.5 @[400px]/head:flex">{dot}<span className="num min-w-0 truncate">{h.age}</span></span>
@@ -1251,12 +1256,13 @@ export function hintRowsOf(prs: readonly PlanRow[], numbers: readonly number[], 
 }
 
 /**
- * The line under the version when the open pull requests would change it
- * (owner, 2026-11-23, variant 1A): *0.190.0 once the 4 open PRs land*, and
- * under it those pull requests one line each, as *Not in it yet* draws them
+ * The open pull requests the heading's version waits for (owner,
+ * 2026-11-23, variant 1A), one line each, as *Not in it yet* draws them
  * (PRLine; owner, 2026-11-23: a bare *#1017 #1030 …* said nothing) — five,
- * then *+N more*. What they are, *3 features and 1 fix waiting*, is on the
- * line's hover. The version above stays what the default branch holds.
+ * then *+N more*. The heading says the version they make, *Next 0.197.0 ·
+ * minor · waits for #1072* (withNext); the line *0.197.0 once #1072 lands*
+ * that stood over these rows went (owner, 2026-11-25: two numbers read as
+ * out of sync).
  */
 function NextHintLine({ hint, rows, root, waited }: { hint: NextHint; rows: readonly PlanRow[]; root: string; waited?: number }) {
   const [all, setAll] = useState(false)
@@ -1265,7 +1271,6 @@ function NextHintLine({ hint, rows, root, waited }: { hint: NextHint; rows: read
   return (
     <div data-release-hint={hint.version}
       className="grid min-w-0 gap-px rounded-[6px] border border-dashed border-[var(--app-hairline,var(--color-border))] px-2 py-1 text-[11.5px] leading-[1.35]">
-      <span data-release-hint-text title={`${hint.title}\n${hint.sub}.`} className="min-w-0 cursor-help truncate text-fg-muted"><span className="num text-fg">{hint.version}</span>{hint.text.slice(hint.version.length)}</span>
       {shown.length > 0 && (
         <ul data-release-hint-rows className="@container/prs grid min-w-0 font-sans">
           {shown.map((r) => <PRLine key={r.key} row={r} root={root} waited={r.number === waited} />)}

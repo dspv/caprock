@@ -440,14 +440,17 @@ describe('the version the open pull requests would make', () => {
       { number: 1017, title: 'chore(deps): bump compress' },
       { number: 1030, title: 'input highlight' },
     ])
-    expect(h).toMatchObject({ version: '0.190.0', bump: 'minor', text: '0.190.0 once the 4 open PRs land', sub: '2 features, 1 fix and 1 other waiting', numbers: [1022, 1023, 1024, 1017] })
+    expect(h).toMatchObject({ version: '0.190.0', bump: 'minor', waits: 'waits for 4 PRs', sub: '2 features, 1 fix and 1 other waiting', numbers: [1022, 1023, 1024, 1017] })
     expect(h!.title).toMatch(/^0\.189\.2 is what the default branch holds now \(patch\)\./)
   })
 
   it('says one PR by its number, and keeps every number for the rows', () => {
-    expect(nextHint(pre, [{ number: 7, title: 'feat: x' }])).toMatchObject({ text: '0.190.0 once #7 lands', sub: '1 feature waiting' })
+    expect(nextHint(pre, [{ number: 7, title: 'feat: x' }])).toMatchObject({ waits: 'waits for #7', sub: '1 feature waiting' })
     const many = Array.from({ length: 7 }, (_, i) => ({ number: i + 1, title: 'feat: x' }))
-    expect(nextHint(pre, many)).toMatchObject({ sub: '7 features waiting', numbers: [1, 2, 3, 4, 5, 6, 7] })
+    expect(nextHint(pre, many)).toMatchObject({ waits: 'waits for 7 PRs', sub: '7 features waiting', numbers: [1, 2, 3, 4, 5, 6, 7] })
+    // Two by number (a fix among them counts), three and up as a count.
+    expect(nextHint(pre, [{ number: 1072, title: 'feat: x' }, { number: 1080, title: 'fix: y' }])).toMatchObject({ version: '0.190.0', waits: 'waits for #1072, #1080' })
+    expect(nextHint(pre, many.slice(0, 3))).toMatchObject({ waits: 'waits for 3 PRs' })
     expect(nextHint({ ...pre, version: '0.190.0', bump: 'minor' }, [{ number: 8, title: 'fix!: y' }])).toMatchObject({ version: '1.0.0', bump: 'major', sub: '1 breaking change waiting' })
   })
 

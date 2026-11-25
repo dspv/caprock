@@ -485,8 +485,13 @@ test('the unfolded Release section keeps its stepper on one row and inside the e
         Array.from({ length: 7 }, (_, i) => pr(1017 + i, `${i % 3 ? 'fix' : 'feat'}(ui): an open pull request whose title is far too long for the panel ${i}`, 'open')),
         Array.from({ length: 7 }, (_, i) => ({ ...card(1017 + i, 'open', 'running'), os })),
         [rel('v0.182.4', 86_400_000, 23)]) },
+    // Owner, 2026-11-25: one number, the heading's, with the longest words
+    // it says, two pull requests by number.
+    { name: 'waits-two', words: /\S/, head: 'Next release 0.183.0', why: 'minor · waits for #1072, #1080',
+      stats: statsOf([pr(1072, 'feat(app): a feature queued for the release', 'open'), pr(1080, 'fix(ui): a fix queued beside it', 'open')],
+        [{ ...card(1072, 'open', 'running'), os }, { ...card(1080, 'ready', 'pass'), os }], [rel('v0.182.4', 86_400_000, 23)]) },
   ]
-  let c = cases[0]!
+  let c: (typeof cases)[number] = cases[0]!
   await page.route(/\/v1\/sessions\/[^/]+\/ci\/stats$/, (r) => r.fulfill(json(c.stats)))
   await page.route(/\/v1\/sessions\/[^/]+\/prs$/, (r) => r.fulfill(json({ connected: true, fetched_at: now, prs: [] })))
   await page.route(/\/v1\/sessions\/[^/]+\/ci\?pr=\d+$/, (r) => r.fulfill(json({ connected: true, fetched_at: now, pr: { number: 942, url: '', repo: 'acme/app', live: live(942, 'open', RUNNING) } })))
@@ -565,6 +570,17 @@ test('the unfolded Release section keeps its stepper on one row and inside the e
         await expect(hint.locator('[data-release-hint-rows] > li')).toHaveCount(5)
         await expect(hint.locator('[data-release-hint-more]')).toHaveText('+2 more')
         await expect(words).toHaveAttribute('href', /pr=999/)
+      }
+      if (k.head && k.why) {
+        const sec = inspector.locator('section[aria-label="Release"]')
+        await expect(sec.locator('[data-release-version]')).toHaveAttribute('aria-label', k.head)
+        await expect(sec.locator('[data-release-why-wide]')).toHaveText(k.why)
+        await expect(sec.locator('[data-release-why-short]')).toHaveText('minor · waits for 2 PRs')
+        // Narrow, two numbers become a count; wide, the numbers.
+        if (w === 280) await expect(sec.locator('[data-release-why-wide]')).toBeHidden()
+        if (w === 460) await expect(sec.locator('[data-release-why-short]')).toBeHidden()
+        await expect(sec.locator('[data-release-hint-rows] > li')).toHaveCount(2)
+        await expect(sec.locator('[data-release-hint-text]')).toHaveCount(0)
       }
       if (shotsDir) await inspector.locator('[data-section-frame="release"]').screenshot({ path: path.join(shotsDir, `release-dots-${k.name}-${w}.png`) })
     }

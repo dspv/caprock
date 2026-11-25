@@ -15,7 +15,9 @@
  *   Not in it yet: 1 branch, no PR        ▸
  *
  * - **The heading** (`notesHeading`) says the release in one line: the
- *   predicted version named as the next release, with its bump and why,
+ *   predicted version named as the next release, with its bump and why —
+ *   with open pull requests that would raise it, the version they make and
+ *   *waits for #1072* (`withNext`) —
  *   *Releasing 0.183.1* while something runs (*Release 0.183.1* when
  *   not), *0.183.1 released · 5 min ago* within the hour of its
  *   publishing, *Nothing new since v0.183.0 · 8h ago* otherwise.
@@ -34,7 +36,7 @@ import type { BoardCard } from './prboard'
 import type { PlanRow } from './releaseplan'
 import { ageText, landingOf } from './releaseplan'
 import type { BranchPR } from './branches'
-import { agoText, OUT_RECENT_MS, plainVersion, releasePRVersion, stageWords, stripStages, type ReleaseStatus } from './releasestatus'
+import { agoText, OUT_RECENT_MS, plainVersion, releasePRVersion, stageWords, stripStages, type NextHint, type ReleaseStatus } from './releasestatus'
 
 /** Keep a Changelog's kinds, in its order; entries of no kind come last, as *Other*. */
 export const KIND_ORDER = ['Added', 'Changed', 'Deprecated', 'Removed', 'Fixed', 'Security'] as const
@@ -73,7 +75,12 @@ export interface NotesHeading {
   /** The text in a narrow panel, when it differs: "Next 0.183.1". */
   short?: string
   /** "patch": the bump word, its reason on hover, with a version predicted. */
-  why?: { text: string; title: string }
+  why?: {
+    text: string
+    title: string
+    /** The words in a narrow panel (below 340px), when they differ: *minor · waits for 2 PRs* for *minor · waits for #1072, #1080*. */
+    short?: string
+  }
   /** "last release 8h ago", "5 min ago", "8h ago": the last release's age. */
   age?: string
   /** The age said only where the line has room (400px and up): a bare *27m ago* beside a version read as the version's age. */
@@ -121,6 +128,27 @@ export function notesHeading(s: ReleaseStatus, lastTag: { name: string; at: numb
     // the last release's age goes, and stays on the version's hover.
     age: at ? `last release ${ago(now - at)}` : undefined, ageWide: at ? true : undefined,
     title: `${s.why?.title ?? 'No version is predicted: some changelog entries say no kind, or no tag was read to count from.'}${at ? `\nLast release ${ago(now - at)}.` : ''}`,
+  }
+}
+
+/**
+ * A waiting heading says one number (owner, 2026-11-25, translated: *Next
+ * 0.196.1 · patch* over *0.197.0 once #1072 lands* read as out of sync): the
+ * version the release will be with the open pull requests queued for it
+ * (nextHint), its bump, and what it waits for — *Next 0.197.0 · minor ·
+ * waits for #1072*. Derived on every read, nothing kept: a pull request
+ * closed or no longer queued drops the number back. Unchanged with no hint.
+ */
+export function withNext(h: NotesHeading, hint: NextHint | undefined): NotesHeading {
+  if (!hint || h.state !== 'waiting') return h
+  const said = `${hint.title}\n${hint.sub}.`
+  const text = `${hint.bump} · ${hint.waits}`
+  // Two numbers do not fit the 330px cockpit: a count there.
+  const short = `${hint.bump} · waits for ${hint.numbers.length} PRs`
+  return {
+    ...h, text: `Next release ${hint.version}`, short: `Next ${hint.version}`,
+    why: { text, title: `${hint.bump}: ${hint.waits}.\n${said}`, ...(hint.numbers.length > 1 && short !== text ? { short } : {}) },
+    title: `${said}\n${h.title}`,
   }
 }
 

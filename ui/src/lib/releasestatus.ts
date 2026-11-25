@@ -158,12 +158,16 @@ export function raiseVersion(version: string, from: Bump | 'major', to: Bump | '
   return `${v[0]}.${v[1] + 1}.0`
 }
 
-/** The line under the version when the open pull requests would change it. */
+/**
+ * The version the open pull requests would make: the heading says it in
+ * place of the default branch's (owner, 2026-11-25: two numbers read as out
+ * of sync), the pull requests as rows under it.
+ */
 export interface NextHint {
   version: string
   bump: Bump | 'major'
-  /** "0.190.0 once the 4 open PRs land". */
-  text: string
+  /** "waits for #1072", "waits for #1072, #1080", "waits for 3 PRs": beside the bump in the heading. */
+  waits: string
   /** "3 features and 1 fix waiting": on hover; the pull requests themselves are rows under the line. */
   sub: string
   title: string
@@ -203,11 +207,12 @@ export function nextHint(s: Pick<ReleaseStatus, 'phase' | 'version' | 'bump' | '
   ].filter(Boolean)
   const said = parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}` : parts[0]!
   const numbers = known.map((p) => p.number).filter((x): x is number => x !== undefined)
-  const text = n === 1 && numbers.length === 1 ? `${version} once #${numbers[0]} lands` : `${version} once the ${n} open PRs land`
+  // Two numbers at most; more read as a count.
+  const waits = numbers.length === n && n <= 2 ? `waits for ${numbers.map((x) => `#${x}`).join(', ')}` : `waits for ${n} PRs`
   const reason = top === 'major' ? 'a breaking change' : 'a feature'
   const title = `${s.version} is what the default branch holds now (${s.bump}). The open pull requests listed below, by their titles, hold ${reason}: once they land the next release would be ${version}. `
     + 'feat makes a minor release; fix, perf, chore and deps a patch; ! or BREAKING a major. A title that says no kind is not counted.'
-  return { version, bump: top, text, sub: `${said} waiting`, title, numbers }
+  return { version, bump: top, waits, sub: `${said} waiting`, title, numbers }
 }
 
 /** Why the version is that number, from the changelog entries' kinds when read. */
