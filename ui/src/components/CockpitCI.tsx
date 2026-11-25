@@ -12,7 +12,13 @@
  * *Pipeline →* opens the page (→, not ↗: it stays in Caprock). It reads the Pipeline's own answer
  * (…/ci/stats, kept by the daemon), asked while the window is shown —
  * folded too, at the same idle pace, for the folded line below — and draws
- * the copy last kept at once.
+ * the copy last kept at once. A pull request the session just opened is in
+ * its own list (`prs:<session>`) before that answer has it: an open one of
+ * this repository the answer does not list asks it again at once with
+ * `?fresh=1` (the daemon reads its pull request list again), once per
+ * number, so the PRs view lists it within seconds rather than up to three
+ * minutes later (owner, 2026-11-26: Ring drew #1078 "9 s ago", the PRs view
+ * did not list it).
  *
  * In flight only (owner, 2026-10-16, translated: "on the right it sometimes
  * shows too many PRs, e.g. for caprock-web"): the open pull requests and
@@ -99,7 +105,7 @@
  * (KEPT_CLASS), the age beside the label *as of 25 min ago*; full strength
  * once the read lands (useKeptCopy, lib/usePoll).
  */
-import { useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react'
+import { useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { api, isPairedDevice, type SessionCI, type SessionCIStats, type SessionPRLive, type SessionPRs, type SessionSummary, type WorkRepo } from '@/lib/api'
 import { githubApi, githubErrorText, useGitHubStatus, type AutoRerun, type PRCheck, type PullRequest } from '@/lib/github'
 import { AUTO_RERUN_HINT, NO_RUNNER_TITLE, autoRerunWords, checkCounts, ciActive, type CheckCounts, type ChecksSummary, foreignRepo, keepStats, orderPRs, osName, osRollup, prChecks, readCockpitCIView, repoShort, runVsMedian, saveCockpitCIView, fmtRun, type CockpitCIView } from '@/lib/ci'
@@ -154,6 +160,18 @@ function RowChecksRead({ sessionId, num, cacheKey }: { sessionId: string; num: n
 
 /** The most pull requests the PRs view lists (it scrolls). */
 const LISTED = 40
+
+/** The session's own open pull requests the Pipeline's answer was already
+ *  read afresh for (`?fresh=1`), per repository (or session): each number is
+ *  forced once, never in a loop, even across remounts. */
+const forcedPRs = new Map<string, Set<number>>()
+function forcedOf(scope: string): Set<number> {
+  let s = forcedPRs.get(scope)
+  if (!s) { s = new Set(); forcedPRs.set(scope, s) }
+  return s
+}
+/** Forgets which pull requests were forced (tests). */
+export function forgetForcedPRs(): void { forcedPRs.clear() }
 
 /** The PRs view's height, and taller once expanded (remembered per viewer). */
 const TALL_KEY = 'caprock.cockpit.pipeline.tall'
@@ -245,7 +263,18 @@ export function CockpitCI({ sessionId, repoScope, onOpen, s }: { sessionId: stri
   // keepStats, as the Pipeline page reads it): without it one refused read
   // wiped the copy, and the block hid and the Release section lost its
   // release pull request (2026-11-23).
-  const [stats, statsAt, statsMeta] = usePoll<SessionCIStats>(!!onOpen, `cockpit:${sessionId}`, () => api.sessionCIStats(sessionId), () => false, CI_IDLE_MS, `stats:${repoScope || sessionId}`, keepStats)
+  // A read asked for a just-opened pull request (below) is a forced one,
+  // once per number: its numbers are marked as the read goes out.
+  const scope = repoScope || sessionId
+  const freshFor = useRef<number[]>([])
+  const readStats = () => {
+    const f = freshFor.current
+    freshFor.current = []
+    const forced = forcedOf(scope)
+    for (const num of f) forced.add(num)
+    return api.sessionCIStats(sessionId, f.length > 0)
+  }
+  const [stats, statsAt, statsMeta] = usePoll<SessionCIStats>(!!onOpen, `cockpit:${sessionId}`, readStats, () => false, CI_IDLE_MS, `stats:${scope}`, keepStats)
   const board = useMemo(() => asBoard(stats?.board), [stats?.board])
   const allRows = useMemo(() => pipelineRows(tabRows('repo', [], stats?.prs ?? []), board, stats?.prs ?? []), [stats?.prs, board])
   const flight = useMemo(() => {
@@ -279,6 +308,28 @@ export function CockpitCI({ sessionId, repoScope, onOpen, s }: { sessionId: stri
   const own = stats?.repo
   const rows = orderPRs(prs.d?.prs ?? [], own).filter((p) => !!p.live)
   const mine = useMemo(() => new Map((prs.d?.prs ?? []).filter((p) => !foreignRepo(p, own)).map((p) => [p.number, p])), [prs.d, own])
+  // A pull request the session just opened is in its own list (read every
+  // 20 s at most, and told at once) before the Pipeline's answer, read once a
+  // minute from a list the daemon keeps 2 minutes, has it: Ring drew #1078
+  // "9 s ago" while the PRs view did not list it (owner, 2026-11-26). Such
+  // an open one of this repository — both lists read since the block was
+  // drawn, never a kept copy of either — asks the answer again at once with
+  // `?fresh=1`, which reads the list again now: once per number (forcedPRs),
+  // so nothing else asks GitHub more.
+  const statsRetry = statsMeta.retry
+  const unlisted = useMemo(() => {
+    if (!statsMeta.confirmed || !prsMeta.confirmed || !stats?.connected || !own || !prs.d?.connected) return []
+    const listed = new Set((stats.prs ?? []).map((p) => p.number))
+    const forced = forcedOf(scope)
+    return [...mine.values()].filter((p) => p.live?.state === 'open' && !listed.has(p.number) && !forced.has(p.number)).map((p) => p.number)
+  }, [statsMeta.confirmed, prsMeta.confirmed, stats, own, prs.d?.connected, mine, scope])
+  const unlistedKey = unlisted.join(',')
+  useEffect(() => {
+    if (!unlistedKey) return
+    freshFor.current = unlistedKey.split(',').map(Number)
+    // A read under way ignores the retry; this runs again when it lands.
+    statsRetry()
+  }, [unlistedKey, stats, statsRetry])
   // The force actions the deck had, on the row of the PR they apply to
   // (lib/usePRForce, shared with the Pipeline page): each asks once, in the row.
   const host = useContext(PipelineHostContext)

@@ -2827,8 +2827,10 @@ export const api = {
   sessionCIRelease: (id: string) => get<SessionRepoCI>(`/v1/sessions/${encodeURIComponent(id)}/ci/release`).then(listedJobs),
   /** The newest run of each workflow on the session's repository's default branch (the CI cell's Main view). */
   sessionCIMain: (id: string) => get<SessionRepoCI>(`/v1/sessions/${encodeURIComponent(id)}/ci/main`).then(listedJobs),
-  /** The Pipeline page: the repository's pull requests and its figures over 14 days. Asked only while the tab is shown. */
-  sessionCIStats: (id: string) => get<SessionCIStats>(`/v1/sessions/${encodeURIComponent(id)}/ci/stats`),
+  /** The Pipeline page: the repository's pull requests and its figures over 14 days. Asked only while the tab is shown.
+   *  `fresh` composes it now, the pull request list read again unless it is a few seconds old: the cockpit asks it once
+   *  for a pull request the session just opened that the list does not have yet. */
+  sessionCIStats: (id: string, fresh = false) => get<SessionCIStats>(`/v1/sessions/${encodeURIComponent(id)}/ci/stats${fresh ? '?fresh=1' : ''}`),
   /** The Pipeline's Most expensive: the dearest pull requests and releases over a period, from this machine alone (no GitHub request). */
   sessionCostliest: (id: string, days: ExpensivePeriod) => get<Costliest>(`/v1/sessions/${encodeURIComponent(id)}/ci/costliest?days=${days}`),
   /** The branches of the session's repository, with their PRs and what Caprock's sessions on each cost. */

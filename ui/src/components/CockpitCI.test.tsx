@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { CockpitCI, checkSummary } from './CockpitCI'
+import { CockpitCI, checkSummary, forgetForcedPRs } from './CockpitCI'
 import { forgetDeckAnswers, writeDeck } from '@/lib/deckCache'
 import { prChecks } from '@/lib/ci'
 import { CheckSummary } from './CheckSummary'
@@ -23,7 +23,7 @@ const PASSED = { state: 'pass', passed: 1, failed: 0, pending: 0, items: [{ name
 // the first test here started more than a second later, so "4m 00s" read
 // "4m 01s". Only Date is faked; timers stay real.
 beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'], now }) })
-afterEach(() => { forgetDeckAnswers(); forgetPRProgress(); localStorage.clear(); vi.unstubAllGlobals(); vi.useRealTimers() })
+afterEach(() => { forgetDeckAnswers(); forgetPRProgress(); forgetForcedPRs(); localStorage.clear(); vi.unstubAllGlobals(); vi.useRealTimers() })
 
 describe('the cockpit’s CI block', () => {
   it('counts a PR’s checks and the time since the first started', () => {
@@ -331,6 +331,49 @@ describe('the cockpit’s CI block', () => {
     await act(async () => { fireEvent.click(document.querySelector('[data-cockpit-ci-confirm-yes]')!) })
     await waitFor(() => expect(posts).toEqual(['/v1/agents/s1/queue']))
     await waitFor(() => expect(document.querySelector('[data-cockpit-ci-pr="9"] [data-cockpit-ci-progress]')).toHaveTextContent('agent fixing…'))
+  })
+
+  // Owner, 2026-11-26: Ring drew the session's new #1078 "9 s ago" while the
+  // PRs view, read from a list taken 20 s before it was opened, did not list it.
+  it('reads the Pipeline afresh once when the session opened a PR its list does not have, and lists it', async () => {
+    const pr9 = { number: 9, url: 'https://github.com/a/b/pull/9', title: 'Fix the login', state: 'open', created_at: now - 3_600_000 }
+    const pr10 = { number: 10, url: 'https://github.com/a/b/pull/10', title: 'Just opened', state: 'open', created_at: now - 9_000 }
+    const stats = (prs: object[]) => ({ connected: true, repo: 'a/b', fetched_at: now, read_at: now, prs,
+      board: { cards: [], releases: [], flow: { counts: {}, days: 14, merged: 0, ttm_count: 0, release_lag_count: 0, cost_usd: 0 }, ships_by: 'release' } })
+    const prs = { connected: true, prs: [row(10, live(10, RUNNING, { title: 'Just opened' }))] }
+    const statsURLs: string[] = []
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      const json = (b: unknown) => new Response(JSON.stringify(b), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      if (url.includes('/ci/stats')) {
+        statsURLs.push(url)
+        // The daemon's kept list is from before #10; a forced read has it.
+        return json(stats(url.endsWith('?fresh=1') ? [pr10, pr9] : [pr9]))
+      }
+      if (url.endsWith('/prs')) return json(prs)
+      return new Response('', { status: 404 })
+    }))
+    render(<CockpitCI sessionId="s1" repoScope="/w" onOpen={vi.fn()} />)
+    await waitFor(() => expect(document.querySelector('[data-cockpit-ci-pr="10"]')).not.toBeNull())
+    expect(statsURLs).toEqual(['/v1/sessions/s1/ci/stats', '/v1/sessions/s1/ci/stats?fresh=1'])
+    expect(document.querySelector('[data-cockpit-ci-pr="9"]')).not.toBeNull()
+    // Once per number: listed now, and never forced again, not even remounted.
+    await new Promise((r) => setTimeout(r, 50))
+    expect(statsURLs.filter((u) => u.endsWith('?fresh=1'))).toHaveLength(1)
+  })
+
+  it('forces no read when the Pipeline already lists the session’s PRs', async () => {
+    const pr9 = { number: 9, url: 'https://github.com/a/b/pull/9', title: 'Fix the login', state: 'open', created_at: now - 3_600_000 }
+    const statsURLs: string[] = []
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      const json = (b: unknown) => new Response(JSON.stringify(b), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      if (url.includes('/ci/stats')) { statsURLs.push(url); return json({ connected: true, repo: 'a/b', fetched_at: now, read_at: now, prs: [pr9] }) }
+      if (url.endsWith('/prs')) return json({ connected: true, prs: [row(9, live(9, RUNNING))] })
+      return new Response('', { status: 404 })
+    }))
+    render(<CockpitCI sessionId="s1" repoScope="/w" onOpen={vi.fn()} />)
+    await waitFor(() => expect(document.querySelector('[data-cockpit-ci-pr="9"]')).not.toBeNull())
+    await new Promise((r) => setTimeout(r, 50))
+    expect(statsURLs).toEqual(['/v1/sessions/s1/ci/stats'])
   })
 
   it('offers no action without the session, and none on a PR that needs none', async () => {
