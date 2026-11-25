@@ -28,6 +28,8 @@
  */
 import type { CIState, ReleaseCI, WorkRepo } from './api'
 import type { BranchPR } from './branches'
+import { checkCounts } from './ci'
+import type { PullRequest } from './github'
 import type { JourneyPillStep } from './journey'
 import { AGENT_COST_NOTE, costText, type BoardCard, type BoardRelease } from './prboard'
 import { mergedEntries, nextVersion, parseVersion, type Bump } from './releaseplan'
@@ -53,8 +55,8 @@ export interface ReleaseStatus {
   current?: ReleaseStageKey
   /** The newest published release that is not this one. */
   last?: { tag: string; url?: string; at: number; assets?: number; prerelease?: boolean }
-  /** The release pull request for this version, when one is listed. */
-  pr?: { number: number; merged: boolean }
+  /** The release pull request for this version, when one is listed; `checks`, its own checks' read when one was passed in. */
+  pr?: { number: number; merged: boolean; checks?: PRChecksRead }
   /** The batch pull request the changelog entries not merged yet are on (`unreleased.via`). */
   batch?: number
 }
@@ -71,6 +73,39 @@ export interface ReleaseStatusInput {
   releases: readonly BoardRelease[]
   /** The repository's newest release run. */
   run?: ReleaseCI
+  /**
+   * A pull request's own checks as the CI section last read them (its
+   * `ci:` or `prs:` answer, lib/deckCache): used for the release pull
+   * request when the numbers match, over the board card's state, with the
+   * counts the card does not carry.
+   */
+  checks?: PRChecksRead
+}
+
+/** One pull request's checks as read: the state and how many of them finished. */
+export interface PRChecksRead {
+  number: number
+  state: NonNullable<BoardCard['ci']>
+  /** Checks finished (passed, failed, skipped or given no machine) of `total`. */
+  done: number
+  total: number
+  /** The failed checks' names, at most three. */
+  failed?: string[]
+}
+
+const CHECKS_STATE: Record<PullRequest['checks']['state'], PRChecksRead['state']> = { pending: 'running', fail: 'fail', pass: 'pass', none: 'none', no_runner: 'no_runner' }
+
+/**
+ * A pull request's live checks (lib/github PullRequest) as PRChecksRead,
+ * counted as every CI view counts them (lib/ci checkCounts), so the release
+ * section's *6 of 16* is the CI section's.
+ */
+export function checksRead(number: number, checks: PullRequest['checks'] | undefined): PRChecksRead | undefined {
+  const state = checks && CHECKS_STATE[checks.state]
+  if (!checks || !state) return undefined
+  const c = checkCounts(checks.items)
+  const failed = checks.items.filter((x) => x.state === 'fail').map((x) => x.name).slice(0, 3)
+  return { number, state, done: c.total - c.running - c.queued, total: c.total, ...(failed.length ? { failed } : {}) }
 }
 
 /** "v0.126.0" → "0.126.0"; undefined for a tag that is not x.y.z. */
@@ -231,7 +266,7 @@ function whyOf(version: string | undefined, bump: ReleaseStatus['bump'], since: 
 
 /** The release's status, from what is read; never a guess. */
 export function releaseStatus(input: ReleaseStatusInput): ReleaseStatus {
-  const { lastTag, unreleased: u, merged, prs, cards = [], releases, run } = input
+  const { lastTag, unreleased: u, merged, prs, cards = [], releases, run, checks } = input
   const tags = new Set<string>()
   for (const t of [lastTag?.name, run?.tag, ...releases.map((r) => r.tag)]) {
     const v = plainVersion(t)
@@ -282,10 +317,11 @@ export function releaseStatus(input: ReleaseStatusInput): ReleaseStatus {
   // A tag under way: its own release pull request, merged, when listed.
   // Found by its title or its head branch (`chore/release-0.191.0`).
   const ownPR = relPR ?? (version ? prs.find((p) => p.state === 'merged' && releaseVersionOf(p) === version) : undefined)
-  const stages = stagesOf({ phase, version, relPR: ownPR, cards, merged, u, rel: version ? relOf(version) : undefined, prev: prevOf(version), run: version ? runOf(version) : undefined, tagged: !!version && tags.has(version) })
+  const stages = stagesOf({ phase, version, relPR: ownPR, cards, merged, u, rel: version ? relOf(version) : undefined, prev: prevOf(version), run: version ? runOf(version) : undefined, tagged: !!version && tags.has(version), checks })
   const current = stages.find((s) => s.state === 'current')?.key
   const last = lastLine(releases.find((r) => plainVersion(r.tag) !== version || phase === 'pre'))
-  const pr = ownPR ? { number: ownPR.number, merged: ownPR.state === 'merged' } : undefined
+  const read = ownPR && checks?.number === ownPR.number && ownPR.state !== 'merged' ? checks : undefined
+  const pr = ownPR ? { number: ownPR.number, merged: ownPR.state === 'merged', ...(read ? { checks: read } : {}) } : undefined
   return { phase, version, bump, why, stages, current, last, pr, ...(u?.via ? { batch: u.via.number } : {}) }
 }
 
@@ -300,6 +336,7 @@ interface StageFacts {
   prev?: BoardRelease
   run?: ReleaseCI
   tagged: boolean
+  checks?: PRChecksRead
 }
 
 type Draft = Omit<ReleaseStage, 'state'> & { state: 'done' | 'todo' | 'unknown' | 'now' }
@@ -320,13 +357,23 @@ export function stagesOf(f: StageFacts): ReleaseStage[] {
     ? { key: 'merged', text: n > 0 ? `${n} merged` : e > 0 ? plural(e, 'entry', 'entries') : 'merged', state: 'done', tone: 'ok', title: n > 0 ? `${plural(n, 'pull request')} merged since the last tag.` : e > 0 ? `${plural(e, 'changelog entry', 'changelog entries')} waiting for a release.` : 'The work for it is merged.' }
     : { key: 'merged', text: 'merged', state: 'todo', tone: 'faint', title: onPR > 0 && f.u?.via ? `${plural(onPR, 'changelog entry', 'changelog entries')} on #${f.u.via.number}’s branch, waiting for it to merge.` : 'Nothing merged since the last tag yet.' })
 
-  // The release pull request.
+  // Its checks: the pull request's own read (the CI section's) over the
+  // board card's state, which carries no counts.
+  const read = pr && !prMerged && f.checks?.number === pr.number ? f.checks : undefined
+  const ci = read?.state ?? card?.ci
+  const green = ci === 'pass' || ci === 'none'
+
+  // The release pull request. Open, it is where the release is until it
+  // merges (owner, 2026-11-26, translated: the PR step drawn dashed and
+  // *Tagged* drawn as current while #1080's checks ran was "not logical"):
+  // done once its checks are green would put the release at *Tagged* while
+  // nothing tags it yet.
   if (pr) {
     out.push(prMerged
       ? { key: 'pr', text: `#${pr.number}`, state: 'done', tone: 'ok', title: `Release pull request #${pr.number} merged: ${pr.title ?? ''}`.trim() }
       : pr.draft
         ? { key: 'pr', text: `#${pr.number} draft`, state: 'now', tone: 'muted', title: `Release pull request #${pr.number} is a draft: ${pr.title ?? ''}`.trim() }
-        : { key: 'pr', text: `#${pr.number}`, state: 'done', tone: 'ok', title: `Release pull request #${pr.number} is open: ${pr.title ?? ''}`.trim() })
+        : { key: 'pr', text: `#${pr.number}`, state: green && !past ? 'now' : 'done', tone: 'ok', title: `Release pull request #${pr.number} is open${green && !past ? ', waiting to merge' : ''}: ${pr.title ?? ''}`.trim() })
   } else {
     // Tagged, its release pull request merged (or the tag went out without
     // one): done, without a number when none listed says it (2026-11-23: a
@@ -339,11 +386,17 @@ export function stagesOf(f: StageFacts): ReleaseStage[] {
   // Its CI.
   if (pr && (prMerged || past)) out.push({ key: 'ci', text: 'CI', state: 'done', tone: 'ok', title: `#${pr.number} merged, so its checks let it.` })
   else if (pr) {
-    const ci = card?.ci
-    if (ci === 'running') out.push({ key: 'ci', text: 'CI', state: 'now', tone: 'pending', title: `#${pr.number}’s checks are running.` })
-    else if (ci === 'fail' || card?.why === 'ci') out.push({ key: 'ci', text: 'CI red', state: 'now', tone: 'fail', title: `#${pr.number}: ${card?.failed?.length ? `failed: ${card.failed.join(', ')}` : 'a check failed'}.` })
-    else if (ci === 'pass' || ci === 'none') out.push({ key: 'ci', text: 'CI', state: 'done', tone: 'ok', title: ci === 'pass' ? `#${pr.number}’s checks passed.` : `#${pr.number} has no checks.` })
-    else out.push({ key: 'ci', text: 'CI', state: 'unknown', tone: 'faint', title: `Not known: #${pr.number}’s checks were not read.` })
+    const count = read && read.total ? ` ${read.done}/${read.total}` : ''
+    const finished = read && read.total ? ` (${read.done} of ${plural(read.total, 'check')} finished)` : ''
+    const failed = read?.failed?.length ? read.failed : card?.failed
+    if (ci === 'running') out.push({ key: 'ci', text: `CI${count}`, state: 'now', tone: 'pending', title: `#${pr.number}’s checks are running${finished}.` })
+    else if (ci === 'fail' || (!read && card?.why === 'ci')) out.push({ key: 'ci', text: 'CI red', state: 'now', tone: 'fail', title: `#${pr.number}: ${failed?.length ? `failed: ${failed.join(', ')}` : 'a check failed'}.` })
+    else if (ci === 'no_runner') out.push({ key: 'ci', text: 'CI', state: 'now', tone: 'norunner', title: `#${pr.number}: none of its checks failed, but GitHub gave a job no machine, so its code was not tested; re-run it.` })
+    else if (green) out.push({ key: 'ci', text: 'CI', state: 'done', tone: 'ok', title: ci === 'pass' ? `#${pr.number}’s checks passed.` : `#${pr.number} has no checks.` })
+    // Not read yet (a pull request just opened, or past the newest the
+    // board reads): the step it is at, said as being read — never *not
+    // read*, and never a later step drawn as current in its place.
+    else out.push({ key: 'ci', text: 'CI', state: 'now', tone: 'muted', title: `Reading #${pr.number}’s checks: none read yet. They show here once the CI section or the Pipeline reads them.` })
   } else {
     out.push(past
       ? { key: 'ci', text: 'CI', state: 'done', tone: 'ok', title: `${v} is tagged, so the checks that let its release pull request merge passed.` }
@@ -610,21 +663,34 @@ export function stageWords(s: ReleaseStatus, strip: readonly StripStage[], o: { 
           `Nothing is running. The changes are merged; ${vv} starts when someone opens its release pull request (a title like “chore(release): ${v ?? 'x.y.z'}”).`)
       }
       const n = s.pr.number
-      if (at('pr')?.state === 'current') return say('idle', 'Ready to release', ready, `#${n} is a draft`, `Release pull request #${n} is a draft: nothing runs until someone marks it ready.`)
+      const pr = at('pr')
+      if (pr?.state === 'current' && pr.tone === 'muted') return say('idle', 'Ready to release', ready, `#${n} is a draft`, `Release pull request #${n} is a draft: nothing runs until someone marks it ready.`)
       const ci = at('ci')
       const os = o.cards?.find((c) => c.number === n)?.os ?? []
+      const read = s.pr.checks
       if (ci?.tone === 'fail') {
         const failed = WORDS_OS.filter((w) => os.some((y) => y.os === w.os && y.state === 'fail')).map((w) => w.label)
         return say('fail', 'Release stopped', stopped, `checks failed${failed.length ? ` on ${failed.join(', ')}` : ''}`, `Release pull request ${ci.title}`)
       }
       if (ci?.tone === 'pending') {
+        // Its own checks read: the pull request named and its checks
+        // counted as the CI section counts them (owner, 2026-11-26:
+        // *#1080 checks running · 6 of 16*), the systems on hover.
+        const names = WORDS_OS.filter((w) => os.some((y) => y.os === w.os)).map((w) => w.label).join(', ')
+        const passed = os.filter((y) => y.state === 'pass').length
+        const sys = os.length ? `\n${passed} of ${os.length} ${os.length === 1 ? 'system' : 'systems'} (${names}) passed.` : ''
+        if (read?.total) return say('active', 'Releasing', releasing, `#${n} checks running · ${read.done} of ${read.total}`, `Release pull request ${ci.title}${sys}`)
         if (!os.length) return say('active', 'Releasing', releasing, 'checks running', `Release pull request ${ci.title}`)
         // Owner, 2026-11-19: a bare *CI 1/3* read like a count of checks; it counts operating systems.
-        const passed = os.filter((y) => y.state === 'pass').length
-        const names = WORDS_OS.filter((w) => os.some((y) => y.os === w.os)).map((w) => w.label).join(', ')
         const title = `Release pull request #${n}: ${passed} of ${os.length} ${os.length === 1 ? 'system' : 'systems'} (${names}) passed${passed < os.length ? '; the rest are running' : ''}.`
         return say('active', 'Releasing', releasing, `checks ${passed} of ${os.length} ${os.length === 1 ? 'system' : 'systems'}`, title)
       }
+      if (ci?.tone === 'norunner') return say('waiting', 'Release PR open', v ? `${v} release PR open` : 'Release PR open', `#${n} · a job not run`, `Release pull request ${ci.title}`)
+      if (ci?.state === 'done') {
+        return say('idle', 'Ready to merge', v ? `${v} ready to merge` : 'Ready to merge', `#${n} ${/no checks/.test(ci.title) ? 'has no checks' : 'checks passed'}`,
+          `Nothing is running: release pull request #${n} waits for someone to merge it, then ${vv} to be tagged.`)
+      }
+      if (ci?.state === 'current') return say('idle', 'Release PR open', v ? `${v} release PR open` : 'Release PR open', `#${n} · reading checks…`, `Release pull request ${ci.title}`)
       return say('idle', 'Ready to release', ready, `#${n} open`)
     }
     case 'tag': {
@@ -632,7 +698,7 @@ export function stageWords(s: ReleaseStatus, strip: readonly StripStage[], o: { 
         const ci = at('ci')
         if (ci?.state === 'done') return say('idle', 'Ready to merge', v ? `${v} ready to merge` : 'Ready to merge', `#${s.pr.number} ${/no checks/.test(ci.title) ? 'has no checks' : 'checks passed'}`,
           `Nothing is running: release pull request #${s.pr.number} waits for someone to merge it, then ${vv} to be tagged.`)
-        return say('idle', 'Release PR open', v ? `${v} release PR open` : 'Release PR open', `#${s.pr.number}, checks not read`)
+        return say('idle', 'Release PR open', v ? `${v} release PR open` : 'Release PR open', `#${s.pr.number} · reading checks…`)
       }
       return say('idle', 'Not tagged yet', v ? `${v} not tagged yet` : 'Not tagged yet', s.pr ? `#${s.pr.number} merged` : '',
         `Nothing is running: ${vv} is not tagged yet${s.pr ? `, though release pull request #${s.pr.number} merged` : ''}. Its release builds once the tag is pushed.`)
@@ -724,7 +790,11 @@ const FOLD_KIND: Record<StatusTone, ReleaseFold['kind']> = { idle: 'ready', acti
  *   release 0.184.0 · waits for #951* in place of *not started*;
  * - *Waiting for #949 to merge · 0.183.1 · 2 changes*, amber (red with
  *   *CI red*; *· ready to merge*, *· checks running* when its state was read);
- * - *Releasing 0.183.0 · checks 1 of 3 systems*, *Releasing 0.183.0 ·
+ * - *0.197.0 release PR open · #1080 · reading checks…*, grey, while the
+ *   release pull request's checks are not read yet;
+ * - *Releasing 0.197.0 · #1080 checks running · 6 of 16* where its own
+ *   checks were read (`ReleaseStatusInput.checks`),
+ *   *Releasing 0.183.0 · checks 1 of 3 systems*, *Releasing 0.183.0 ·
  *   building 12 of 23 files*, accent;
  * - *Release 0.183.0 stopped · checks failed*, *… · build failed*, *… ·
  *   draft only, not public*, red.

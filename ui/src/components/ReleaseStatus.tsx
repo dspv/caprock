@@ -61,7 +61,9 @@ export function ReleaseInFlight({ status: s, phone = false }: { status: ReleaseS
 // grey nothing happening, blue (--color-progress) and pulsing in progress,
 // amber waiting on something that moves, red stopped, green done.
 const DOT_NOW: Record<StatusTone, string> = {
-  idle: 'border-[1.5px] border-fg-muted bg-transparent',
+  // Hollow, but ringed as every current step is: never weaker than the
+  // steps to come (owner, 2026-11-26).
+  idle: 'border-[1.5px] border-fg-muted bg-transparent shadow-[0_0_0_3px_color-mix(in_srgb,var(--color-fg-muted)_22%,transparent)]',
   active: 'bg-progress shadow-[0_0_0_3px_color-mix(in_srgb,var(--color-progress)_22%,transparent)] release-step-pulse',
   waiting: 'bg-warn shadow-[0_0_0_3px_color-mix(in_srgb,var(--color-warn)_22%,transparent)]',
   fail: 'bg-danger shadow-[0_0_0_3px_color-mix(in_srgb,var(--color-danger)_22%,transparent)]',
@@ -91,8 +93,15 @@ function dotState(x: StripStage, current: boolean, tone: StatusTone): string {
  * stripStages) — each with its one word under it. Done ones green with the
  * line after them green, the one it is at in the status's colour (owner,
  * 2026-11-20: hollow grey when nothing is happening, blue and pulsing in
- * progress, amber waiting, red stopped, green done), the rest hollow; each
- * step says its stage and its state on hover (*Release PR: not started*).
+ * progress, amber waiting, red stopped, green done) with a ring around it,
+ * the rest hollow and all alike — a step nothing read says is drawn as any
+ * other step to come, *not known* only on hover (owner, 2026-11-26,
+ * translated: a dashed PR step beside a *Tagged* that looked further along
+ * was "not logical, not clear"). Each step says its stage and its state on
+ * hover (*Release PR: not started*). While the release pull request is open
+ * it is the step the release is at, until it merges: its checks running,
+ * red, given no machine, green and waiting to merge, or not read yet
+ * (*Release PR open · #1080 · reading checks…*).
  * An ordered list, the current step `aria-current="step"`, each step's name
  * and state in text for a screen reader. Under it, on its own line and
  * whole (two lines rather than an ellipsis), the status, plain words first
@@ -141,7 +150,7 @@ export function ReleaseStrip({ status: s, version, out, words: showWords = true,
               {i > 0 && <span aria-hidden data-strip-line={lineDone ? 'done' : 'todo'}
                 className={`absolute top-[5px] right-[calc(50%+9px)] left-[calc(-50%+9px)] h-[2px] rounded-full ${lineDone ? 'bg-ok' : 'bg-border-strong'}`} />}
               <span aria-hidden data-strip-stage={x.key} data-step-state={x.state} data-step-unknown={x.unknown ? '' : undefined}
-                className={`box-border block size-[12px] shrink-0 rounded-full ${now_ ? DOT_NOW[w.tone] : done ? 'bg-ok' : `border-[1.5px] border-border-strong${x.unknown ? ' border-dashed' : ''}`}`} />
+                className={`box-border block size-[12px] shrink-0 rounded-full ${now_ ? DOT_NOW[w.tone] : done ? 'bg-ok' : 'border-[1.5px] border-border-strong'}`} />
               <span aria-hidden data-strip-word className={`max-w-full truncate text-[10.5px] leading-[13px] ${now_ ? (w.tone === 'idle' ? 'text-fg' : STATUS_TEXT[w.tone]) : done ? 'text-fg-muted' : 'text-fg-faint'}`}>{STEP_WORD[x.key]}</span>
               <span className="sr-only">{`${x.text}: ${state}`}</span>
             </li>
