@@ -610,8 +610,10 @@ MIN_H, PAD = 300, 28          # never crop tighter than this; breathing room bel
 # runs far past 1400px, and the fixed height cut At a glance's donuts in half.
 # Cost's donut row runs past the 1400px frame, so the panel snap
 # fell back to the Totals edge and left the row's headings as a stray strip
-# along the bottom; it ends at the row instead.
-CROP_TO = {"now": "at a glance", "cost": "model mix"}
+# along the bottom; it ends at the row instead. Lifetime's Tool usage panel
+# runs past the frame too, and the 0.196.0 capture ended on half of its first
+# row and the top of Weekly report; it ends at Top projects.
+CROP_TO = {"now": "at a glance", "cost": "model mix", "history": "top projects"}
 
 
 def rpc(ws, method, params=None, _id=[0]):
