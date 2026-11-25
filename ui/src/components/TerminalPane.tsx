@@ -19,6 +19,13 @@
  *   screen, the cursor, the modes and the last lines stay exactly as they
  *   were: nothing is disposed or replayed, so the mid-frame replay a rebuilt
  *   terminal would get from the daemon's ring is never parsed.
+ * - **Before that, a tab hidden 30 s packs its scrollback** above the last
+ *   HIDDEN_SCROLLBACK lines (HIDDEN_STASH_MS, lib/termstash): characters up
+ *   to each line's trailing blanks and colours as runs, about a sixth of what
+ *   xterm's own lines take, and put back cell for cell in show() before
+ *   anything is written or drawn. Nothing is lost; at ten minutes the packed
+ *   lines go with the trim, as they always went (measured 2026-11-25:
+ *   eight full tabs 376 → 265 MB of the page, .ai/04-ui.md).
  * - **A hidden tab does no terminal work** — nor does the tab in front while
  *   the window is out of sight, and no cursor blinks then. Once its first output has been
  *   drawn, what arrives while it is out of sight is held and handed to xterm
@@ -120,6 +127,7 @@ import { searchColors, terminalTheme } from '@/lib/termthemes'
 import { checkTerminalCell, clearGlyphAtlas, loadTerminalFont, watchTerminalFont } from '@/lib/termfont'
 import { healAtlasMerges, reuploadGlyphs } from '@/lib/termatlas'
 import { contextGone, disposeWebgl, watchContextLoss } from '@/lib/termgl'
+import { stashScrollback, type Stash } from '@/lib/termstash'
 import { blinkWhileVisible, pageHidden, suspendWhileHidden } from '@/lib/visible'
 import { attachInputBoxBand, type InputBoxBand } from '@/lib/terminputbox'
 import { attachUpdateWatch, dismissNotice, requestShellBeside, type UpdateNotice } from '@/lib/termupdate'
@@ -150,6 +158,14 @@ export const HIDDEN_TRIM_MS = 10 * 60_000
  * about what the daemon's 256 KiB ring would repaint anyway after a reset.
  */
 export const HIDDEN_SCROLLBACK = 1000
+
+/**
+ * A tab out of sight this long packs its scrollback above the last
+ * HIDDEN_SCROLLBACK lines (lib/termstash) and unpacks it, cell for cell,
+ * before it is next drawn: the same thirty seconds after which its socket
+ * goes, so going back and forth between tabs never does the work.
+ */
+export const HIDDEN_STASH_MS = HIDDEN_DISCONNECT_MS
 
 /** Output held for a hidden tab before its socket is let go and the daemon keeps the rest. */
 export const HIDDEN_HOLD_BYTES = 256 * 1024
@@ -519,6 +535,9 @@ export function TerminalPane({
     let hideTimer = 0
     let trimTimer = 0
     let glTimer = 0
+    let stashTimer = 0
+    // The scrollback packed while hidden (HIDDEN_STASH_MS), put back on show.
+    let stash: Stash | undefined
     // The box last fitted to (refit, below).
     let lastGeom = ''
     // When the pane was last hidden, and whether its atlas is to be
@@ -939,6 +958,15 @@ export function TerminalPane({
         trimTimer = 0
         if (glTimer) window.clearTimeout(glTimer)
         glTimer = 0
+        if (stashTimer) window.clearTimeout(stashTimer)
+        stashTimer = 0
+        // The packed scrollback back above the rest first: what was held,
+        // a reset or an "erase scrollback" among it, applies to all of it.
+        if (stash) {
+          stash.restore()
+          stash = undefined
+          lastBase = term.buffer.active.baseY
+        }
         // The full scrollback again before anything held is written (the header).
         if (term.options.scrollback !== SCROLLBACK) term.options.scrollback = SCROLLBACK
         // What was held goes to xterm before anything newer the socket brings.
@@ -998,10 +1026,22 @@ export function TerminalPane({
         hideTimer = window.setTimeout(() => conn.suspend(), HIDDEN_DISCONNECT_MS)
         // Out of sight for long, the scrollback beyond the last lines goes
         // (the header). xterm trims from the top and moves the viewport with it.
+        // A while out of sight, the scrollback above the last lines is packed
+        // (lib/termstash): a fraction of the memory, nothing lost.
+        if (stashTimer) window.clearTimeout(stashTimer)
+        stashTimer = window.setTimeout(() => {
+          stashTimer = 0
+          if (disposed || visible || stash) return
+          stash = stashScrollback(term, HIDDEN_SCROLLBACK)
+          lastBase = term.buffer.active.baseY
+        }, HIDDEN_STASH_MS)
         if (trimTimer) window.clearTimeout(trimTimer)
         trimTimer = window.setTimeout(() => {
           trimTimer = 0
           if (disposed || visible) return
+          // The packed lines go with the rest, as they always went at ten minutes.
+          stash?.drop()
+          stash = undefined
           term.options.scrollback = HIDDEN_SCROLLBACK
           // The new-lines pill counts growth from here, not from a base that is gone.
           lastBase = term.buffer.active.baseY
@@ -1040,6 +1080,9 @@ export function TerminalPane({
       if (hideTimer) window.clearTimeout(hideTimer)
       if (trimTimer) window.clearTimeout(trimTimer)
       if (glTimer) window.clearTimeout(glTimer)
+      if (stashTimer) window.clearTimeout(stashTimer)
+      stash?.drop()
+      stash = undefined
       unsuspend()
       out.dispose()
       if (raf) cancelAnimationFrame(raf)

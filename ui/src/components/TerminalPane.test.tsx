@@ -26,6 +26,8 @@ const h = vi.hoisted(() => ({
   blurs: 0,
   webgl: { made: 0, disposed: 0 },
   noInsides: false,
+  /** What lib/termstash was asked: 'stash <keep>', 'restore', 'drop' (restore also lands in writes, to see its order). */
+  stash: [] as string[],
   /** Each WebGL addon's canvas, where a context loss is heard (lib/termgl). */
   canvases: [] as HTMLCanvasElement[],
   /** What the addons' contexts answer to isContextLost(): a context gone without a word. */
@@ -106,6 +108,16 @@ vi.mock('@xterm/addon-search', () => ({
   },
 }))
 vi.mock('@xterm/xterm/css/xterm.css', () => ({}))
+vi.mock('@/lib/termstash', () => ({
+  stashScrollback: (_t: unknown, keep: number) => {
+    h.stash.push(`stash ${keep}`)
+    return {
+      lines: 1, bytes: 1,
+      restore: () => { h.stash.push('restore'); h.writes.push('restore'); return 1 },
+      drop: () => { h.stash.push('drop') },
+    }
+  },
+}))
 vi.mock('@/lib/termv2', () => ({
   TermClient: class {
     state = 'connecting'
@@ -126,7 +138,7 @@ vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} })
 
 import { DESK_WRITE_MS } from '@/lib/termwrite'
 import { PAGE_HIDDEN_SUSPEND_MS } from '@/lib/visible'
-import { FOCUS_HEAL_MS, HIDDEN_DISCONNECT_MS, HIDDEN_HOLD_BYTES, HIDDEN_SCROLLBACK, HIDDEN_TRIM_MS, HIDDEN_WEBGL_MS, KEEP_WEBGL_HIDDEN, LONG_HIDDEN_MS, SCROLLBACK, SETTLE_MS, TerminalPane, keptWebglCount } from './TerminalPane'
+import { FOCUS_HEAL_MS, HIDDEN_DISCONNECT_MS, HIDDEN_HOLD_BYTES, HIDDEN_SCROLLBACK, HIDDEN_STASH_MS, HIDDEN_TRIM_MS, HIDDEN_WEBGL_MS, KEEP_WEBGL_HIDDEN, LONG_HIDDEN_MS, SCROLLBACK, SETTLE_MS, TerminalPane, keptWebglCount } from './TerminalPane'
 import { WEBGL_QUIET_MS } from './Terminal'
 import { FIND_EVENT } from '@/lib/appkeys'
 import { setTerminalPrefs, DEFAULT_PREFS } from '@/lib/termprefs'
@@ -136,6 +148,7 @@ import { isMacPlatform } from '@/lib/appmode'
 
 beforeEach(() => {
   h.terms.length = 0
+  h.stash.length = 0
   h.parsed.length = 0
   h.calls.length = 0
   h.results.length = 0
@@ -504,6 +517,82 @@ describe('a long-hidden pane trims its scrollback', () => {
       const { rerender, unmount } = render(<TerminalPane sessionId="a" active />)
       rerender(<TerminalPane sessionId="a" active={false} />)
       unmount()
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
+// A hidden tab's scrollback above its last lines is packed (lib/termstash)
+// and put back, cell for cell, before it is next drawn.
+describe('a hidden pane packs its scrollback', () => {
+  const bytes = (n: number) => new Uint8Array(n).fill(120)
+
+  it('packs after HIDDEN_STASH_MS out of sight, never on a quick switch or in front', () => {
+    vi.useFakeTimers()
+    try {
+      const { rerender } = render(<TerminalPane sessionId="a" active />)
+      act(() => { vi.advanceTimersByTime(HIDDEN_STASH_MS * 3) })
+      expect(h.stash).toEqual([])
+      rerender(<TerminalPane sessionId="a" active={false} />)
+      act(() => { vi.advanceTimersByTime(HIDDEN_STASH_MS - 1) })
+      rerender(<TerminalPane sessionId="a" active />)
+      expect(h.stash).toEqual([])
+      rerender(<TerminalPane sessionId="a" active={false} />)
+      act(() => { vi.advanceTimersByTime(HIDDEN_STASH_MS) })
+      expect(h.stash).toEqual([`stash ${HIDDEN_SCROLLBACK}`])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('puts it back on show before anything held is written', () => {
+    vi.useFakeTimers()
+    try {
+      const { rerender } = render(<TerminalPane sessionId="a" active />)
+      const write = h.clients[0]!.callbacks.write
+      act(() => write(bytes(1), () => {}))
+      act(() => { vi.advanceTimersByTime(SETTLE_MS) })
+      rerender(<TerminalPane sessionId="a" active={false} />)
+      act(() => { vi.advanceTimersByTime(HIDDEN_STASH_MS) })
+      act(() => write(bytes(5), () => {}))
+      const n = h.writes.length
+      rerender(<TerminalPane sessionId="a" active />)
+      expect(h.writes[n]).toBe('restore')
+      expect([...(h.writes[n + 1] as Uint8Array)]).toEqual([120, 120, 120, 120, 120])
+      // Once: hidden and shown again quickly, nothing more.
+      rerender(<TerminalPane sessionId="a" active={false} />)
+      rerender(<TerminalPane sessionId="a" active />)
+      expect(h.stash).toEqual([`stash ${HIDDEN_SCROLLBACK}`, 'restore'])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('lets the packed lines go at the ten-minute trim, as the trim always let them go', () => {
+    vi.useFakeTimers()
+    try {
+      const { rerender } = render(<TerminalPane sessionId="a" active />)
+      rerender(<TerminalPane sessionId="a" active={false} />)
+      act(() => { vi.advanceTimersByTime(HIDDEN_TRIM_MS) })
+      expect(h.stash).toEqual([`stash ${HIDDEN_SCROLLBACK}`, 'drop'])
+      expect(h.terms[0]!.options.scrollback).toBe(HIDDEN_SCROLLBACK)
+      rerender(<TerminalPane sessionId="a" active />)
+      expect(h.stash).not.toContain('restore')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('a pane closed while packed lets them go and leaves no timer', () => {
+    vi.useFakeTimers()
+    try {
+      const { rerender, unmount } = render(<TerminalPane sessionId="a" active />)
+      rerender(<TerminalPane sessionId="a" active={false} />)
+      act(() => { vi.advanceTimersByTime(HIDDEN_STASH_MS) })
+      unmount()
+      expect(h.stash).toEqual([`stash ${HIDDEN_SCROLLBACK}`, 'drop'])
       expect(vi.getTimerCount()).toBe(0)
     } finally {
       vi.useRealTimers()
