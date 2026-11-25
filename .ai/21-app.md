@@ -1573,7 +1573,12 @@ one lean terminal; they stay below Orca (420–541 MB idle) and a Chrome tab.
   `/?mail=1` — Mail alone, no sidebar or tabs — with the main window's link
   rule and download handling, and a capability of its own that grants
   `open_external` alone (`capabilities/mail.json`). It follows the daemon to
-  a new port and reloads after a swap, as the popover does. The Mail tab is
+  a new port and reloads after a swap, as the popover does. Neither window
+  opens the browser on its own: a 127.0.0.1 page while no daemon answers is
+  the window reloading itself across an update and is refused quietly
+  (`shell.rs` `navigation`, and the preview's `app/mail-mac/policy.swift`,
+  which also sends only clicked links to the browser and refuses the page's
+  old port after the daemon moved). The Mail tab is
   left for a browser (under a banner that opens `/?mail=1` in a browser
   window) and for a shell older than these commands. .ai/04-ui.md § Mail.
 - **The daemon supervisor** reads `runtime.json`, starts the bundled binary
