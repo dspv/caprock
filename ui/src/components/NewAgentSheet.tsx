@@ -407,7 +407,7 @@ function LocalAgentSheet({
   for (let i = 0; i < cells.length; i += 2) {
     const pair = cells.slice(i, i + 2)
     fieldRows.push(
-      <div key={pair.map(([k]) => k).join('-')} className="grid min-w-0 gap-3 sm:grid-cols-2">
+      <div key={pair.map(([k]) => k).join('-')} data-field-row className="grid min-w-0 gap-3 sm:grid-cols-2">
         {pair.map(([k, node]) => (node === null ? <div key={k} aria-hidden className="hidden sm:block" /> : <div key={k} className="grid min-w-0">{node}</div>))}
       </div>,
     )

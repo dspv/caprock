@@ -8,6 +8,7 @@
  */
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { BranchInfo } from '@/lib/projects'
+import { scrollIntoList } from '@/lib/scrollIntoList'
 
 export function BranchPicker({ branches, value, onChange, loading }: {
   branches: readonly BranchInfo[]
@@ -26,8 +27,10 @@ export function BranchPicker({ branches, value, onChange, loading }: {
     return hit.slice(0, 60)
   }, [branches, query])
   useEffect(() => { setActive(0) }, [query])
+  // The list alone scrolls to the active row, never the sheet around it (lib/scrollIntoList.ts).
   useEffect(() => {
-    listRef.current?.querySelector<HTMLElement>(`[data-i="${active}"]`)?.scrollIntoView({ block: 'nearest' })
+    const list = listRef.current
+    scrollIntoList(list, list?.querySelector<HTMLElement>(`[data-i="${active}"]`))
   }, [active])
 
   const pick = (name: string) => { onChange(name); setQuery(''); setOpen(false) }
