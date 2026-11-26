@@ -12,6 +12,127 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.198.0] - 2026-11-26
+
+### Added
+
+- **sessions:** resume after an API error. When Claude Code gives up on an
+  overloaded or failing API call (after its own "retrying… attempt N/10") in
+  a session Caprock started, Caprock types "continue" for it — a minute
+  later, then five, then fifteen, three tries at most — once the session
+  sits at its prompt. It stops as soon as the session goes on or you type,
+  and never retries a usage limit, a sign-in, billing or a request that is
+  too long. A line under the terminal says which try it was, that it went
+  on, or that Caprock gave up; each "continue" is marked in the chat; the
+  failed turn's notification is held while Caprock handles it, and the
+  give-up's says so (through the notifications and Telegram alerts you
+  already have on). Settings → After an API error turns it off; it is on by
+  default.
+- **machines:** Set up a linked computer from this one (#1088). Its page
+  lists what it still needs — Git and its agents, Node.js, the GitHub CLI and
+  its sign-in, Claude Code's bypass warning, Claude in Chrome on by default —
+  and each step runs there when you click it: installs with winget or
+  Homebrew in a shell there, with its last line on the row and *Show output*
+  opening that shell as a tab here; the GitHub sign-in shows its one-time
+  code here with *Copy and open*; the bypass warning is read and accepted
+  here. The Chrome extension and site sign-ins, which need that computer's
+  own screen, are marked *Done there*. The sidebar says *N to set up*.
+
+### Changed
+
+- **teams:** *Not now* on the Caprock for Teams card hides it for two weeks
+  instead of a month. The card only appears when other people commit to your
+  repositories, so it comes back as often as the other in-context offers.
+- **machines:** a session on another computer opens in a tab of its own in
+  the app, as one here does: in the tab strip with the computer's name as
+  its tag, under Open in the sidebar, and on its Chat, with its cost, tokens
+  and turns read from that computer. Its row under Computers, Home's panel,
+  the computer's page and New agent on that computer all open it there. In a
+  browser its page opens on Chat too (#1085).
+
+### Fixed
+
+- **cockpit:** a pull request the session just opened shows in the CI block's
+  PRs view within seconds, as it already did in Ring. The PRs view read a
+  pull request list kept up to two minutes and asked again once a minute, so
+  a new PR could be missing for up to three minutes. When the session's own
+  pull requests show one that list does not have, the block reads it again
+  at once, once per pull request.
+- **cockpit:** the Release panel's stepper no longer draws the release pull
+  request's step as a dashed, punched-out circle with *Tagged* looking further
+  along while its checks run. An open release pull request is now the current
+  step until it merges, ringed like every current step; the steps after it all
+  look the same. The line under it names the pull request and counts its
+  checks from the CI section's own read (*#1080 checks running · 6 of 16*),
+  and says *reading checks…* rather than *checks not read* before that read.
+- **machines:** a computer that is on and answering no longer shows as
+  *offline* with a red dot in the sidebar while its page says online. The
+  sidebar, the computer's page and All computers now take online or offline
+  from one place, the channel to that computer; a read that was slow or
+  failed no longer counts as offline, and the daemon calls a read that runs
+  out of time on a live channel *slow to answer*, not offline.
+- **machines:** a computer's page never sits on grey placeholder rows for
+  good. It shows what runs there from the sidebar's list at once (*Nothing
+  runs on <name> now.* when nothing does), and every read of another
+  computer ends: the daemon gives up on a read through the proxy after 30 s
+  and the dashboard after 35 s, with *Try again*.
+- **ui:** New agent's Effort control lines up with Model beside it. The
+  default level no longer stacks a second "default" line under its segment,
+  which made the control taller and lifted its label above Model's; the label
+  row says it instead ("Effort  Med is default"), and the control is exactly
+  as tall as the Model field, in the New agent sheet, on another computer and
+  in the New session dialog.
+- **app:** an image dragged from Downloads, Desktop, Documents or iCloud
+  Drive into a terminal arrives as Claude Code's `[Image #N]` again instead
+  of a bare path: on macOS the app copies it into Caprock's paste folder
+  first, since macOS may refuse the session that folder without asking.
+  Other files are still typed where they are.
+- **app:** Caprock Terminal, the helper macOS asks about for programs in a
+  Caprock terminal, now says why they may read your Desktop, Documents,
+  Downloads and removable or network drives; 0.197.0 lacked these
+  descriptions and sessions were refused Downloads with no prompt.
+- **terminal:** when macOS refuses a session a protected folder
+  ("Operation not permitted" on Downloads, Desktop, Documents, iCloud Drive
+  or a drive), a line under the terminal names the folder and the exact
+  entry to switch on in System Settings → Privacy & Security, and **Open
+  Settings** opens Full Disk Access with that program shown in Finder.
+  Nothing opens until you click.
+- **ingest:** a Claude Code session whose transcript is not under
+  `~/.claude/projects` as the daemon spells it — a `CLAUDE_CONFIG_DIR`, a
+  home the daemon resolves differently, a path in another case on Windows —
+  is measured again: the daemon follows the exact file its hooks name. A
+  session a Windows PC started for another computer showed hooks and no
+  transcript, so no turns, tokens or cost while it worked (#1085).
+  `GET /v1/status` says where the tailer looks (`ingest.root`) and how many
+  transcripts it followed (`ingest.followed`).
+- **sessions:** a Claude Code session Caprock started says *Nothing measured
+  yet* until its first hook, not that Caprock does not measure it.
+- **machines:** New agent on another computer asks that computer whether
+  Claude Code's one-time bypass warning was accepted there before the first
+  start, and shows the warning with **Accept and start**, which records it
+  there and starts. Before, a start in Bypass on a computer that had not
+  accepted it could end a few seconds later on Claude Code's own warning,
+  with nothing said (#1086).
+- **agents:** a start that ends in its first seconds is never silent: a
+  session started on another computer raises a note with the agent, the code,
+  its last line and what it usually means (Claude Code's bypass warning
+  included), with a link to the session. A terminal's focus report or the
+  first message Caprock types no longer hide such an exit from the session's
+  own tab.
+- **ui:** New agent's Project list stays inside the sheet. With another
+  computer linked, Project sits beside Machine and its list reached past the
+  sheet's right edge; opening it slid the sheet's whole body sideways, the
+  left column cut at the edge, until a click elsewhere. The list now ends at
+  the sheet's edge, each row cutting a long path with an ellipsis and keeping
+  its *project* / *repo · add* word in sight, and no sheet scrolls sideways
+  any more.
+- **chat:** a reply whose words come on a later transcript line than its
+  first (thinking first, as Claude Code writes it) shows in an open chat even
+  when the window was out of sight while it landed. The chat took the reply's
+  row and the update carrying its words in one batch, dropped the update as
+  already seen, and showed the prompt and the reply chips with no answer; the
+  daemon's live frame for the row now carries the words as well.
+
 ## [0.197.0] - 2026-11-26
 
 ### Added

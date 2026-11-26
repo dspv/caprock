@@ -566,6 +566,21 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-11-26 — 0.198.0: set up a linked computer from its page, its sessions as your own
+
+A minor release. A linked computer's page lists what it still needs and runs
+each step there on a click: installs, the GitHub sign-in with its code shown
+here, Claude's bypass warning and Claude in Chrome on by default. Sessions on
+a linked computer are followed by their transcript path and open as tabs with
+a Chat view, and a Bypass start there reads that computer's own consent. A
+session that ends on an API error can be resumed. The Downloads permission is
+named in the terminal with a button to open Settings, and dropped images from
+guarded folders are copied first. Fixed: a chat reply that arrived with its
+row stayed blank, the New agent sheet shifted when the Project list opened,
+the Effort picker wrapped, a computer showed offline while online, the
+Release stepper marked the wrong step, a new PR was missing from the CI list.
+The Teams card covers 14 days.
+
 ### 2026-11-26 — 0.197.0: computers at a glance, videos in chat
 
 A minor release, #1078. Other computers read at a glance: each sidebar row
