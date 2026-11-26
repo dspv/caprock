@@ -23,6 +23,7 @@ import { ChatIcon, CloseIcon, DashboardIcon, GlobeIcon, MailIcon, PipelineIcon, 
 import { sessionHealth } from '@/lib/sessionLabels'
 import { StatusDot } from './ProjectRow'
 import { HotMark } from './ResourceMeter'
+import { MachineTag } from './MachineTag'
 import { closeTitle, closeWord } from '@/lib/closeShell'
 import { NewMenu, type NewMenuItem } from './NewMenu'
 import { heldClass, keyChipMode, keys, revealClass, stripKey, tabKey } from '@/lib/appkeys'
@@ -506,14 +507,16 @@ export function TabStrip(props: TabStripProps) {
           // working and idle show nothing. Never a top bar: the bar, the
           // fill and the bold title belong to the tab in front alone
           // (2026-10-15, translated: "I don't understand where I am").
-          const named = file === undefined && !label?.chat && project !== undefined
-          const alert = file !== undefined || !s ? undefined : label?.dot === 'waiting' ? 'waiting' : sessionHealth(label?.inside ?? s) === 'error' ? 'error' : label?.dot === 'looping' ? 'looping' : undefined
+          const named = file === undefined && !label?.chat && project !== undefined && label?.machine === undefined
+          // A session on another computer asks for you the same way, from its computer's list.
+          const marked = s ?? label?.remote
+          const alert = file !== undefined || !marked ? undefined : label?.dot === 'waiting' ? 'waiting' : sessionHealth(label?.inside ?? marked) === 'error' ? 'error' : label?.dot === 'looping' ? 'looping' : undefined
           // A shell named after the agent running in it says so on hover:
           // "… · Claude Code · in Shell 1" (owner, 2026-11-20).
           const inside = label?.inside
           const agent = file === undefined ? (inside ? `${agentGlyphLabel(inside.agent, false)} · in ${label?.shellName ?? 'a shell'}` : agentGlyphLabel(s?.agent, isShell)) : undefined
           const rename = renameOf(label)
-          const tip = [file ?? title, agent, label?.branch, project].filter(Boolean).join(' · ') + (alert ? ` — ${ALERT_WORD[alert]}` : '') + (digit ? ` — ${keys(`⌘${digit}`)}` : '')
+          const tip = [file ?? title, agent, label?.branch, label?.machine !== undefined ? `on ${label.machine}` : project].filter(Boolean).join(' · ') + (alert ? ` — ${ALERT_WORD[alert]}` : '') + (digit ? ` — ${keys(`⌘${digit}`)}` : '')
           return (
             <div
               key={t.id}
@@ -521,7 +524,7 @@ export function TabStrip(props: TabStripProps) {
               tabIndex={active ? 0 : -1}
               aria-selected={active}
               data-tab-index={i}
-              aria-label={project && file === undefined ? `${title} · ${project}` : undefined}
+              aria-label={label?.machine !== undefined ? `${title} · on ${label.machine}` : project && file === undefined ? `${title} · ${project}` : undefined}
               aria-description={alert ? ALERT_WORD[alert] : undefined}
               data-dragging={dragging === t.id || undefined}
               onPointerDown={press(t.id)}
@@ -536,6 +539,7 @@ export function TabStrip(props: TabStripProps) {
               onFocus={active || !s ? undefined : () => props.onWarm?.(t.id)}
               title={tip}
               data-project={t.projectId}
+              data-remote-tab={label?.machine !== undefined ? '' : undefined}
               data-session-id={s?.session_id}
               className={`group relative flex h-[32px] max-w-[340px] flex-1 basis-[220px] cursor-default select-none items-center gap-1 rounded-t-[9px] pl-2 pr-1 text-[12.5px] transition-colors duration-100 motion-reduce:transition-none ${
                 active ? (file !== undefined ? 'app-tab-front min-w-[232px] bg-bg font-semibold text-fg' : 'app-tab-front min-w-[232px] app-slab font-semibold text-fg') : 'app-tab-back min-w-[92px] text-fg-muted hover:text-fg'
@@ -550,7 +554,11 @@ export function TabStrip(props: TabStripProps) {
                 * (owner, 2026-10-14). Whole while the tab has room — the
                 * title is cut first, down to a few letters — and it scrolls
                 * on hover when even that is not enough. */}
-              {named && <TabProject name={project} hue={projectHue(t.projectId)} />}
+              {/* A session on another computer: that computer's tag, as its
+                * sidebar rows carry it, in place of a project (issue #1085). */}
+              {label?.machine !== undefined
+                ? <MachineTag name={label.machine} />
+                : named && <TabProject name={project} hue={projectHue(t.projectId)} />}
               {file === undefined && <HotMark sessionId={s?.session_id} />}
               {/* The jump key and the × share one slot at the right end, so
                 * nothing moves the title: the key at rest, the × on hover.
@@ -639,6 +647,7 @@ export const TerminalStack = memo(function TerminalStack({
   renderFile,
   renderObserve,
   renderPage,
+  renderRemote,
   chats,
   onChatClose,
   onChatRestart,
@@ -661,6 +670,8 @@ export const TerminalStack = memo(function TerminalStack({
   renderObserve?: (tab: Tab, leaf: PaneLeaf, visible: boolean) => ReactNode
   /** What a browser tab shows (components/BrowserView.tsx): a web page, apart from the agents (ADR-075). */
   renderPage?: (tab: Tab, leaf: PaneLeaf, visible: boolean) => ReactNode
+  /** What a session on another computer shows (components/RemoteSessionPane.tsx): its Session view through the machine proxy. */
+  renderRemote?: (tab: Tab, leaf: PaneLeaf, visible: boolean) => ReactNode
   onPaneStatus?: (sessionId: string, s: PaneStatus) => void
   /** The session's program exited; the workspace replaces it with a shell. */
   onPaneExit?: (sessionId: string, unexpected?: boolean) => void
@@ -721,6 +732,7 @@ export const TerminalStack = memo(function TerminalStack({
         return (
         <div key={t.id} className={`absolute inset-0 ${t.root.type === 'pane' && ownTab(t.root.target) ? 'bg-bg' : 'app-slab'}`} hidden={!shown} data-tab-panel={t.id}>
           {t.root.type === 'pane' && t.root.target.kind === 'page' ? renderPage?.(t, t.root, shown)
+            : t.root.type === 'pane' && t.root.target.kind === 'remote' ? renderRemote?.(t, t.root, shown)
             : t.root.type === 'pane' && (t.root.target.kind === 'file' || t.root.target.kind === 'files') ? renderFile?.(t, t.root, shown)
             : t.root.type === 'pane' && t.root.target.kind === 'observe' ? renderObserve?.(t, t.root, shown) : <PaneView
             node={t.root}

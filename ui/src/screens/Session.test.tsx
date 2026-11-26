@@ -89,6 +89,13 @@ d('a spawned Codex or OpenCode session', () => {
     expect(screen.queryByText(/\d{4,}d ago/)).not.toBeInTheDocument()
   })
 
+  it('a Claude Code session it started, before its first hook, is waiting too (issue #1085)', async () => {
+    spawned({ agent: 'claude' })
+    render(<SessionScreen id="cap-1" tab="timeline" />)
+    expect(await screen.findByText(/Claude Code writes nothing until the first message/)).toBeInTheDocument()
+    expect(screen.queryByText(/does not measure it/)).not.toBeInTheDocument()
+  })
+
   it('opens on the chat at phone width, and on the timeline on a desktop (WP-14)', async () => {
     spawned({})
     const mq = (matches: boolean) => (q: string) => ({ matches: matches && q.includes('max-width: 639px'), media: q, addEventListener() {}, removeEventListener() {} }) as unknown as MediaQueryList

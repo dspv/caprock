@@ -229,6 +229,9 @@ type Daemon struct {
 	// subIn reads the transcripts of each subscription's configuration
 	// directory (ADR-048, subscriptions.go).
 	subIn subIngest
+	// followedTx is the transcript path each session's hooks last named,
+	// by session id: followTranscript runs once per path, not per hook.
+	followedTx sync.Map
 	// limits is the usage-limit watcher's state (limitwatch.go, ADR-090).
 	limits limitWatch
 	mgr    *agents.Manager
@@ -2364,11 +2367,44 @@ func (a *agentAdapter) AnswerPermission(id, promptID, choice string) error {
 
 // observeHook hands the manager what a hook says about a permission prompt.
 func (d *Daemon) observeHook(p hookd.Payload) {
+	if p.AgentID == "" {
+		d.followTranscript(p.SessionID, p.TranscriptPath)
+	}
 	d.mgr.ObserveHook(agents.HookSignal{
 		SessionID: p.SessionID, Event: p.HookEventName, AgentID: p.AgentID, AgentType: p.AgentType,
 		Tool: p.ToolName, Input: p.ToolInput, ToolUseID: p.ToolUseID, Suggestions: p.PermissionSuggestions,
 		PermissionMode: p.PermissionMode,
 	})
+}
+
+// followTranscript hands the transcript a main-thread hook names to the
+// reader whose directory holds it — a subscription's, else the Default
+// sign-in's, which also takes one outside every directory (ingest.Follow).
+// The walk of ~/.claude/projects was the only way a transcript was found,
+// and a session whose Claude Code wrote anywhere else — a CLAUDE_CONFIG_DIR,
+// a profile the daemon's home does not name, a path in another case on
+// Windows — had hooks and no transcript: no turns, tokens or cost while it
+// worked (issue #1085, a Windows PC's own spawned session). Once per session
+// and path; the reader is asked off the hook's goroutine, since its lock
+// can be held by a walk and the shim is waiting for this answer.
+func (d *Daemon) followTranscript(sessionID, path string) {
+	if d.tail == nil || !ingest.FollowablePath(path, sessionID) {
+		return
+	}
+	if prev, ok := d.followedTx.Load(sessionID); ok && prev == path {
+		return
+	}
+	d.followedTx.Store(sessionID, path)
+	def := d.tail
+	go func() {
+		for _, t := range d.claudeTailers() {
+			if t.Covers(path) {
+				t.Follow(path, sessionID)
+				return
+			}
+		}
+		def.Follow(path, sessionID)
+	}()
 }
 
 // Survives reports whether the session's terminal is in a pty-host, so a

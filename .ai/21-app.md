@@ -2199,6 +2199,33 @@ crashed (ADR-070); what the user sees is in
   by side's zoom keeping `innerWidth` at the phone's width on each engine,
   and `measure`'s callback, in the app on any system.
 
+## Another computer's session tabs
+
+A session on another computer the app reaches (ADR-067) is a tab like one of
+this machine's, since issue #1085 (2026-11-26):
+
+- **A tab kind of its own.** `remote` in `ui/src/lib/tabs.ts`, keyed
+  `m:<machine>/<session>` (`remoteKey`) so it never stands for a local session
+  with the same id; it keeps the computer's id, the session's id there and
+  the computer's name when it opened, and is restored with the workspace.
+  Never split. It takes a ⌘ digit, sits among the agents (not after the
+  pages), and belongs to the project in front, as a browser tab does — so it
+  is listed under Open, never under a project.
+- **Its label** is the session's title from that computer's list (the
+  sidebar's shared `GET /v1/machines/sessions`), its state that list's, and
+  the computer's name as the outlined tag its Computers row has
+  (`components/MachineTag.tsx`), in the strip and under Open, where a
+  project's name goes.
+- **Its content** is the machine page on Chat (`components/RemoteSessionPane.tsx`):
+  the Session view in a frame, every `/v1/…` call through `/v1/m/<id>/…`. The
+  inspector, the terminal/chat switch and the permission card are this
+  machine's and are not drawn for it; its × closes the tab and leaves the
+  session running there.
+- **Opened from** `#/m/<id>/session/<sid>`: the workspace turns that route
+  into the tab, so every link to one — its Computers row, Home's panel, the
+  computer's page, New agent on that computer — lands there
+  ([04-ui.md § Other computers](04-ui.md#other-computers)).
+
 ## Feedback screenshots
 
 The feedback box (`.ai/04-ui.md` § Feedback) carries its screenshots to

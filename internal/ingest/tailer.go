@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -41,6 +42,16 @@ type Stats struct {
 	EventsStored   int64 `json:"events_stored"`
 	EventsDeduped  int64 `json:"events_deduped"`
 	BackfillDone   bool  `json:"backfill_done"`
+	// Root is the directory the tailer walks: ~/.claude/projects, or a
+	// subscription's projects/ (internal/daemon). Said on /v1/status so a
+	// machine whose sessions arrive without their transcript can be asked
+	// where it looks.
+	Root string `json:"root"`
+	// Followed counts the transcripts read because a hook named them
+	// although the walk of Root had not found them (Follow): outside Root,
+	// or spelled differently. Nonzero on a healthy machine means Claude
+	// Code writes somewhere Root does not cover.
+	Followed int `json:"followed"`
 }
 
 // Tailer follows every *.jsonl under Root and records normalized events.
@@ -63,7 +74,14 @@ type Tailer struct {
 
 	mu    sync.Mutex
 	files map[string]*fileState
+	// keys is files by pathKey: the same file however a hook spells it
+	// (a drive letter's case, a separator), so Follow never opens a second
+	// reader on a file the walk already holds.
+	keys  map[string]*fileState
 	stats Stats
+	// watcher is fsnotify's, while Run has one: Follow watches a followed
+	// file's directory with it.
+	watcher *fsnotify.Watcher
 	// dirty holds the files fsnotify reported written since the last wake;
 	// a wake reads those and nothing else (see Run).
 	dirty map[string]struct{}
@@ -113,6 +131,10 @@ type fileState struct {
 	// apiErr is the same for an API error that ended a turn (migration
 	// 0095): limitUnknown, limitOpen after one, limitClear after a reply.
 	apiErr int8
+	// followed is when a hook named this file (Follow): until its first
+	// read the poll looks at it every pass, for hotWindow, since a
+	// transcript is created after the hook that names it.
+	followed time.Time
 }
 
 const (
@@ -129,8 +151,104 @@ func New(root string, rec *rollup.Recorder, st *store.Store, log *slog.Logger) *
 	return &Tailer{
 		Root: root, Recorder: rec, Store: st, Log: log,
 		PollInterval: 2 * time.Second, BackfillWindow: 24 * time.Hour, MaxLine: 16 << 20,
-		files: map[string]*fileState{}, dirty: map[string]struct{}{}, wake: make(chan struct{}, 1),
+		files: map[string]*fileState{}, keys: map[string]*fileState{}, dirty: map[string]struct{}{}, wake: make(chan struct{}, 1),
 	}
+}
+
+// pathKey is a path as the filesystem compares it: cleaned, and on Windows
+// without case and with one separator — `c:/Users/a` and `C:\Users\A` are
+// one file there.
+func pathKey(p string) string {
+	return keyFor(p, runtime.GOOS)
+}
+
+func keyFor(p, goos string) string {
+	if goos == "windows" {
+		return strings.ToLower(strings.ReplaceAll(filepath.Clean(p), "/", `\`))
+	}
+	return filepath.Clean(p)
+}
+
+// addLocked registers path, once, under both maps. t.mu must be held.
+func (t *Tailer) addLocked(path string) *fileState {
+	if f, ok := t.files[path]; ok {
+		return f
+	}
+	k := pathKey(path)
+	if f, ok := t.keys[k]; ok {
+		return f
+	}
+	f := &fileState{path: path}
+	t.files[path] = f
+	t.keys[k] = f
+	return f
+}
+
+// Covers reports whether path is under the tailer's Root, compared as the
+// filesystem compares paths (pathKey).
+func (t *Tailer) Covers(path string) bool {
+	return under(path, t.Root, runtime.GOOS)
+}
+
+func under(path, root, goos string) bool {
+	if path == "" || root == "" {
+		return false
+	}
+	r, p := keyFor(root, goos), keyFor(path, goos)
+	sep := "/"
+	if goos == "windows" {
+		sep = `\`
+	}
+	return p != r && strings.HasPrefix(p, strings.TrimSuffix(r, sep)+sep)
+}
+
+// Follow reads the transcript a hook named for sessionID — the
+// `transcript_path` every Claude Code hook carries — whether or not the walk
+// of Root has found it. It is the hook's word for where Claude Code writes,
+// and it is right where Root is not: a CLAUDE_CONFIG_DIR, a home directory
+// the daemon resolves differently from the agent, a path spelled in another
+// case on Windows. Without it such a session had hooks and no transcript —
+// no turns, no tokens, no cost — while it visibly worked (issue #1085).
+//
+// Only `<sessionID>.jsonl`, absolute, is taken: a hook names its own
+// session's transcript and nothing else. A file the tailer already holds,
+// however spelled, is left as it is. The file need not exist yet — Claude
+// Code creates it with the first prompt, after SessionStart named it — and
+// is looked at on every poll until it does, for hotWindow. Reports whether
+// the file was new to the tailer.
+func (t *Tailer) Follow(path, sessionID string) bool {
+	if !FollowablePath(path, sessionID) {
+		return false
+	}
+	path = filepath.Clean(path)
+	t.mu.Lock()
+	if _, ok := t.keys[pathKey(path)]; ok {
+		t.mu.Unlock()
+		return false
+	}
+	f := t.addLocked(path)
+	f.mu.Lock()
+	f.followed = time.Now()
+	f.mu.Unlock()
+	t.dirty[path] = struct{}{}
+	t.stats.Followed++
+	w := t.watcher
+	t.mu.Unlock()
+	if w != nil {
+		_ = w.Add(filepath.Dir(path)) // best effort: the poll reads it anyway
+	}
+	t.Log.Info("following a transcript a hook named", "component", "ingest", "path", path, "session", sessionID, "under_root", t.Covers(path))
+	select {
+	case t.wake <- struct{}{}:
+	default:
+	}
+	return true
+}
+
+// FollowablePath is what Follow takes: an absolute path whose file is
+// `<sessionID>.jsonl`.
+func FollowablePath(path, sessionID string) bool {
+	return path != "" && sessionID != "" && filepath.IsAbs(path) && strings.EqualFold(filepath.Base(path), sessionID+".jsonl")
 }
 
 // Stats returns a snapshot of counters.
@@ -139,6 +257,7 @@ func (t *Tailer) Stats() Stats {
 	defer t.mu.Unlock()
 	s := t.stats
 	s.FilesKnown = len(t.files)
+	s.Root = t.Root
 	return s
 }
 
@@ -156,7 +275,13 @@ func (t *Tailer) Run(ctx context.Context) error {
 		defer watcher.Close()
 		t.mu.Lock()
 		t.watching = true
+		t.watcher = watcher
 		t.mu.Unlock()
+		defer func() {
+			t.mu.Lock()
+			t.watcher = nil
+			t.mu.Unlock()
+		}()
 		go t.watchLoop(ctx, watcher)
 	}
 	if err := t.discover(watcher); err != nil {
@@ -212,9 +337,7 @@ func (t *Tailer) discover(w *fsnotify.Watcher) error {
 		if !strings.HasSuffix(d.Name(), ".jsonl") {
 			return nil
 		}
-		if _, ok := t.files[path]; !ok {
-			t.files[path] = &fileState{path: path}
-		}
+		t.addLocked(path)
 		return nil
 	})
 }
@@ -237,10 +360,8 @@ func (t *Tailer) watchLoop(ctx context.Context, w *fsnotify.Watcher) {
 			}
 			if strings.HasSuffix(ev.Name, ".jsonl") && ev.Has(fsnotify.Create|fsnotify.Write) {
 				t.mu.Lock()
-				if _, ok := t.files[ev.Name]; !ok {
-					t.files[ev.Name] = &fileState{path: ev.Name}
-				}
-				t.dirty[ev.Name] = struct{}{}
+				f := t.addLocked(ev.Name)
+				t.dirty[f.path] = struct{}{}
 				t.mu.Unlock()
 				select {
 				case t.wake <- struct{}{}:
@@ -300,7 +421,10 @@ func (t *Tailer) passHot(ctx context.Context) {
 	paths := all[:0]
 	for _, f := range all {
 		f.mu.Lock()
-		hot := f.lastSize < 0 || f.lastMod.After(since)
+		// A followed file not read yet may not exist yet: looked at on
+		// each pass while it is new (Follow).
+		waiting := !f.followed.IsZero() && f.lastMod.IsZero() && f.followed.After(since)
+		hot := f.lastSize < 0 || f.lastMod.After(since) || waiting
 		f.mu.Unlock()
 		if hot {
 			paths = append(paths, f)

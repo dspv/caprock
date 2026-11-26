@@ -36,9 +36,15 @@ import { validEnded, type EndedAgent } from './endedAgent'
  * The Files tab (`files`, ADR-089; components/FilesCommander.tsx) is a tab of
  * its own, one per project, keyed `files:<project>`; `worktree` is the folder
  * its right panel opened on. Never split, as a file tab is.
+ *
+ * A session on another computer (`remote`, ADR-067; issue #1085) is a tab
+ * like a session here, keyed `m:<machine>/<session>` (remoteKey) so it is
+ * never taken for one of this machine's: its Chat, Terminal and figures are
+ * the ordinary Session view, read through `/v1/m/<machine>/…`
+ * (components/RemoteSessionPane.tsx). Never split.
  */
 export interface TabTarget {
-  kind: 'session' | 'shell' | 'file' | 'observe' | 'page' | 'files'
+  kind: 'session' | 'shell' | 'file' | 'observe' | 'page' | 'files' | 'remote'
   sessionId: string
   /** A file: its path relative to the worktree. */
   path?: string
@@ -60,6 +66,12 @@ export interface TabTarget {
    * one line at its top, with Resume, until dismissed.
    */
   ended?: EndedAgent
+  /** A session on another computer: that computer's id (`GET /v1/machines`). */
+  machine?: string
+  /** A session on another computer: its id there. */
+  remote?: string
+  /** A session on another computer: the computer's name when the tab opened, until the list says it. */
+  machineName?: string
   /**
    * A shell (or a session pane holding one): the name the user gave its tab; absent, it is "Shell N"
    * (lib/tablabels.ts). Kept with the workspace, in this window's storage: a
@@ -201,6 +213,21 @@ export function namingLeaf(tab: Tab): PaneLeaf {
 /** Whether a tab shows a web page: a browser tab (ADR-075). */
 export function isPageTab(t: Tab): boolean {
   return t.root.type === 'pane' && t.root.target.kind === 'page'
+}
+
+/** A tab's key for a session on another computer: never one of this machine's session ids. */
+export function remoteKey(machine: string, session: string): string {
+  return `m:${machine}/${session}`
+}
+
+/** A session on another computer, as a tab's target. */
+export function remoteTarget(machine: string, session: string, machineName?: string): TabTarget {
+  return { kind: 'remote', sessionId: remoteKey(machine, session), machine, remote: session, ...(machineName ? { machineName } : {}) }
+}
+
+/** Whether a tab shows a session on another computer (ADR-067, issue #1085). */
+export function isRemoteTab(t: Tab): boolean {
+  return t.root.type === 'pane' && t.root.target.kind === 'remote'
 }
 
 /** The tabs that take ⌘1–⌘9: every tab but the pages, in strip order. */
@@ -525,6 +552,11 @@ function isTarget(v: unknown): v is TabTarget {
   // A shell's ended agent, malformed, would only cost its line: the tab is kept, the value dropped.
   if (t.kind === 'shell' && t.ended !== undefined && !validEnded(t.ended)) delete t.ended
   if (t.kind === 'shell' || t.kind === 'session') return t.name === undefined || typeof t.name === 'string'
+  if (t.kind === 'remote') {
+    return typeof t.machine === 'string' && /^[A-Za-z0-9_-]{16,128}$/.test(t.machine) &&
+      typeof t.remote === 'string' && t.remote !== '' && t.sessionId === remoteKey(t.machine, t.remote) &&
+      (t.machineName === undefined || typeof t.machineName === 'string')
+  }
   return t.kind === 'observe'
 }
 
@@ -534,9 +566,9 @@ function mapLeaf(node: PaneNode, id: string, f: (l: PaneLeaf) => PaneLeaf): Pane
   return { ...node, children: node.children.map((c) => mapLeaf(c, id, f)) }
 }
 
-/** A pane that is a whole tab, never split: a file, a session watched read-only, or a web page (a phone preview aside). */
+/** A pane that is a whole tab, never split: a file, a session watched read-only, a web page (a phone preview aside), or a session on another computer. */
 export function ownTab(t: TabTarget): boolean {
-  return t.kind === 'file' || t.kind === 'files' || t.kind === 'observe' || t.kind === 'page'
+  return t.kind === 'file' || t.kind === 'files' || t.kind === 'observe' || t.kind === 'page' || t.kind === 'remote'
 }
 
 /** An address a page tab may hold: http or https with a host. A stored one is checked as a typed one is. */

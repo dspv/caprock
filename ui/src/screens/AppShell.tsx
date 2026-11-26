@@ -31,6 +31,10 @@ import {
   findTabBySession,
   focusedLeaf,
   isPageTab,
+  isRemoteTab,
+  OUTSIDE_PROJECTS,
+  remoteKey,
+  remoteTarget,
   leaves,
   namingLeaf,
   loadWorkspace,
@@ -44,7 +48,9 @@ import {
   type Tab,
   type TabTarget,
 } from '@/lib/tabs'
-import { agentInShell, tabLabels } from '@/lib/tablabels'
+import { agentInShell, tabLabels, type RemoteLabels } from '@/lib/tablabels'
+import { useMachines, useMachineSessions } from '@/lib/machines'
+import { RemoteSessionPane } from '@/components/RemoteSessionPane'
 import { onShellNamed } from '@/lib/sessionNames'
 import { idleEnded } from '@/lib/idleEnd'
 import { useReportTabs } from '@/lib/reportTabs'
@@ -350,7 +356,13 @@ export function AppShell() {
   // among the system tabs, next to the dashboard"): #/pipeline brings the
   // Pipeline tab to the front, from the dashboard's nav and Home's card too.
   const pipelineShown = !workspaceShown && parseHash(hash).name === 'pipeline'
-  const dashboardShown = !workspaceShown && !mailShown && !pipelineShown
+  // A session on another computer opens in a tab of its own, as one of this
+  // machine's does (issue #1085): #/m/<id>/session/<sid>, from any link —
+  // its sidebar row, Home's panel, its computer's page, New agent there —
+  // becomes that tab, never a frame in the Dashboard tab.
+  const hashRoute = parseHash(hash)
+  const remoteRoute = !workspaceShown && hashRoute.name === 'machine' && hashRoute.session ? hashRoute : undefined
+  const dashboardShown = !workspaceShown && !mailShown && !pipelineShown && !remoteRoute
   const data = useWorkspaceData()
   const [ws, dispatch] = useReducer(workspaceReducer, undefined, loadWorkspace)
   // A shell's tab named in place (the strip, the sidebar): kept in the workspace.
@@ -463,9 +475,20 @@ export function AppShell() {
   // because another project was picked — and the sidebar lists the current
   // project's under the same names (lib/tablabels.ts).
   const tabs = ws.tabs
+  // The other computers and their running sessions: the sidebar's one
+  // shared read (lib/machines.ts), so their tabs are named and marked as
+  // one of this machine's are, at no request of their own.
+  const machineList = useMachines().data
+  const machineReads = useMachineSessions(machineList)
+  const remoteLabels = useMemo<RemoteLabels>(() => {
+    const names = new Map((machineList ?? []).map((m) => [m.id, m.name] as const))
+    const sessions = new Map<string, SessionSummary>()
+    for (const [id, r] of machineReads) for (const x of r.sessions) sessions.set(remoteKey(id, x.session_id), x)
+    return { names, sessions }
+  }, [machineList, machineReads])
   const labels = useMemo(
-    () => tabLabels(ws.tabs, sessionsById, data.permissions, (id) => projectsById.get(id)?.branch),
-    [ws.tabs, sessionsById, data.permissions, projectsById],
+    () => tabLabels(ws.tabs, sessionsById, data.permissions, (id) => projectsById.get(id)?.branch, remoteLabels),
+    [ws.tabs, sessionsById, data.permissions, projectsById, remoteLabels],
   )
   const current = activeTab(shownWs)
   const focused = current ? focusedLeaf(current).target : undefined
@@ -486,10 +509,13 @@ export function AppShell() {
   // Keep tab titles current, so a restored tab is named before the list answers.
   useEffect(() => {
     for (const t of ws.tabs) {
-      const s = sessionsById.get(focusedLeaf(t).target.sessionId)
+      const key = focusedLeaf(t).target.sessionId
+      const s = sessionsById.get(key)
       if (s && sessionTitle(s) !== t.title) dispatch({ type: 'retitle', sessionId: s.session_id, title: sessionTitle(s) })
+      const r = remoteLabels.sessions.get(key)
+      if (r && sessionTitle(r) !== t.title) dispatch({ type: 'retitle', sessionId: key, title: sessionTitle(r) })
     }
-  }, [sessionsById, ws.tabs])
+  }, [sessionsById, remoteLabels, ws.tabs])
 
   // A /clear carries the conversation on under a new session id in the same
   // process: the tab follows it, terminal and all (lib/clearChain.ts). A fork
@@ -734,6 +760,23 @@ export function AppShell() {
     const kind = s.kind === 'shell' ? 'shell' : attachable(s) ? 'session' : 'observe'
     openTab({ kind, sessionId: s.session_id }, projectId, sessionTitle(s))
   }, [openTab])
+
+  /**
+   * A session on another computer in a tab (issue #1085), in the project in
+   * front, as a browser tab is: it belongs to no project here. The same
+   * session opens once.
+   */
+  const remoteCtx = useRef({ remoteLabels, activeProjectId })
+  remoteCtx.current = { remoteLabels, activeProjectId }
+  const openRemote = useCallback((machine: string, session: string, title?: string) => {
+    const { remoteLabels: rl, activeProjectId: pid } = remoteCtx.current
+    const name = rl.names.get(machine) ?? ''
+    const r = rl.sessions.get(remoteKey(machine, session))
+    openTab(remoteTarget(machine, session, name || undefined), pid || OUTSIDE_PROJECTS, r ? sessionTitle(r) : title || `session on ${name || 'another computer'}`)
+  }, [openTab])
+  useEffect(() => {
+    if (remoteRoute?.session) openRemote(remoteRoute.id, remoteRoute.session)
+  }, [remoteRoute?.id, remoteRoute?.session, openRemote])
 
   const onOpenInbox = useCallback((i: InboxItem) => openSession(i.session, i.projectId), [openSession])
   const jumpToWaiting = useCallback(() => {
@@ -1394,6 +1437,9 @@ export function AppShell() {
     if (!tab) return
     // A browser tab has nothing running to ask about: it goes with its page.
     if (isPageTab(tab)) { dispatch({ type: 'close', tabId }); return }
+    // Nor has a session on another computer: it runs on there, as it would
+    // with its page closed (rule 7 there is that computer's daemon's).
+    if (isRemoteTab(tab)) { dispatch({ type: 'close', tabId }); return }
     // Nor has a phone preview beside a terminal.
     if (paneId && leaves(tab.root).some((l) => l.id === paneId && l.target.kind === 'page')) { dispatch({ type: 'close-pane', tabId, paneId }); return }
     // A chat whose agent already exited (its tab says so) has nothing to stop.
@@ -1801,7 +1847,8 @@ export function AppShell() {
       const s = sessionsById.get(leaf.target.sessionId)
       const file = leaf.target.kind === 'file' ? leaf.target.path : undefined
       const page = leaf.target.kind === 'page' ? leaf.target.url ?? '' : undefined
-      items.push({ id: `t-${t.id}`, group: 'Tabs', label: s ? sessionTitle(s) : page !== undefined ? browserTitle(page, t.title) : t.title, detail: page || (file ?? projectsById.get(t.projectId)?.name), icon: page !== undefined ? <GlobeIcon size={14} /> : file ? <FileIcon size={14} /> : leaf.target.kind === 'files' ? <FolderIcon size={14} /> : <TerminalIcon size={14} />, run: () => { dispatch({ type: 'activate', tabId: t.id }); showWorkspace() } })
+      const on = labels.get(t.id)?.machine
+      items.push({ id: `t-${t.id}`, group: 'Tabs', label: s ? sessionTitle(s) : page !== undefined ? browserTitle(page, t.title) : labels.get(t.id)?.title ?? t.title, detail: page || (file ?? (on !== undefined ? `on ${on}` : projectsById.get(t.projectId)?.name)), icon: page !== undefined ? <GlobeIcon size={14} /> : file ? <FileIcon size={14} /> : leaf.target.kind === 'files' ? <FolderIcon size={14} /> : <TerminalIcon size={14} />, run: () => { dispatch({ type: 'activate', tabId: t.id }); showWorkspace() } })
     }
     for (const n of model.projects) {
       for (const w of n.worktrees) {
@@ -1833,7 +1880,7 @@ export function AppShell() {
       }
     }
     return items
-  }, [data.sessions, onCompare, savedItems, manageSaved, ws.tabs, model.projects, model.inbox, sessionsById, projectsById, openSessions, prefs.inspector, current, onNewAgent, onNewShell, onQuickChatNow, onQuickChatChooser, goHash, onAddProject, onDashboard, onMail, toggleTheme, onSettings, run, showWorkspace, openSession, openSplit, onSelectProject, onOpenInbox, jumpToWaiting, splitShell, detach, editors, focusedSession?.cwd, openInEditor, source, onOpenChanges, fileScope, focused?.kind, activeProject, activeProjectId, onCleanCopies, onFromTemplate])
+  }, [data.sessions, onCompare, savedItems, manageSaved, ws.tabs, labels, model.projects, model.inbox, sessionsById, projectsById, openSessions, prefs.inspector, current, onNewAgent, onNewShell, onQuickChatNow, onQuickChatChooser, goHash, onAddProject, onDashboard, onMail, toggleTheme, onSettings, run, showWorkspace, openSession, openSplit, onSelectProject, onOpenInbox, jumpToWaiting, splitShell, detach, editors, focusedSession?.cwd, openInEditor, source, onOpenChanges, fileScope, focused?.kind, activeProject, activeProjectId, onCleanCopies, onFromTemplate])
 
   // Every session the daemon knows, by what it was about; one that is open or
   // live is already in the list above under its own id.
@@ -2030,6 +2077,9 @@ export function AppShell() {
   }, [openFile])
   const focusedFile = focused?.kind === 'file'
   const focusedPage = focused?.kind === 'page'
+  // A session on another computer: its own Session view in the frame has its
+  // figures and views; this machine's inspector and switch know nothing of it.
+  const focusedRemote = focused?.kind === 'remote'
   // The Files tab has no session to inspect and wants the width for its two panels.
   const focusedFiles = focused?.kind === 'files'
   // A page's *from* chip and its nudge bring a session forward; that is known further down.
@@ -2065,6 +2115,20 @@ export function AppShell() {
       />
     )
   }, [armedPages, armPage, openPage, sessionsById, browserEnabled, browserPrefs.engine, browserPrefs.pause, waitingAgents, onStepTab])
+  /** A session on another computer's content (components/RemoteSessionPane.tsx, issue #1085). */
+  const renderRemote = useCallback((_tab: Tab, leaf: PaneLeaf, visible: boolean) => {
+    const id = leaf.target.machine ?? ''
+    const m = machineList?.find((x) => x.id === id)
+    return (
+      <RemoteSessionPane
+        machine={id}
+        machineName={m?.name || leaf.target.machineName || 'another computer'}
+        session={leaf.target.remote ?? ''}
+        visible={visible}
+        m={m}
+      />
+    )
+  }, [machineList])
   /** The session a dev server was seen in, as ⌘K's *Preview on phone…* names it. */
   const previewSessionName = useCallback((id: string) => {
     const x = sessionsById.get(id)
@@ -2336,7 +2400,7 @@ export function AppShell() {
               } : undefined}
               pipeline={ws.pipeline || pipelineShown ? { active: pipelineShown, onActivate: () => { if (!pipelineShown) goHash(lastPipeline.current || '#/pipeline') }, onClose: closePipeline } : undefined}
               mail={ws.mail || (mailShown && mailTabOk) ? { active: mailShown, onActivate: showMailTab, onClose: closeMail } : undefined}
-              paneTools={workspaceShown && !focusedPage}
+              paneTools={workspaceShown && !focusedPage && !focusedRemote}
               sessions={sessionsById}
               permissions={data.permissions}
               inspectorOpen={prefs.inspector}
@@ -2373,6 +2437,7 @@ export function AppShell() {
                     renderFile={renderFile}
                     renderObserve={renderObserve}
                     renderPage={renderPage}
+                    renderRemote={renderRemote}
                     chats={chatPanes}
                     onChatClose={onClosePane}
                     onChatRestart={onChatRestart}
@@ -2570,7 +2635,7 @@ export function AppShell() {
             {/* Hidden, not unmounted, behind the Dashboard or a page or
               * files tab: its kept bodies wait there (components/KeptViews). */}
             {prefs.inspector && (
-              <Activity mode={workspaceShown && !focusedPage && !focusedFiles ? 'visible' : 'hidden'}>
+              <Activity mode={workspaceShown && !focusedPage && !focusedFiles && !focusedRemote ? 'visible' : 'hidden'}>
               <div className="h-full shrink-0" style={{ width: 'var(--app-inspector-w)' }}>
                 {/* The cockpit's Release rows open a session's tab, as the Pipeline's do. */}
                 <PipelineHostContext.Provider value={pipelineHost}>
@@ -2637,6 +2702,7 @@ export function AppShell() {
           here={sheet.here}
           fromGitHub={sheet.fromGitHub}
           machine={sheet.machine}
+          onStartedOn={(machine, sessionId, title) => openRemote(machine, sessionId, title)}
           onClose={() => setSheet(null)}
           onSetup={onSetupAgent}
           onProjectAdded={() => refresh()}

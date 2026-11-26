@@ -40,6 +40,21 @@ type subIngest struct {
 	// codex is each Codex subscription's importer, to read at once after
 	// input was typed into a session (Daemon.nudged).
 	codex map[string]*codex.Ingester
+	// claude is each Claude Code subscription's transcript reader, so the
+	// transcript a hook names is followed by the reader whose directory
+	// holds it (Daemon.followTranscript).
+	claude map[string]*ingest.Tailer
+}
+
+// claudeTailers are the subscriptions' transcript readers.
+func (d *Daemon) claudeTailers() []*ingest.Tailer {
+	d.subIn.mu.Lock()
+	defer d.subIn.mu.Unlock()
+	out := make([]*ingest.Tailer, 0, len(d.subIn.claude))
+	for _, t := range d.subIn.claude {
+		out = append(out, t)
+	}
+	return out
 }
 
 // codexIngesters are every Codex importer running: the Default sign-in's
@@ -79,6 +94,10 @@ func (d *Daemon) startSubIngest(sub config.Subscription) {
 		// they are under ~/.claude/projects for the Default sign-in; the
 		// recorder files them under the subscription by their path.
 		t := ingest.New(filepath.Join(dir, "projects"), d.rec, d.store, d.log)
+		if d.subIn.claude == nil {
+			d.subIn.claude = map[string]*ingest.Tailer{}
+		}
+		d.subIn.claude[sub.ID] = t
 		go func() {
 			if err := t.Run(ctx); err != nil && ctx.Err() == nil {
 				d.log.Warn("subscription transcripts stopped", "component", "subs", "subscription", sub.ID, "err", err)
@@ -116,6 +135,7 @@ func (d *Daemon) stopSubIngest(id string) {
 		delete(d.subIn.running, id)
 	}
 	delete(d.subIn.codex, id)
+	delete(d.subIn.claude, id)
 }
 
 // prepareSub (re)writes what a subscription's directory needs: for Claude

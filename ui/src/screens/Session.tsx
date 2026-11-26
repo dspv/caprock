@@ -168,7 +168,10 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
   // Codex and OpenCode write nothing until the first message, and Caprock
   // links what they write to this session when they do (sessionlink). Until
   // then there is nothing to read, which is not the same as "not measured".
-  const waitingOnLink = unmeasurable && s.owned && (s.agent === 'codex' || s.agent === 'opencode')
+  // Claude Code is the same in its first seconds, before its first hook: a
+  // session Caprock started on another computer said "does not measure it"
+  // there, about the one agent it always measures (issue #1085).
+  const waitingOnLink = unmeasurable && s.owned && (s.agent === 'codex' || s.agent === 'opencode' || s.agent === 'claude')
   // cursor-agent keeps its chats in a store Caprock does not read; its turns
   // arrive through Cursor's hooks, once the user has turned them on.
   const waitingOnCursorHooks = unmeasurable && s.owned && s.agent === 'cursor'

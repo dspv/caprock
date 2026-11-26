@@ -250,7 +250,7 @@ function MachineSession({ m, session, tab }: { m: Machine; session: string; tab?
   // The frame's address is set once per session: a tab chosen inside it is
   // its own business, and reloading it on every hash change would cut the
   // terminal it holds.
-  const [src] = useState(() => machinePageURL(m.id, session, tab ?? 'terminal'))
+  const [src] = useState(() => machinePageURL(m.id, session, tab ?? 'chat'))
   return (
     <div className="grid w-full gap-2" data-machine={m.id} data-machine-session-open={session}>
       <MachineHead m={m} back>

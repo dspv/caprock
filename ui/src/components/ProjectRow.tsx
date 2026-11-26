@@ -86,6 +86,7 @@ import { STALLED_TIP, stalledWord, useStalledAge } from '@/lib/stalled'
 import { SLIDE_MS, clampOffset, reducedMotion, shiftFor, slotFor, type Span } from '@/lib/dragSlot'
 import { namingLeaf } from '@/lib/tabs'
 import { HotMark } from './ResourceMeter'
+import { MachineTag } from './MachineTag'
 import { instructionsSummary } from '@/lib/projectWizard'
 import { rowRepo } from '@/lib/multirepo'
 import { chatRowSuffix, isQuickChat } from '@/lib/quickchat'
@@ -880,8 +881,11 @@ function TabRow({ tab, label, repo, active, waiting, asks, onOpen, onClose, onMe
   if (variant === 'open') {
     // A file, a page or the Files tab has no phase; an agent's tab before the list answers is idle.
     const kind = namingLeaf(tab).target.kind
-    const phase = kind === 'session' || kind === 'shell' || kind === 'observe' ? phaseOf(label?.dot ?? 'idle') : undefined
-    const under = [project?.name, label?.branch, chatModelName].filter(Boolean).join(' · ')
+    const phase = kind === 'session' || kind === 'shell' || kind === 'observe' || kind === 'remote' ? phaseOf(label?.dot ?? 'idle') : undefined
+    // A session on another computer: that computer's tag where the project
+    // goes, as its row under Computers has it (issue #1085).
+    const on = label?.machine
+    const under = on !== undefined ? '' : [project?.name, label?.branch, chatModelName].filter(Boolean).join(' · ')
     return (
       <li className="@container/srow group/row relative" {...dragProps(drag)}>
         <button
@@ -889,6 +893,7 @@ function TabRow({ tab, label, repo, active, waiting, asks, onOpen, onClose, onMe
           data-nav-row
           data-tab-row={tab.id}
           data-open-row={tab.id}
+          data-remote-row={on !== undefined ? '' : undefined}
           data-session-id={label?.session?.session_id}
           data-waiting={waiting || undefined}
           data-selected={active || undefined}
@@ -899,7 +904,7 @@ function TabRow({ tab, label, repo, active, waiting, asks, onOpen, onClose, onMe
           onDoubleClick={onRename}
           {...menuHandlers(onMenu)}
           className={`app-row flex min-h-[42px] w-full min-w-0 items-center gap-2 rounded-[7px] py-1 pl-[10px] text-left ${active ? `app-row-selected ${PAD_ALWAYS[n]}` : PAD_ON_HOVER[n]}`}
-          title={[label?.file ?? title, tabAgent(label), repo, label?.branch, project?.name, stall !== null ? stalledWord(stall) : phase ? PHASE_WORD[phase] : ''].filter(Boolean).join(' · ') + (stall !== null ? `\n${STALLED_TIP}` : '')}
+          title={[label?.file ?? title, tabAgent(label), repo, label?.branch, on !== undefined ? `on ${on}` : project?.name, stall !== null ? stalledWord(stall) : phase ? PHASE_WORD[phase] : ''].filter(Boolean).join(' · ') + (stall !== null ? `\n${STALLED_TIP}` : '')}
         >
           {stall !== null ? <StalledDot />
             : phase !== undefined ? <PhaseDot phase={phase} asks={asks} />
@@ -909,6 +914,7 @@ function TabRow({ tab, label, repo, active, waiting, asks, onOpen, onClose, onMe
           <span className="flex min-w-0 flex-1 flex-col">
             <span data-row-title className={`truncate text-[13.5px] leading-[18px] ${active ? 'font-semibold text-fg' : 'font-medium text-fg'}`}>{title}</span>
             {under && <span data-row-project-name className="truncate text-[11.5px] leading-[15px] text-fg-faint">{under}</span>}
+            {on !== undefined && <span className="flex min-w-0 leading-[15px]"><MachineTag name={on} className="max-w-full" /></span>}
           </span>
           {!isFile && <HotMark sessionId={label?.session?.session_id} />}
           {stall !== null ? <StalledWord age={stall} /> : phase && <PhaseChip phase={phase} asks={asks} />}

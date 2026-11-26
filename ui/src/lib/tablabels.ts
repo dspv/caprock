@@ -41,7 +41,25 @@ export interface TabLabel {
   inside?: SessionSummary
   /** A shell's tab: the name the user gave it (TabTarget.name), '' for none. */
   shellTitle?: string
+  /**
+   * A session on another computer (ADR-067, issue #1085): the computer's
+   * name, drawn as the outlined tag its sidebar rows carry, in place of a
+   * project, so the tab never reads as this machine's.
+   */
+  machine?: string
+  /** A session on another computer: its row in that computer's list, when the list has it. */
+  remote?: SessionSummary
   dot: Dot
+}
+
+/**
+ * What the workspace knows of the other computers, for their sessions'
+ * tabs: each computer's name by id, and their running sessions by tab key
+ * (lib/tabs.ts remoteKey).
+ */
+export interface RemoteLabels {
+  names: ReadonlyMap<string, string>
+  sessions: ReadonlyMap<string, SessionSummary>
 }
 
 /**
@@ -92,6 +110,7 @@ export function tabLabels(
   sessions: ReadonlyMap<string, SessionSummary>,
   permissions: ReadonlySet<string>,
   defaultBranch: (projectId: string) => string | undefined,
+  remote?: RemoteLabels,
 ): Map<string, TabLabel> {
   const out = new Map<string, TabLabel>()
   const shells = new Map<string, number>()
@@ -99,6 +118,14 @@ export function tabLabels(
     const leaf = namingLeaf(t)
     const panes = leaves(t.root).length
     const more = panes > 1 ? ` +${panes - 1}` : ''
+    if (leaf.target.kind === 'remote') {
+      // Named as one of this machine's is (sessionTitle), and its state is
+      // its own computer's word for it; the computer is its tag.
+      const r = remote?.sessions.get(leaf.target.sessionId)
+      const machine = remote?.names.get(leaf.target.machine ?? '') || leaf.target.machineName || 'another computer'
+      out.set(t.id, { title: r ? sessionTitle(r) : t.title || 'session', isShell: false, machine, ...(r ? { remote: r } : {}), dot: r ? dotOf(r, false) : 'idle' })
+      continue
+    }
     if (leaf.target.kind === 'page') {
       const url = leaf.target.url ?? ''
       out.set(t.id, { title: pageTitle(url, t.title), page: url, isShell: false, dot: 'idle' })
