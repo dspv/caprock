@@ -49,6 +49,23 @@ export interface SetupReport {
   items: SetupItem[]
   /** The Agents item's rows; absent from a daemon before the switches. */
   agents?: SetupAgent[]
+  /**
+   * Steps past ready that a linked laptop runs there (issue #1088): Node.js,
+   * the GitHub CLI and its sign-in, Claude Code's bypass warning and Claude
+   * in Chrome's "Enabled by default". Never counted by `ready`; absent from
+   * a daemon before them (lib/remotesetup.ts).
+   */
+  tools?: SetupTool[]
+}
+
+/** One of the report's tools (internal/readiness/tools.go). */
+export interface SetupTool {
+  id: 'node' | 'gh' | 'gh_auth' | 'bypass' | 'chrome_default' | string
+  label: string
+  state: SetupState
+  detail: string
+  /** What `POST /v1/setup/run` runs there; absent when there is no one command. */
+  command?: string
 }
 
 export const done = (it: SetupItem | undefined) => it?.state === 'ok' || it?.state === 'not_needed'
@@ -155,6 +172,8 @@ export interface AppActions {
   addProject?: () => void
   /** Add project opened on Clone: the checklist's *Projects here*. */
   cloneProject?: () => void
+  /** A session or shell on another computer in a tab here (#1085): *Show output* of a setup step run there (#1088). */
+  openRemote?: (machine: string, session: string, title?: string) => void
 }
 
 export const AppActionsContext = createContext<AppActions>({})

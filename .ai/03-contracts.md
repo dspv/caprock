@@ -472,7 +472,7 @@ the target runs its ordinary Host and gate, and pairs it as a computer
   Check; the watch below does it before it says `online`.
 - **`GET /v1/machines`** answers `{machines: [{id, name, relay, added_at,
   status, error?, version?, role?, kind?, last_seen?, streams,
-  traffic}]}`, in the order added, never a token. `?check=1` first asks each computer `GET
+  traffic, setup_done?}]}`, in the order added, never a token. `?check=1` first asks each computer `GET
   /v1/pair/me` through its channel, at once, for 12 s at most. **`POST
   /v1/machines`** `{link}` pairs (60 s at most) and answers that computer's
   entry: `400` for a link that does not parse, carries no code, names this
@@ -480,8 +480,12 @@ the target runs its ordinary Host and gate, and pairs it as a computer
   accepting pairings; `503` offline or relay unreachable; `502` refused
   (another key) or anything else; `504` out of time. The name it gives the
   target is this machine's host name without `.local`. **`PATCH
-  /v1/machines/{id}`** `{name}` renames it here (`400` empty, `404`
-  unknown) and answers the entry. **`DELETE /v1/machines/{id}`** asks the
+  /v1/machines/{id}`** `{name?, setup_done?}` renames it here (`400` empty,
+  or a body with neither, `404` unknown) and answers the entry. `setup_done`
+  is the setup steps that need that computer's own screen, marked done there
+  by hand from its page (*Done there*, issue #1088): `chrome_extension` and
+  `site_sign_ins`, anything else dropped; kept with the computer in
+  `machines.json`, nothing checks them. **`DELETE /v1/machines/{id}`** asks the
   computer to drop this machine (`DELETE /v1/pair/me`, 10 s at most, best
   effort), deletes it and its token here, and answers `{forgotten: true,
   released}`.
@@ -690,8 +694,11 @@ This computer's readiness for running agents for another computer
 ```
 GET /v1/setup → {"os": "windows"|"darwin"|"linux",
                  "items": [{"key", "state", "label", "detail", "command"?, "action"?, "optional"?}],
-                 "agents": [{"id", "label", "on", "state", "detail", "step"?, "command"?, "action"?}]}
+                 "agents": [{"id", "label", "on", "state", "detail", "step"?, "command"?, "action"?}],
+                 "tools": [{"id", "label", "state", "detail", "command"?}]}
 PUT /v1/setup/agents/{id} {"on": bool} → the same answer, as it now reads
+POST /v1/setup/run {"step", "agent"?} → a run, or (chrome_default) the same answer as GET
+GET /v1/setup/runs → {"runs": [{"key", "step", "agent"?, "shell", "state", "line"?, "code"?, "started_at"}]}
 ```
 
 - **Items**, always these four, in this order: `git`, `agent`, `link`,
@@ -799,6 +806,64 @@ PUT /v1/setup/agents/{id} {"on": bool} → the same answer, as it now reads
   `/v1/m/{id}/v1/setup`; a phone and a computer still waiting get `403`.
   `501` in a build without it. A daemon from before it answers `404`, and
   the laptop then shows nothing new.
+- **`tools`: the steps past ready** (issue #1088, ADR-099 amendment of
+  2026-11-26), which a linked laptop lists on the computer's page and runs
+  there. Never items: `Ready` never counts them, and a reader from before
+  them (an older laptop, this computer's own checklist, `caprock setup`)
+  sees what it saw. In this order, each `ok` or `missing`:
+  - `node` *Node.js* and `gh` *GitHub CLI*: found without running them, on
+    the user's PATH as it is now (as Git is) or in their installers'
+    folders (`%ProgramFiles%\nodejs`, `%ProgramFiles%\GitHub CLI`, the same
+    under `%LOCALAPPDATA%\Programs`; `/opt/homebrew/bin`, `/usr/local/bin`).
+    Missing: on Windows `winget install --id OpenJS.NodeJS.LTS -e --source
+    winget --accept-package-agreements --accept-source-agreements` and the
+    same with `GitHub.cli` (the ids of the winget-pkgs repository; the two
+    flags answer winget's first-run agreement prompt); on macOS `brew install
+    node` / `brew install gh` when Homebrew is installed, else no command and
+    *Install Homebrew there first*; on Linux no command, the detail names
+    apt, dnf and pacman;
+  - `gh_auth` *Sign in to GitHub*: `ok` when the GitHub CLI holds a sign-in
+    for github.com — `GH_TOKEN` or `GITHUB_TOKEN` in the login environment,
+    or a `github.com:` host line in its `hosts.yml` (`$GH_CONFIG_DIR`, else
+    `$XDG_CONFIG_HOME/gh`, else `%AppData%\GitHub CLI` on Windows, else
+    `~/.config/gh`); only that line is looked at, never a token. Missing with
+    `gh auth login --web --hostname github.com --git-protocol https` when
+    the CLI is installed, with no command and *Install the GitHub CLI first*
+    when not;
+  - only when Claude Code is installed: `bypass` *Bypass warning* (Claude
+    Code's one-time warning, read as `GET /v1/status`
+    `claude_bypass_accepted` reads it, accepted with `POST
+    /v1/claude/bypass-consent`) and `chrome_default` *Claude in Chrome on by
+    default* — `claudeInChromeDefaultEnabled: true` in Claude Code's global
+    config (`~/.claude.json`, or `.claude.json` in `CLAUDE_CONFIG_DIR`),
+    what its `/chrome` dialog writes for *Enabled by default* (read from the
+    Claude Code 2.1.332 bundle, 2026-11-26). Neither has a command.
+- **`POST /v1/setup/run`** runs one step of this computer's own checklist
+  here. `step` is `git`, `agent` (with `agent`, a row switched on and not
+  `ok`: its install, Add to PATH or sign-in), `node`, `gh`, `gh_auth` or
+  `chrome_default`. The command is always the checklist's own for that row,
+  never the caller's (a `command` in the body is ignored): a shell tab is
+  started in the home folder and the command typed and run there
+  (`RunAtPrompt`), and the answer is the run. The same step still running
+  answers that run and starts nothing. `409` when the row is done or has no
+  command here, `501` without the checklist or shells. `chrome_default`
+  writes `claudeInChromeDefaultEnabled: true` in place, every other key kept
+  in place and order, a file that does not parse never written, and answers
+  the checklist. Who may: this machine's own clients and an allowed computer
+  (`computerRoutes`); a phone gets `403`.
+- **`GET /v1/setup/runs`** lists the runs of the last hour, by `key` (`step`,
+  or `agent:<id>`). `shell` is the shell tab it runs in (a laptop opens it
+  with *Show output*). `state` is `running` while a program is in front of
+  that shell's prompt, `finished` once it is idle again, the shell is gone,
+  or nothing showed in front of it for 20 s; finished says nothing of
+  success — the next `GET /v1/setup` does. `line` is the last line it
+  printed (once finished, the one above the prompt), at most 200 characters.
+  For `gh_auth`, while it runs, `code` is the one-time code read off its
+  screen (`one-time code: XXXX-XXXX`), gone once it prints *Logged in as*;
+  the daemon answers the CLI's two questions, each once, with their
+  defaults: *Authenticate Git with your GitHub credentials?* (yes) and
+  *Press Enter to open github.com in your browser* (it then polls GitHub for
+  the code; the browser it opens there, if any, is that computer's).
 - **`caprock setup`** prints the same items, `[ok]`, `[  ]`, `[ ?]`, or `[ ·]`
   for the optional project with none, with each `detail` and `run:
   <command>`; under *Agents* each agent switched on with its state and

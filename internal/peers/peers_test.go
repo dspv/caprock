@@ -408,6 +408,20 @@ func TestComputersSurviveARestartAndCanBeRenamedAndForgotten(t *testing.T) {
 	if saved, _ := peers.Read(dir); saved[0].Name != "Studio" {
 		t.Fatalf("renamed to %q", saved[0].Name)
 	}
+	// The steps marked done there by hand (#1088): only known ones, once,
+	// kept with the computer and listed.
+	if err := m2.SetSetupDone(st.ID, []string{"site_sign_ins", "nope", "chrome_extension", "site_sign_ins"}); err != nil {
+		t.Fatal(err)
+	}
+	if saved, _ := peers.Read(dir); strings.Join(saved[0].SetupDone, ",") != "chrome_extension,site_sign_ins" || saved[0].Name != "Studio" {
+		t.Fatalf("setup marks %+v", saved[0])
+	}
+	if got, _ := m2.Get(st.ID); len(got.SetupDone) != 2 {
+		t.Fatalf("not listed: %+v", got)
+	}
+	if err := m2.SetSetupDone("nobody", nil); !errors.Is(err, peers.ErrUnknown) {
+		t.Fatalf("unknown computer: %v", err)
+	}
 	if err := m2.Forget(st.ID); err != nil {
 		t.Fatal(err)
 	}

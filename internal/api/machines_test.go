@@ -33,6 +33,7 @@ type fakeMachines struct {
 	left     bool
 	forgot   bool
 	renamed  string
+	marked   []string
 	sockErr  error
 	sock     *pipeSocket
 	protos   []string
@@ -80,6 +81,13 @@ func (f *fakeMachines) Rename(id, name string) error {
 		return peers.ErrUnknown
 	}
 	f.renamed = name
+	return nil
+}
+func (f *fakeMachines) SetSetupDone(id string, done []string) error {
+	if id != "mini" {
+		return peers.ErrUnknown
+	}
+	f.marked = done
 	return nil
 }
 func (f *fakeMachines) Leave(context.Context, string) error { f.left = true; return nil }
@@ -176,6 +184,14 @@ func TestMachinesRoutes(t *testing.T) {
 	}
 	if w := serve(s, local("PATCH", "/v1/machines/nope", `{"name":"x"}`)); w.Code != 404 {
 		t.Fatalf("rename an unknown one: %d", w.Code)
+	}
+	// Steps marked done on its own screen (#1088), without touching the name.
+	fm.renamed = ""
+	if w := serve(s, local("PATCH", "/v1/machines/mini", `{"setup_done":["chrome_extension"]}`)); w.Code != 200 || strings.Join(fm.marked, ",") != "chrome_extension" || fm.renamed != "" {
+		t.Fatalf("setup marks: %d %s %q", w.Code, w.Body, fm.marked)
+	}
+	if w := serve(s, local("PATCH", "/v1/machines/mini", `{}`)); w.Code != 400 {
+		t.Fatalf("an empty patch: %d", w.Code)
 	}
 	w = serve(s, local("DELETE", "/v1/machines/mini", ""))
 	if w.Code != 200 || !fm.left || !fm.forgot || !strings.Contains(w.Body.String(), `"released":true`) {

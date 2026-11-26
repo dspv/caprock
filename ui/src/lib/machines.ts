@@ -55,6 +55,8 @@ export interface Machine {
   /** What the channel to it has cost the relay since the daemon started or
    *  paired it (OQ-14); not shown anywhere yet. Absent from an older daemon. */
   traffic?: { msgs_out: number; msgs_in: number; bytes_out: number; bytes_in: number }
+  /** The setup steps that need its own screen, marked done there by hand (issue #1088). */
+  setup_done?: string[]
 }
 
 /** `timeout` is never the list's own state: it is what a read through the
@@ -127,6 +129,8 @@ export const machinesApi = {
   /** Pairs with the computer a pasted link names (60 s at most). */
   add: (link: string) => changed(call<Machine>('/v1/machines', { method: 'POST', body: JSON.stringify({ link }) })),
   rename: (id: string, name: string) => changed(call<Machine>(`/v1/machines/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ name }) })),
+  /** The setup steps that need its own screen, marked done there by hand, kept here (issue #1088). */
+  setSetupDone: (id: string, done: string[]) => changed(call<Machine>(`/v1/machines/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ setup_done: done }) })),
   /** Deletes it and its token here, after asking it to drop this machine. */
   forget: (id: string) => changed(call<{ forgotten: boolean; released: boolean }>(`/v1/machines/${encodeURIComponent(id)}`, { method: 'DELETE' })),
   /** Every computer's running sessions, kept by the daemon a few seconds, so every window shares one read per computer. */

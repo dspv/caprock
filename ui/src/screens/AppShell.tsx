@@ -1155,7 +1155,8 @@ export function AppShell() {
     addProject: onAddProject,
     // The checklist's Projects here → Clone: the sheet on Clone, into ~/dev.
     cloneProject: () => setSheet({ kind: 'project', mode: 'clone' }),
-  }), [activeProjectId, onAddProject])
+    openRemote,
+  }), [activeProjectId, onAddProject, openRemote])
   /**
    * To the dashboard where it was left (lib/screenPlace.ts); from the
    * dashboard itself, Home at its top — the quick way home (owner,

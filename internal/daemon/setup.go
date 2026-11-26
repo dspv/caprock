@@ -11,6 +11,7 @@ import (
 	"github.com/dspv/caprock/internal/agentcat"
 	"github.com/dspv/caprock/internal/agents"
 	"github.com/dspv/caprock/internal/config"
+	"github.com/dspv/caprock/internal/hooks"
 	"github.com/dspv/caprock/internal/readiness"
 	"github.com/dspv/caprock/internal/store"
 	"github.com/dspv/caprock/internal/subs"
@@ -39,6 +40,15 @@ func (a *setupAdapter) SetupFacts(r *http.Request) (readiness.Inputs, error) {
 	// someone to fix a PATH that is fine.
 	tpath, tok := userenv.TerminalPath(a.d.log)
 	off := readiness.OffPath{GOOS: runtime.GOOS, Home: home, Dirs: userenv.Dirs(tpath)}
+	getenv := func(k string) string { return envVar(env.Vars, k) }
+	finder := readiness.ToolFinder{GOOS: runtime.GOOS, Dirs: userenv.Dirs(path)}
+	tools := readiness.ToolFacts{
+		Node: finder.Found(readiness.ToolNode),
+		GH:   finder.Found(readiness.ToolGH),
+		Brew: runtime.GOOS == "darwin" && finder.Found("brew"),
+	}
+	tools.GHSignedIn = readiness.GHSignedIn(readiness.GHHosts(runtime.GOOS, home, getenv), getenv)
+	in.Tools = &tools
 	// Every built-in Caprock can start that is installed here or can be
 	// installed with one command, each with its switch (ADR-099 amendment).
 	for _, e := range agentcat.Builtins(env, a.d.mgr.AgentAvailable) {
@@ -51,6 +61,11 @@ func (a *setupAdapter) SetupFacts(r *http.Request) (readiness.Inputs, error) {
 		}
 		ag := readiness.Agent{ID: e.ID, Label: e.Label, Installed: e.Installed, Install: install,
 			On: readiness.AgentOn(e.ID, e.Installed, cfg.SetupAgents)}
+		if e.Installed && e.ID == agents.AgentClaude {
+			tools.Claude = true
+			tools.Bypass, _ = bypassAccepted()
+			tools.Chrome, _ = hooks.ChromeDefault(subs.DefaultPaths(agents.AgentClaude, home, getenv).GlobalConfig)
+		}
 		if e.Installed {
 			switch e.ID {
 			case agents.AgentClaude, agents.AgentCodex:
@@ -76,6 +91,19 @@ func (a *setupAdapter) SetupFacts(r *http.Request) (readiness.Inputs, error) {
 	}
 	in.Projects = len(ps)
 	return in, nil
+}
+
+// EnableChromeDefault turns Claude in Chrome's "Enabled by default" on in
+// Claude Code's global config here, as its /chrome dialog does (POST
+// /v1/setup/run, step chrome_default; hooks.ChromeDefaultKey).
+func (a *setupAdapter) EnableChromeDefault() error {
+	env := agentcat.DefaultEnv(userenv.Cached())
+	getenv := func(k string) string { return envVar(env.Vars, k) }
+	p := subs.DefaultPaths(agents.AgentClaude, env.Home, getenv).GlobalConfig
+	if p == "" {
+		return os.ErrNotExist
+	}
+	return hooks.EnableChromeDefault(p)
 }
 
 // binaryOf is the program an agent runs as, for the PATH check: Cursor's

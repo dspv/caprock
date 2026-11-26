@@ -54,7 +54,18 @@ type Machine struct {
 	DeviceID string `json:"device_id"`
 	// AddedAt is unix milliseconds, this machine's clock.
 	AddedAt int64 `json:"added_at"`
+	// SetupDone are the setup steps that need the computer's own screen and
+	// that the user marked done there from here (*Done there*, issue
+	// #1088): SetupChromeExtension, SetupSiteSignIns. Nothing checks them.
+	SetupDone []string `json:"setup_done,omitempty"`
 }
+
+// The setup steps only the computer's own screen can do, which the laptop
+// keeps as marked done (Machine.SetupDone).
+const (
+	SetupChromeExtension = "chrome_extension"
+	SetupSiteSignIns     = "site_sign_ins"
+)
 
 // Read loads the list. A missing file is no computers; a corrupt one is an
 // error the caller logs and treats as none — the safe reading of "I cannot
