@@ -10,8 +10,9 @@
  *   the list, ↑↓ moves, Enter picks (and, with the list closed, starts), Esc
  *   closes the list before it closes the sheet.
  */
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { api } from '@/lib/api'
+import { scrollIntoList } from '@/lib/scrollIntoList'
 import { useApi } from '@/lib/useApi'
 import { keys } from '@/lib/appkeys'
 import { useEscapeToClose } from './Dialog'
@@ -60,11 +61,17 @@ export function CandidateList({
   label: string
 }) {
   const ref = useRef<HTMLUListElement>(null)
+  // Only the list scrolls to the active row: scrollIntoView scrolls every
+  // ancestor as well, and slid New agent's whole body sideways.
   useEffect(() => {
-    ref.current?.querySelector(`[data-i="${active}"]`)?.scrollIntoView?.({ block: 'nearest' })
+    const list = ref.current
+    scrollIntoList(list, list?.querySelector<HTMLElement>(`[data-i="${active}"]`))
   }, [active])
   return (
-    <ul ref={ref} id={id} role="listbox" aria-label={label} className="app-scroll grid max-h-[232px] gap-px overflow-y-auto">
+    // grid-cols-1 (minmax(0, 1fr)): an implicit grid column took a row's
+    // whole name and path as its width, so rows ran past the list, the path
+    // was cut with no ellipsis and where it came from was not seen.
+    <ul ref={ref} id={id} role="listbox" aria-label={label} className="app-scroll grid max-h-[232px] grid-cols-1 gap-px overflow-y-auto">
       {items.map((c, i) => (
         <li
           key={c.path}
@@ -131,6 +138,27 @@ export function ProjectCombobox({
   useEffect(() => { setActive(0) }, [query])
   // Esc closes the list first, and the sheet only on a second press.
   useEscapeToClose(() => { setOpen(false); setQuery('') }, open)
+  // The list is as wide as the row the field sits in (two columns and their
+  // gap) so a path fits beside the name, but never past the row's right
+  // edge: with Machine first, Project is the right column, and a list twice
+  // its width ran out of the sheet and scrolled the sheet's body sideways
+  // (owner, 2026-11-26). Outside a `data-field-row`, as wide as the field.
+  const box = useRef<HTMLDivElement>(null)
+  const [width, setWidth] = useState<number>()
+  useLayoutEffect(() => {
+    if (!open) return
+    const fit = () => {
+      const el = box.current
+      if (!el) return
+      const f = el.getBoundingClientRect()
+      const row = el.closest('[data-field-row]')?.getBoundingClientRect()
+      const right = Math.min(row ? row.right : f.right, window.innerWidth - 24)
+      setWidth(Math.max(f.width, Math.min(f.width * 2 + 12, right - f.left)))
+    }
+    fit()
+    window.addEventListener('resize', fit)
+    return () => window.removeEventListener('resize', fit)
+  }, [open])
 
   const pick = (c: Ranked | undefined) => {
     if (!c) return
@@ -154,7 +182,7 @@ export function ProjectCombobox({
   }
 
   return (
-    <div className="relative min-w-0">
+    <div ref={box} className="relative min-w-0">
       <input
         className="input w-full"
         role="combobox"
@@ -174,9 +202,8 @@ export function ProjectCombobox({
         onKeyDown={onKey}
       />
       {open && (
-        // As wide as the row the field sits in (two columns and their gap), so
-        // a path and where it came from fit beside the name.
-        <div className="absolute left-0 top-[calc(100%+4px)] z-20 max-w-[calc(100vw-48px)] rounded-[8px] border border-[var(--app-hairline-strong)] bg-panel p-1 shadow-lg" style={{ width: 'calc(200% + 12px)' }}>
+        // `width` above: as wide as the row, never past its right edge.
+        <div data-project-list className="absolute left-0 top-[calc(100%+4px)] z-20 min-w-0 overflow-hidden rounded-[8px] border border-[var(--app-hairline-strong)] bg-panel p-1 shadow-lg" style={{ width: width ?? '100%' }}>
           {items.length > 0 ? (
             <CandidateList id={`${id}-list`} label="Projects and repositories" items={items} active={active} home={home} onPick={pick} onHover={setActive} />
           ) : (
@@ -190,7 +217,7 @@ export function ProjectCombobox({
               onMouseDown={(e) => { e.preventDefault(); setOpen(false); onNewProject() }}
               className="mt-1 flex h-[32px] w-full items-center gap-2 rounded-[6px] border-t border-[var(--app-hairline)] px-2.5 text-left text-[13px] text-accent hover:bg-[var(--app-row-hover)]"
             >
-              New project… <span className="text-[12px] text-fg-muted">a repository, a monorepo or several repositories</span>
+              <span className="shrink-0">New project…</span> <span className="min-w-0 truncate text-[12px] text-fg-muted">a repository, a monorepo or several repositories</span>
             </button>
           )}
         </div>

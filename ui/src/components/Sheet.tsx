@@ -74,7 +74,17 @@ export function Sheet({
           // that row leaves room for it (`SHEET_CLOSE_ROOM`).
           <CloseButton onClick={onClose} className="absolute right-2.5 top-2.5 z-10" />
         )}
-        <div className="app-scroll min-h-0 flex-1 overflow-y-auto">{children}</div>
+        {/* Scrolls down, never sideways. overflow-y alone makes x `auto`
+          * too, and a dropdown reaching past the right edge, with a
+          * scrollIntoView inside it, slid New agent's whole body left
+          * (owner, 2026-11-26). Hidden still yields to a script, so a
+          * sideways scroll is also put back at once. */}
+        <div
+          className="app-scroll min-h-0 flex-1 overflow-y-auto overflow-x-hidden"
+          onScroll={(e) => { if (e.currentTarget.scrollLeft !== 0) e.currentTarget.scrollLeft = 0 }}
+        >
+          {children}
+        </div>
         {footer && <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-[var(--app-hairline)] px-5 py-3">{footer}</div>}
       </div>
     </div>,
