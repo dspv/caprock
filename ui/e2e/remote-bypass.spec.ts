@@ -21,6 +21,16 @@ test('New agent on another computer shows its bypass warning on the first try, a
   const machines = [{ id: WIN, name: 'Win PC1', relay: 'wss://relay.invalid', added_at: now, status: 'online', kind: 'machine', role: 'controller', version: '0.198.0', last_seen: now, streams: 0 }]
   const asked: string[] = []
   await page.route(/\/v1\/machines(\?.*)?$/, (r) => r.request().method() === 'GET' ? r.fulfill(json({ machines })) : r.fallback())
+  // Picking Bypass is kept as this machine's preference once the start is
+  // sent (useInitialMode). Answered here: written to the shared stand, it
+  // made every later spec's plain start a Bypass one, refused for want of
+  // the consent this stand never gave.
+  const saved: unknown[] = []
+  await page.route(/\/v1\/settings$/, (r) => {
+    if (r.request().method() !== 'PUT') return r.fallback()
+    saved.push(r.request().postDataJSON())
+    return r.fulfill(json(r.request().postDataJSON()))
+  })
   await page.route(/\/v1\/machines\/sessions$/, (r) => r.fulfill(json({ machines: [{ id: WIN, name: 'Win PC1', status: 'online', at: now, sessions: [] }] })))
   await page.route(/\/v1\/m\/[^/]+\//, (r) => {
     const u = new URL(r.request().url())
