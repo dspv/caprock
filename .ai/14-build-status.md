@@ -566,6 +566,20 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-11-27 — 0.199.0: a phone chat you can read and type in, the microphone kept across updates
+
+A minor release. On the phone, replies render as Markdown: code blocks with
+their language and a Copy button, lists, headings, tables with a header row,
+and a fade where something scrolls sideways. The keyboard goes away on a
+drag of the conversation, after Send, or from its own button, and the iOS
+app shows the Done bar again. Return makes a new line and Send sends. The
+composer is one row (+, the field, mic or Send), text is 16px in one font,
+holding a reply offers Copy text, Copy code and Drop into 2nd Brain, the
+Chat and Terminal views are full-size targets, a swipe from the left edge
+goes back, and a tap on the terminal no longer raises the keyboard. On the
+Mac, terminals run from a staged copy of Caprock Terminal, so a Caprock
+update no longer takes the microphone from sessions left open through it.
+
 ### 2026-11-26 — 0.198.0: set up a linked computer from its page, its sessions as your own
 
 A minor release. A linked computer's page lists what it still needs and runs
