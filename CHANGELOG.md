@@ -12,6 +12,43 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.199.0] - 2026-11-27
+
+### Changed
+
+- **phone:** the chat on a phone (the iOS app and m.caprock.dev) has a
+  messenger's field: one row with + (Photos, Files, Keys, the dictation
+  language), the field as a round pill in the text's face that grows to five
+  lines, and the mic while it is empty or Send once it is not. Replies and
+  your messages are 16px, code a little smaller, tool calls in plain words;
+  the context line gives its row to the conversation while you type. The
+  Chat and Terminal switch is a full 44px to a finger. On a phone the
+  terminal no longer raises the keyboard when tapped, and its text size
+  changes with a pinch or A− and A+. In the iOS app a swipe from the left
+  edge goes back, and the field rides up and down with the keyboard.
+
+### Fixed
+
+- **ptyhost:** voice input (`/voice`) in a Caprock terminal on macOS no
+  longer dies with "No audio detected from microphone" after a Caprock
+  update. The update replaced the Caprock Terminal helper that open
+  terminals ran from, so macOS could no longer check their signature and
+  silently refused them the microphone. Terminals now run from a copy of the
+  helper the daemon keeps per version, which an update leaves in place until
+  the last terminal on it closes; same bundle id and signature, so your
+  Allow still applies. A terminal opened before this update still needs one
+  restart for voice.
+- **phone:** the chat on a phone (the iOS app and m.caprock.dev) draws an
+  agent's reply as Markdown: code blocks with Copy that scroll sideways,
+  numbered and nested lists, headings, italics and struck words, quotes, and
+  tables with their header, a fade at the edge of anything that scrolls
+  sideways. Hold a reply for Copy text, Copy code and Drop into 2nd Brain,
+  in place of the invisible button that sat under every reply. The keyboard
+  goes away when the conversation is dragged, after Send, and with a button
+  beside the field; Return is a new line and Send sends. In the iOS app the
+  bar with Done is back over the keyboard. The chat's field no longer ends
+  above the keyboard in iOS Safari.
+
 ## [0.198.0] - 2026-11-26
 
 ### Added
