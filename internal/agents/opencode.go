@@ -264,14 +264,16 @@ func (m *Manager) typeWhenReady(a *Agent, text string) {
 		return
 	}
 	body := strings.ReplaceAll(strings.ReplaceAll(text, "\r\n", "\n"), "\n", "\x1b\r")
-	if err := m.Input(a.SessionID, []byte(body)); err != nil {
+	// Caprock's own typing: an exit right after it still reads as "exited
+	// at once".
+	if err := m.input(a.SessionID, []byte(body), false); err != nil {
 		m.log.Warn("could not type the first message", "component", "agents", "session_id", a.SessionID, "err", err)
 		return
 	}
 	// The send is its own write, after the text has landed: a CR in the same
 	// chunk can be read as part of a paste rather than as Enter.
 	time.Sleep(typeQuiet / 5)
-	if err := m.Input(a.SessionID, []byte("\r")); err != nil {
+	if err := m.input(a.SessionID, []byte("\r"), false); err != nil {
 		m.log.Warn("could not send the first message", "component", "agents", "session_id", a.SessionID, "err", err)
 	}
 }

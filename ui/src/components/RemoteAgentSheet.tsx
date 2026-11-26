@@ -32,8 +32,20 @@
  * folder picked when done — and **Pick a folder** (Browse).
  *
  * Errors are said in words, from what the daemon answered: offline (and
- * why), not allowed there yet, removed there, a folder that is not there,
- * the agent's one-time consent to accept there.
+ * why), not allowed there yet, removed there, a folder that is not there.
+ *
+ * **Claude Code's one-time bypass warning is that computer's** (ADR-041,
+ * amended 2026-11-26; owner, on a Windows PC, #1086): its `GET /v1/status`
+ * says whether it was accepted there, read when the sheet opens and again
+ * before a bypass start if it had not answered yet, so the warning and
+ * *Accept and start* show on the first try — never only after a start that
+ * ended on Claude Code's own warning. *Accept and start* is that computer's
+ * `POST /v1/claude/bypass-consent`, then the start; a 409 `bypass_consent`
+ * from it shows the same note.
+ *
+ * **A start that ends at once is said** (lib/startwatch): once started, that
+ * computer's `GET /v1/agents/<sid>/exit` is asked for the next seconds, and
+ * an early exit raises StartExitToast with what it printed last.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ApiError, errText, type AgentCatalog, type BrowseResponse, type RecentDir } from '@/lib/api'
@@ -51,6 +63,8 @@ import { EffortPicker } from './EffortPicker'
 import { useEffortChoice } from '@/lib/effort'
 import type { SpawnAgent } from './AgentPicker'
 import { Sheet, SheetButton, SheetField } from './Sheet'
+import { BypassConsentNote } from './BypassConsent'
+import { watchStart } from '@/lib/startwatch'
 
 /** What this computer is called in the picker. */
 export function thisComputer(): string {
@@ -115,10 +129,24 @@ export function remoteStartError(e: unknown, name: string): string {
   if (b.status === 'refused') return `${name} answered with another key. Add it again with a new link from it.`
   if (e.status === 403 && /waiting to be allowed/i.test(err)) return `${name} has not allowed this computer yet: press Allow there, or run caprock machines allow on it.`
   if (e.status === 403) return `${name} does not let this computer start agents: ${err || 'not allowed'}.`
-  if (b.code === 'bypass_consent') return `The agent on ${name} has not accepted its one-time warning for skipping permissions. Accept it there once, or pick another mode.`
+  if (b.code === 'bypass_consent') return `Claude Code on ${name} has not accepted its one-time warning for skipping permissions. Accept it here, or pick another mode.`
   if (e.status === 400 && /is not a directory/i.test(err)) return `That folder is not on ${name}. Pick one of its folders, or create it there first.`
   if (e.status === 504) return `${name} did not answer in time.`
   return err ? `${name}: ${err}` : `${name} refused the start (${e.status}).`
+}
+
+/** The words for a bypass consent that computer would not record. */
+export function remoteConsentError(e: unknown, name: string): string {
+  // A Caprock there from before a computer could give it (#1086).
+  if (e instanceof ApiError && e.status === 403 && !(e.body as { status?: string } | undefined)?.status) {
+    return `${name} does not take the consent from this computer yet: update Caprock there, or accept it once in Caprock on ${name}. Or pick another mode.`
+  }
+  return remoteStartError(e, name)
+}
+
+/** Whether a start there needs Claude Code's bypass warning accepted first. */
+export function needsRemoteConsent(agent: string, mode: string, accepted: boolean | undefined, refused: boolean): boolean {
+  return agent === 'claude' && mode === 'bypassPermissions' && (refused || accepted === false)
 }
 
 interface Stat { path: string; exists: boolean; is_dir: boolean }
@@ -187,9 +215,18 @@ export function RemoteAgentSheet({ machines, machine, onMachine, prompt: initial
   const [model, setModel] = useState(() => DEFAULT_MODELS[agent as SpawnAgent] ?? '')
   const effort = useEffortChoice(agent, entry, model)
   const [mode, setMode, rememberMode] = useInitialMode(DEFAULT_MODE)
+  const custom = agent.startsWith('custom:')
   const [prompt, setPrompt] = useState(initialPrompt)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  // Claude Code's bypass warning, as that computer has it: read on open, so
+  // the note is up before the first Start rather than after a start that
+  // ended on Claude Code's own warning (#1086).
+  const status = useApi(() => far<{ claude_bypass_accepted?: boolean }>(machine, '/v1/status'), [machine], { live: false })
+  // It refused a start its status said was fine: trust the refusal.
+  const [refused, setRefused] = useState(false)
+  useEffect(() => { setRefused(false) }, [machine])
+  const consent = !custom && needsRemoteConsent(agent, mode, status.data?.claude_bypass_accepted, refused)
 
   // Whether the folder typed is there, said as it is typed (debounced).
   const [stat, setStat] = useState<Stat | null | 'outside'>(null)
@@ -206,12 +243,26 @@ export function RemoteAgentSheet({ machines, machine, onMachine, prompt: initial
     return () => { alive = false; window.clearTimeout(t) }
   }, [cwd, machine])
 
-  const custom = agent.startsWith('custom:')
   const start = async () => {
     if (!cwd.trim()) { setError(`Pick a folder on ${name}.`); return }
     setBusy(true)
     setError('')
     try {
+      // A bypass start before that computer answered asks it first: a start
+      // that slipped past would open on Claude Code's warning, whose default
+      // answer is No, exit, and end there unseen.
+      if (!consent && !custom && agent === 'claude' && mode === 'bypassPermissions' && status.data === undefined) {
+        const st = await far<{ claude_bypass_accepted?: boolean }>(machine, '/v1/status').catch(() => undefined)
+        if (st?.claude_bypass_accepted === false) { setRefused(true); return }
+      }
+      if (consent) {
+        try {
+          await far(machine, '/v1/claude/bypass-consent', { method: 'POST', body: '{}' })
+        } catch (e) {
+          setError(remoteConsentError(e, name))
+          return
+        }
+      }
       const req: Record<string, unknown> = { cwd: cwd.trim() }
       if (agent !== 'claude') req.agent = agent
       if (model.trim()) req.model = model.trim()
@@ -223,10 +274,15 @@ export function RemoteAgentSheet({ machines, machine, onMachine, prompt: initial
       effort.remember()
       // Every list on the page reads the one list again: it is there now.
       window.dispatchEvent(new Event(MACHINES_EVENT))
+      // A program that ends in its first seconds is said, not left to a tab
+      // that quietly closes (#1086).
+      watchStart({ machine, name, sessionId: res.session_id })
       onStarted(machine, res.session_id, prompt.trim().slice(0, 60) || `new session on ${name}`)
       onClose()
     } catch (e) {
-      setError(remoteStartError(e, name))
+      const asked = e instanceof ApiError && e.status === 409 && (e.body as { code?: string } | undefined)?.code === 'bypass_consent'
+      if (asked) setRefused(true)
+      else setError(remoteStartError(e, name))
     } finally {
       setBusy(false)
     }
@@ -273,7 +329,7 @@ export function RemoteAgentSheet({ machines, machine, onMachine, prompt: initial
             title={`Start on ${name} (${startKey})`}
             keyHint={busy ? undefined : startKey}
           >
-            {busy ? 'Starting…' : 'Start'}
+            {busy ? 'Starting…' : consent ? 'Accept and start' : 'Start'}
           </SheetButton>
         </>
       }
@@ -353,6 +409,7 @@ export function RemoteAgentSheet({ machines, machine, onMachine, prompt: initial
         </div>
         {/* A row of its own: three segments do not fit half of one. */}
         {!custom && <PermissionPicker value={mode} onChange={setMode} agent={agent as SpawnAgent} hint="kept for the next agent" />}
+        {consent && <BypassConsentNote on={name} />}
         <SheetField label="First message" hint="optional">
           <textarea
             className="input min-h-[84px] resize-y font-[family-name:var(--font-sans)] text-[13px] leading-relaxed"

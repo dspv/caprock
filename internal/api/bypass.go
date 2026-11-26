@@ -36,8 +36,10 @@ func (s *Server) needsBypassConsent(req map[string]any) bool {
 // handleBypassConsent is POST /v1/claude/bypass-consent: the user accepted
 // Caprock's copy of Claude Code's bypass warning, so the same key Claude Code
 // writes on "Yes, I accept" is written to user settings. A mutating route:
-// the CSRF guard refuses a cross-site request and a paired device cannot make
-// it — the consent is given at the machine. Contract: .ai/03-contracts.md.
+// the CSRF guard refuses a cross-site request and a phone cannot make it —
+// the consent is given at the machine, or from another computer of the
+// owner's, whose New agent shows the same warning (computerRoutes, #1086).
+// Contract: .ai/03-contracts.md.
 func (s *Server) handleBypassConsent(w http.ResponseWriter, r *http.Request) {
 	if s.d.AcceptBypass == nil {
 		s.failCode(w, http.StatusNotImplemented, errors.New("this daemon cannot record the bypass consent"))

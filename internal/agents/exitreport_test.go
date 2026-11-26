@@ -250,3 +250,28 @@ func TestARunningSessionHasNoStoredExit(t *testing.T) {
 		t.Fatalf("a running session reports an exit: %+v", rep)
 	}
 }
+
+// What a terminal sends by itself on attaching (a focus report), and the
+// first message Caprock types for the start, are nobody closing the session:
+// a program that then ends at once — Claude Code at its bypass warning,
+// whose default answer is No, exit — still reads as exited at once (#1086).
+func TestAFocusReportOrCaprocksOwnTypingKeepsAnExitEarly(t *testing.T) {
+	m, _, f := newMgr(t)
+	defer m.Shutdown()
+	a := spawnAndPrint(t, m, f, SpawnRequest{Cwd: t.TempDir(), PermissionMode: "bypassPermissions"}, "WARNING: Claude Code running in Bypass Permissions mode")
+	if err := m.Input(a.SessionID, []byte("\x1b[I")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.InputSeq(a.SessionID, "tab-1", 1, []byte("\x1b[O")); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.input(a.SessionID, []byte("fix the build"), false); err != nil {
+		t.Fatal(err)
+	}
+	f.session.finish(0)
+	waitExit(t, a)
+	rep, ok := m.Exit(a.SessionID)
+	if !ok || !rep.Early || !strings.Contains(rep.Tail, "Bypass Permissions mode") {
+		t.Fatalf("report %+v %v", rep, ok)
+	}
+}

@@ -85,6 +85,7 @@ import { SHARE_EVENT, ShareDialog } from '@/components/Share'
 import { usePromptSync } from '@/lib/nudges'
 import { AppUpdateToast } from '@/components/AppUpdateToast'
 import { ContinuedToast } from '@/components/ContinuedToast'
+import { StartExitToast } from '@/components/StartExitToast'
 import { announceContinued, movedAway, onContinued } from '@/lib/continueOn'
 import { live } from '@/lib/live'
 import { ComputerAsks } from '@/components/ComputerAsks'
@@ -2616,6 +2617,8 @@ export function AppShell() {
       <StatusStrip summary={data.summary} pane={focused ? paneStatus[focused.sessionId] : undefined} session={focused?.kind === 'session' && workspaceShown ? focusedSession : undefined} front={focused?.kind === 'session' ? focused.sessionId : undefined} version={version} figures={!prefs.sidebar} sessions={data.sessions} onOpenSession={openSessionById} />
       <AppUpdateToast />
       <ContinuedToast />
+      {/* A start that ended in its first seconds (#1086). */}
+      <StartExitToast />
       {/* Another computer asking to control this one (ADR-067). */}
       <ComputerAsks />
       {isTauri() && <AppUpdateAsk />}
