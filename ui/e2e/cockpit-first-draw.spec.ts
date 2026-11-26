@@ -474,7 +474,8 @@ test('the unfolded released heading: a seal, the version, age and cost, a finish
 test('the unfolded Release section keeps its stepper on one row and inside the edge', async ({ app, page }) => {
   const os = [{ os: 'linux', state: 'pass', checks: 4 }, { os: 'macos', state: 'running', checks: 4 }, { os: 'windows', state: 'running', checks: 4 }]
   const cases = [
-    { name: 'release-pr', words: /^checks 1 of 3 systems$/,
+    // Its own checks counted, as the CI section counts them (#1082): RUNNING is 8 done of 11.
+    { name: 'release-pr', words: /^#942 checks running · 8 of 11$/,
       stats: statsOf([pr(942, 'chore(release): 0.183.0', 'open'), pr(940, 'feat: a batch', 'merged', 1_800_000)], [{ ...card(942, 'open', 'running'), os }, card(940, 'merged')], [rel('v0.182.4', 86_400_000, 23)]) },
     { name: 'waiting', words: /^Waiting for #941 · ready to merge$/,
       stats: statsOf([pr(941, 'feat: the next batch with a title long enough to fill the line', 'open')], [card(941, 'ready', 'pass')], [rel('v0.182.4', 86_400_000, 23)]), onPR: true },
