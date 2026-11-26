@@ -14,7 +14,7 @@
  * light and the dark theme.
  */
 import path from 'node:path'
-import type { Page } from '@playwright/test'
+import type { Locator, Page } from '@playwright/test'
 import { expect, test } from './fixtures'
 
 const shotsDir = process.env.CAPROCK_SHOTS_DIR ? path.resolve(process.env.CAPROCK_SHOTS_DIR) : ''
@@ -46,6 +46,24 @@ async function measure(page: Page) {
   })
 }
 
+/**
+ * Model and Effort side by side line up: the two labels on one baseline, the
+ * select and the radiogroup with one top and one bottom. Effort's default was
+ * a second line under its segment, which made the group taller and lifted its
+ * label above Model's (owner, 2026-11-26); it is the label row's hint now.
+ */
+async function modelBesideEffort(sheet: Locator) {
+  const box = async (l: Locator) => (await l.boundingBox())!
+  const [ml, el] = [await box(sheet.getByText('Model', { exact: true })), await box(sheet.getByText('Effort', { exact: true }))]
+  const [mc, ec] = [await box(sheet.getByRole('combobox', { name: 'Model', exact: true })), await box(sheet.getByRole('radiogroup', { name: 'Effort' }))]
+  console.log(`model label ${ml.y}+${ml.height}, effort label ${el.y}+${el.height}; select ${mc.y}+${mc.height}, effort ${ec.y}+${ec.height}`)
+  expect(Math.abs(ml.y + ml.height - (el.y + el.height))).toBeLessThan(0.5)
+  expect(Math.abs(mc.y - ec.y)).toBeLessThan(0.5)
+  expect(Math.abs(mc.y + mc.height - (ec.y + ec.height))).toBeLessThan(0.5)
+  await expect(sheet.getByRole('radiogroup', { name: 'Effort' }).locator('[data-default]')).toHaveCount(1)
+  await expect(sheet.locator('[data-effort-hint]')).toHaveText(/^\S+ is default$/)
+}
+
 async function shoot(page: Page, name: string) {
   if (!shotsDir) return
   for (const theme of ['light', 'dark'] as const) {
@@ -60,7 +78,8 @@ test('New agent fits a 1440×900 window, scrolls its middle in a short one, and 
   test.setTimeout(90_000)
   await page.setViewportSize({ width: 1440, height: 900 })
   await app.open()
-  await openSheet(page)
+  const sheet = await openSheet(page)
+  await modelBesideEffort(sheet)
 
   const tall = await measure(page)
   console.log(`new agent at 1440×900: dialog ${Math.round(tall.dialog.height)} px tall, ${Math.round(tall.natural)} px uncapped`)
@@ -123,7 +142,7 @@ test('New agent with another computer and a GitHub project still fits 1440×900'
   const top = async (l: ReturnType<Page['locator']>) => (await l.boundingBox())!.y
   expect(Math.abs(await top(sheet.getByRole('combobox', { name: 'Machine', exact: true })) - await top(sheet.getByRole('combobox', { name: 'Project' })))).toBeLessThan(2)
   expect(Math.abs(await top(sheet.getByRole('combobox', { name: 'Where', exact: true })) - await top(sheet.getByRole('combobox', { name: 'Agent', exact: true })))).toBeLessThan(2)
-  expect(Math.abs(await top(sheet.getByRole('combobox', { name: 'Model', exact: true })) - await top(sheet.getByRole('radiogroup', { name: 'Effort' })))).toBeLessThan(6)
+  await modelBesideEffort(sheet)
 
   const tall = await measure(page)
   console.log(`new agent with Machine and GitHub at 1440×900: dialog ${Math.round(tall.dialog.height)} px tall, ${Math.round(tall.natural)} px uncapped`)
