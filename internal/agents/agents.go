@@ -1344,6 +1344,11 @@ func (a *Agent) wait(m *Manager) {
 		}
 	}
 	m.log.Info("owned session exited", "component", "agents", "session_id", a.SessionID, "code", code, "err", errStr(err))
+	// Its holder goes with it, and with it perhaps the last terminal on an
+	// older copy of the Caprock Terminal helper (ptyhost.StageHelper).
+	if _, hosted := a.sess.(ptyman.Detacher); hosted && m.hosts != nil {
+		m.hosts.HolderExited()
+	}
 	if a.onExit != nil {
 		a.onExit(a.SessionID, code)
 		for _, id := range followed {

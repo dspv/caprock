@@ -1651,10 +1651,12 @@ microphone, and macOS asks once before it can. With the app, the prompt
 names **Caprock Terminal**, the small helper every Caprock terminal runs in:
 choose **Allow** once and every program in a Caprock terminal — Claude
 Code, Codex, a recorder you run in a shell tab — can record, and the answer
-stays across updates of Caprock and of Claude Code. Terminals that were
-already open when you updated keep asking in the old way until you close
-them; open a new one for voice. With Homebrew alone (no app), the prompt
-names the program itself, such as `claude`.
+stays across updates of Caprock and of Claude Code. Terminals run from a
+copy of the helper that an update leaves in place, so a terminal left open
+through an update keeps its microphone. A terminal opened before the update
+that brought this (or before the helper itself) can still lose it: restart
+that session, or open a new one, for voice. With Homebrew alone (no app),
+the prompt names the program itself, such as `claude`.
 
 If an agent says "No audio detected from microphone" and no prompt
 appeared:
