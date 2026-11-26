@@ -32,7 +32,7 @@ describe('MachineScreen — another computer’s sessions (ADR-067)', () => {
     vi.spyOn(machinesApi, 'list').mockResolvedValue([mini])
     render(<MachineScreen id={ID} session="a" />)
     const frame = (await screen.findByTitle('Mac mini: session')) as HTMLIFrameElement
-    expect(frame.getAttribute('src')).toBe(`/?machine=${ID}#/session/a?tab=terminal`)
+    expect(frame.getAttribute('src')).toBe(`/?machine=${ID}#/session/a?tab=chat`)
   })
 
   it('says offline with the reason and offers to try again', async () => {
