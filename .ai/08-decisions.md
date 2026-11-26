@@ -8042,11 +8042,10 @@ else that records from a shell is refused silently.
 - **No session is lost to an update.** Holders already running keep
   running as they are: a daemon from this release reattaches them through
   the unchanged registry and protocol, and only terminals opened after it
-  start in the helper. The app replaces the helper bundle without touching
-  a running one: the new bundle is assembled beside it, the old renamed
-  aside, the new renamed in, the old deleted (a running executable keeps
-  its file on macOS). A holder in the helper counts as this install's in
-  the doctor and the footprint (`installDirs`).
+  start in the helper. Holders run from a staged copy of the helper, never
+  from the bundle the app installs and replaces (amended 2026-11-26,
+  below). A holder in the helper counts as this install's in the doctor
+  and the footprint (`installDirs`).
 
 **Why the prompts may name Caprock now.** ADR-044 moved every prompt away
 from Caprock because Caprock was ad-hoc signed: a new program to TCC at
@@ -8077,7 +8076,9 @@ as Caprock Terminal.
   the latter); a helper beside it needs neither.
 - *A versioned helper path per release.* TCC keys a signed bundle by its
   identifier and requirement, not its path; one path keeps one entry in
-  System Settings.
+  System Settings. Withdrawn by the 2026-11-26 amendment: the one path was
+  the bug, and the identifier and requirement, which do not change, are
+  what keeps one entry.
 
 **Unverified.** That macOS shows the prompt naming Caprock Terminal and
 recording then works needs a person at the microphone, on a Developer ID
@@ -8091,6 +8092,52 @@ and the helper by itself; a shell in the plain holder answers for itself; a
 holder from before the helper and one in the helper both survive the
 helper's reinstall and are reattached and typed into, and a terminal opened
 after is the helper's.
+
+**Amended 2026-11-26 — holders run from a staged copy of the helper.**
+After 0.197.0 the owner's `/voice` said "No audio detected from microphone"
+again. Measured read-only on his Mac: the session's holder had been started
+before the update, and `codesign -v <pid>` on every such holder answered
+"No such file or directory", while holders started after it were "valid on
+disk, satisfies its Designated Requirement". The app's reinstall renamed the
+old bundle aside and deleted it; the running holder kept its file, but macOS
+could no longer check the signature of the program it holds responsible and
+refused the microphone without asking. The Unverified item above ("a holder
+whose bundle was replaced under it is judged by the new bundle") is
+answered: it is not judged at all. Every update broke the microphone, and
+likely every other privacy grant, for every terminal still open.
+
+- **The daemon stages the helper.** At start, when `ptyhost.Binary` picks
+  the helper, `ptyhost.StageHelper` copies its bundle byte for byte (one
+  `clonefile`, copy-on-write on APFS; a plain copy of files, links and
+  permission bits if that fails) to
+  `<data_dir>/ptyhost/bin/helper-<16 hex>/Caprock Terminal.app`, named by a
+  SHA-256 of the tree, and starts holders from that copy. An unchanged
+  helper reuses its copy. The app's install of `<data_dir>/bin/Caprock
+  Terminal.app` is unchanged; no holder runs from it any more.
+- **Same bundle id, same signature.** The copy is the signed bundle, so its
+  identifier and designated requirement are those the Allow was given to.
+- **A copy is deleted only when nothing runs from it.** At daemon start and
+  10 s after a held session ends, every `helper-*` copy other than the one
+  new holders use is deleted unless a running process named
+  `caprock-pty-host` was executed from inside it (`kern.procargs2`, the
+  whole process table, so a holder of any daemon or an orphan keeps its
+  copy). If the table cannot be read, nothing is deleted. Holders on every
+  copy count as this install's (`ptyhost.StagedHelperDirs`).
+- **Before this, nothing is repaired.** A terminal opened before the update
+  that ships this keeps the old holder; the voice strip's **Restart**
+  (04-ui.md, the permission-mode restart of ADR-054) gives it a new holder
+  from the staged copy.
+
+*Rejected:* the app installing versioned bundles itself with a pointer file
+(two writers to one directory, and the app cannot tell which copies a
+running holder uses); renaming the old bundle aside instead of deleting it
+(whether macOS follows a running program's renamed path is not documented,
+and the leftovers would still need the daemon to prune them).
+
+*Unverified,* needs a Developer ID build: that `codesign -v <pid>` on a
+holder started before an update still says "valid on disk" after it, and
+`/voice` keeps recording in that terminal; that System Settings keeps one
+Caprock Terminal row as the copy's path changes.
 
 **Revisit if** Apple changes how a disclaimed process's children are
 attributed, or Caprock's daemon moves into the app bundle as an

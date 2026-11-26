@@ -22,8 +22,8 @@ import (
 
 // HelperBundle is the macOS helper app the desktop app ships the holder in
 // and installs beside its daemon: Caprock.app/Contents/Helpers/ in the
-// bundle, <data_dir>/bin/ once installed. HelperID is its
-// CFBundleIdentifier.
+// bundle, <data_dir>/bin/ once installed, and holders run from the daemon's
+// copy of it (StageHelper). HelperID is its CFBundleIdentifier.
 const (
 	HelperBundle = "Caprock Terminal.app"
 	HelperID     = "dev.caprock.terminal"

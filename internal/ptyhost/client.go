@@ -40,6 +40,8 @@ type Manager struct {
 	// Such a session works as before and ends with the daemon, which beats
 	// refusing to start it.
 	Fallback ptyman.Manager
+
+	pruneState // HolderExited (stage.go)
 }
 
 // ReadyTimeout is how long a new holder gets to start its child and report.

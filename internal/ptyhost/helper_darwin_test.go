@@ -102,6 +102,39 @@ func TestTheTerminalHelper(t *testing.T) {
 			t.Errorf("a terminal opened after the update is not the helper's own: %d answers for %d", got, host)
 		}
 	})
+
+	// The daemon starts holders from a staged copy (StageHelper), so the
+	// app replacing its installed bundle leaves the program a running
+	// terminal answers to on disk, unchanged: macOS can still check its
+	// signature and keeps giving it the microphone.
+	t.Run("an update leaves a running helper's program on disk", func(t *testing.T) {
+		data := t.TempDir()
+		staged := StageHelper(helper, data)
+		if staged == helper || !IsHelper(staged) {
+			t.Fatalf("StageHelper = %q", staged)
+		}
+		m := holderManager(data, staged)
+		_, host := spawnShell(t, m, "h-staged")
+		if got := disclaim.ResponsibleFor(host); got != host {
+			t.Errorf("the staged helper (pid %d) is answered for by %d, want itself", host, got)
+		}
+		if got := execPath(host); got != staged {
+			t.Fatalf("the holder runs from %q, want the staged copy %q", got, staged)
+		}
+		before, err := os.Stat(staged)
+		if err != nil {
+			t.Fatal(err)
+		}
+		installHelper(t, bin, plain)
+		after, err := os.Stat(execPath(host))
+		if err != nil || !os.SameFile(before, after) {
+			t.Fatalf("the running helper's program changed under it: %v", err)
+		}
+		pruneHelpers(stagedDir(data), "helper-none")
+		if _, err := os.Stat(staged); err != nil {
+			t.Fatal("the copy a running holder uses was pruned")
+		}
+	})
 }
 
 // holderManager is a daemon's view of the holders in data, started from exe.

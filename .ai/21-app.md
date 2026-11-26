@@ -2800,7 +2800,11 @@ the fallback since the Developer ID; see *With a Developer ID*):
   every update of either. Without the app (Homebrew, a development build)
   the disclaim above stays. Terminals already running when the app updates
   keep running in their old holders and keep their old attribution until
-  they end.
+  they end. Holders run from a copy the daemon stages under
+  `<data_dir>/ptyhost/bin/helper-<hash>/`, never from the installed bundle
+  the next update replaces: a holder whose bundle was deleted under it
+  failed `codesign -v` and was refused the microphone silently (ADR-101,
+  amended 2026-11-26).
 - **The chat's microphone asks as Caprock** (ADR-102, 2026-11-23). Voice
   input in the chat and the composer is the app's own process listening, so
   macOS asks for Caprock.app, once each: the microphone

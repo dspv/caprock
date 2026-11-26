@@ -283,6 +283,26 @@ func TestTheTerminalHelperIsThisInstall(t *testing.T) {
 	}
 }
 
+// Holders on every staged copy of the helper under the data directory, the
+// newest and the older ones still running, are this install's too.
+func TestStagedHelperCopiesAreThisInstall(t *testing.T) {
+	data := t.TempDir()
+	var staged []string
+	for _, name := range []string{"helper-0000000000000001", "helper-0000000000000002"} {
+		exe := ptyhost.HelperExe(filepath.Join(ptyhost.Dir(data), "bin", name))
+		if err := os.MkdirAll(filepath.Dir(exe), 0o755); err != nil { //nolint:gosec // a test bundle
+			t.Fatal(err)
+		}
+		staged = append(staged, exe)
+	}
+	dirs := installDirs(filepath.Join(t.TempDir(), "caprock"), staged[1], data)
+	for _, exe := range staged {
+		if !inInstall(exe, dirs) {
+			t.Errorf("the staged helper %s is not in %v", exe, dirs)
+		}
+	}
+}
+
 func TestDaemonArgvAndDataDir(t *testing.T) {
 	for _, c := range []struct {
 		argv []string

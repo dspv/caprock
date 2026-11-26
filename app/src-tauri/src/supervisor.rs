@@ -831,17 +831,20 @@ pub fn install_bin(src: &Path, dst: &Path) -> Result<(), String> {
 
 /// The macOS helper app the terminal holder runs in (ADR-101): its own
 /// bundle id, microphone usage string and signature, so what runs in a
-/// Caprock terminal asks macOS in its name. The daemon starts it from
-/// `<data_dir>/bin/Caprock Terminal.app` when it is there.
+/// Caprock terminal asks macOS in its name. The daemon stages a copy of
+/// `<data_dir>/bin/Caprock Terminal.app` when it is there, and starts
+/// holders from the copy.
 const HELPER_APP: &str = "Caprock Terminal.app";
 
 /// Puts the helper bundle `src` into `dir` when it differs from the one there.
 ///
-/// A running terminal never notices: the new bundle is assembled beside the
-/// old one, the old one is renamed aside, the new one renamed in, and only
-/// then is the old one deleted. A holder running from the old bundle keeps
-/// its file (macOS frees it when the last process using it exits), and the
-/// next terminal starts from the new one at the same path.
+/// The new bundle is assembled beside the old one, the old one is renamed
+/// aside, the new one renamed in, and only then is the old one deleted. No
+/// terminal runs from this bundle: the daemon copies it under
+/// `<data_dir>/ptyhost/bin/helper-<hash>/` and starts holders from that copy
+/// (`ptyhost.StageHelper`), because a holder whose bundle was deleted under
+/// it fails macOS's signature check and loses the microphone (ADR-101,
+/// amended 2026-11-26).
 fn install_helper(src: &Path, dir: &Path) -> Result<(), String> {
     let dst = dir.join(HELPER_APP);
     if same_tree(src, &dst) {
