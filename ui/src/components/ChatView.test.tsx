@@ -623,6 +623,45 @@ describe('ChatView: a turn at work', () => {
     expect(renderedIds()).toEqual([1, 2])
   })
 
+  // The owner's Chat, 2026-11-26, as his daemon stored it: the Stop hook
+  // (id 1229299, 15:44:36) is written before the reply's transcript row
+  // (id 1229300, 15:44:34), and that row's event frame and the update with
+  // its words reach the chat in one batch. Only the prompt showed.
+  const owners = () => {
+    const at = (t: string) => `2026-11-26T15:${t}+02:00`
+    const spawn: Event = { id: 1229253, ts: at('43:44.072'), session_id: 's', source: 'hook', kind: 'agent.spawn', payload: { source: 'startup' } }
+    const user: Event = { id: 1229291, ts: at('44:29.542'), session_id: 's', source: 'hook', kind: 'turn.user', payload: { prompt: 'Can a promo code be made for this?' } }
+    const stopped: Event = { id: 1229299, ts: at('44:36.71'), session_id: 's', source: 'hook', kind: 'agent.stop', payload: { last_assistant_message: 'No, that will not work.' } }
+    const answer = (text: string): Event => ({
+      id: 1229300, ts: at('44:34.04'), session_id: 's', source: 'transcript', kind: 'turn.assistant',
+      payload: { _from: 'transcript', message_id: 'msg_1', model: 'claude-haiku-5-5', sidechain: false, text, tools: null },
+    })
+    return { spawn, user, stopped, answer }
+  }
+
+  it('a reply stored after its Stop, whose words come in the same batch as its row, shows live', async () => {
+    const { spawn, user, stopped, answer } = owners()
+    store.events = [spawn, user]
+    render(<ChatView sessionId="s" canType={false} chat />)
+    await waitFor(() => expect(renderedIds()).toEqual([1229291]))
+    await deliver([stopped])
+    await act(async () => {
+      live.handle({ type: 'event', data: answer('') })
+      live.handle({ type: 'event_update', data: answer('No, that will not work.') })
+      await new Promise((r) => setTimeout(r, 40))
+    })
+    expect(await screen.findByText('No, that will not work.')).toBeInTheDocument()
+    expect(renderedIds()).toEqual([1229291, 1229300])
+  })
+
+  it('the same reply, opened after it landed: shown', async () => {
+    const { spawn, user, stopped, answer } = owners()
+    store.events = [spawn, user, stopped, answer('No, that will not work.')]
+    render(<ChatView sessionId="s" canType={false} chat />)
+    expect(await screen.findByText('No, that will not work.')).toBeInTheDocument()
+    expect(renderedIds()).toEqual([1229291, 1229300])
+  })
+
   it('a bare address in a reply is a link that opens in a new tab', async () => {
     store.events = [msg(1, 'where is it?'), reply(2, 'Here: https://claude.ai/artifact/XUWK6T8BAtS4msXnSYrbyY.')]
     render(<ChatView sessionId="s" canType={false} />)
