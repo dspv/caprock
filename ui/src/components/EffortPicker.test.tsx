@@ -50,12 +50,15 @@ describe('Effort in the New session dialog', () => {
     await waitFor(() => expect(checked()).toBe('medium'))
     const def = within(group()!).getAllByRole('radio').filter((r) => r.hasAttribute('data-default'))
     expect(def.map((r) => r.getAttribute('data-effort'))).toEqual(['medium'])
-    expect(def[0]!.textContent).toBe('Meddefault')
+    // One line in the segment; the default is named in the label row, the name stays "Effort".
+    expect(def[0]!.textContent).toBe('Med')
+    expect(document.querySelector('[data-effort-hint]')?.textContent).toBe(' · Med is default')
     fireEvent.change(screen.getByLabelText<HTMLSelectElement>(/Model/), { target: { value: 'claude-sonnet-5-5' } })
     expect(checked()).toBe('low')
     // No default known for this one: nothing marked, nothing checked.
     fireEvent.change(screen.getByLabelText<HTMLSelectElement>(/Model/), { target: { value: 'claude-haiku-5-5' } })
     expect(checked()).toBeUndefined()
+    expect(document.querySelector('[data-effort-hint]')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Start session' }))
     await waitFor(() => expect(spawn).toHaveBeenCalled())
     expect(spawn.mock.calls[0]![0]).not.toHaveProperty('effort')

@@ -242,7 +242,7 @@ export function SpawnDialog({
               </div>
               {effort.levels.length > 0 && (
                 <div className="min-w-0 max-w-full">
-                  <EffortPicker levels={effort.levels} value={effort.shown} def={effort.def} onChange={effort.choose} labelClassName="text-[11px] text-fg-muted" />
+                  <EffortPicker levels={effort.levels} value={effort.shown} def={effort.def} onChange={effort.choose} labelClassName="text-[11px] text-fg-muted" dotHint />
                 </div>
               )}
             </div>
