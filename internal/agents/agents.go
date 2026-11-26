@@ -193,9 +193,13 @@ type Agent struct {
 	// session had none.
 	setupDone chan struct{}
 
-	// typedAny is set by the first input typed into the session: an exit
-	// after it is somebody closing it, not a program that never started
-	// (EarlyExit).
+	// typedAny is set by the first input a person typed into the session:
+	// an exit after it is somebody closing it, not a program that never
+	// started (EarlyExit). What a terminal sends by itself (a focus or mouse
+	// report, personTyped) and the first message Caprock types for the
+	// start (typeWhenReady) do not set it: a tab attaching to a session that
+	// sat on Claude Code's bypass warning sends a focus report, and the exit
+	// then read as somebody closing it, with nothing said (#1086).
 	typedAny atomic.Bool
 	// stopped is set when Caprock was asked to end it (End, a stop signal,
 	// a restart): an exit then is not one the program chose.
@@ -1002,13 +1006,22 @@ func (m *Manager) OwnedRunningKind(kind string) []string {
 
 // Input writes typed bytes to an owned session.
 func (m *Manager) Input(sessionID string, data []byte) error {
+	return m.input(sessionID, data, true)
+}
+
+// input is Input; by says whether the bytes are somebody's rather than
+// Caprock's own first message (typeWhenReady), which is not somebody
+// closing the session (typedAny).
+func (m *Manager) input(sessionID string, data []byte, by bool) error {
 	a, ok := m.Get(sessionID)
 	if !ok {
 		return errNotOwned(sessionID)
 	}
 	// Answered in the terminal: the buttons are out of date.
 	m.typedInput(a, data)
-	a.typedAny.Store(true)
+	if by && personTyped(data) {
+		a.typedAny.Store(true)
+	}
 	_, err := a.sess.Write(data)
 	return err
 }
@@ -1070,7 +1083,9 @@ func (m *Manager) InputSeq(sessionID, client string, seq uint64, data []byte) (u
 	}
 	if seq > 0 {
 		m.typedInput(a, data)
-		a.typedAny.Store(true)
+		if personTyped(data) {
+			a.typedAny.Store(true)
+		}
 		a.noteKey(data, m.now())
 	}
 	if sw, ok := a.sess.(ptyman.SeqWriter); ok {

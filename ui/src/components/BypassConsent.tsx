@@ -38,15 +38,16 @@ export function useBypassConsent(agent: string, mode: string) {
 }
 
 /** Claude Code's warning, in Caprock's words, above the start button;
- *  `button` is that button's label. */
-export function BypassConsentNote({ button = 'Accept and start' }: { button?: string }) {
+ *  `button` is that button's label, `on` the computer it is answered for
+ *  (another one's name, for New agent there). */
+export function BypassConsentNote({ button = 'Accept and start', on = 'this computer' }: { button?: string; on?: string }) {
   return (
-    <div role="note" aria-label="Bypass consent" className="grid gap-1 rounded-sm border border-danger/50 bg-danger/10 px-3 py-2 text-[12.5px] leading-relaxed text-fg">
-      <p className="font-medium">First bypass session on this computer</p>
+    <div role="note" aria-label="Bypass consent" data-bypass-consent className="grid gap-1 rounded-sm border border-danger/50 bg-danger/10 px-3 py-2 text-[12.5px] leading-relaxed text-fg">
+      <p className="font-medium">First bypass session on {on}</p>
       <p className="text-fg-muted">
         In bypass, Claude Code does not ask before running commands or editing files. Use it where a mistake is easy to undo
         — a repository you can reset, not a machine with secrets you cannot lose. You accept responsibility for what the agent
-        does. Claude Code asks this once; <span className="text-fg">{button}</span> answers it for good on this computer.
+        does. Claude Code asks this once; <span className="text-fg">{button}</span> answers it for good on {on}.
       </p>
     </div>
   )

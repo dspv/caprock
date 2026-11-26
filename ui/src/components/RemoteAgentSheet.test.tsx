@@ -7,7 +7,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '@/lib/api'
 import { NewAgentSheet } from './NewAgentSheet'
-import { machineStartable, remoteStartError } from './RemoteAgentSheet'
+import { machineStartable, needsRemoteConsent, remoteConsentError, remoteStartError } from './RemoteAgentSheet'
 import type { Machine } from '@/lib/machines'
 
 const ID = 'f7kc4QaG4HRPYEjg19Pr-au-FeTljmKHkikFrAmRTzM'
@@ -106,6 +106,72 @@ describe('New agent on another computer', () => {
     expect(remoteStartError(e(409, { error: 'consent', code: 'bypass_consent' }), 'Mac mini')).toMatch(/one-time warning/)
     expect(machineStartable(mini, { id: ID, name: 'Mac mini', status: 'offline' })).toEqual({ ok: false, why: 'offline' })
     expect(machineStartable({ ...mini, status: 'idle' })).toEqual({ ok: true })
+    expect(remoteConsentError(e(403, { error: 'not allowed' }), 'Mac mini')).toMatch(/does not take the consent from this computer yet/)
+    expect(needsRemoteConsent('claude', 'bypassPermissions', false, false)).toBe(true)
+    expect(needsRemoteConsent('claude', 'bypassPermissions', undefined, false)).toBe(false)
+    expect(needsRemoteConsent('claude', 'bypassPermissions', true, true)).toBe(true)
+    expect(needsRemoteConsent('codex', 'bypassPermissions', false, false)).toBe(false)
+    expect(needsRemoteConsent('claude', 'acceptEdits', false, false)).toBe(false)
+  })
+})
+
+// Claude Code's one-time bypass warning is the other computer's (#1086): two
+// starts in Bypass on a Windows PC ended on Claude Code's own warning before
+// the sheet ever showed it.
+describe('Bypass on another computer', () => {
+  afterEach(() => {
+    cleanup()
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+  })
+
+  const bypassRoutes = (accepted: boolean, start: Reply | ((init?: RequestInit) => Reply), consent: Reply = { body: { accepted: true } }) => ({
+    '/v1/settings': { body: { spawn_permission_mode: 'bypassPermissions' } },
+    ...homeRoutes(start),
+    [`${far}/v1/status`]: { body: { version: 't', claude_bypass_accepted: accepted } },
+    [`${far}/v1/claude/bypass-consent`]: consent,
+  })
+
+  async function openOnMini() {
+    render(<NewAgentSheet projects={[]} onClose={vi.fn()} onStarted={vi.fn()} onStartedOn={vi.fn()} />)
+    fireEvent.change(await screen.findByRole('combobox', { name: 'Machine' }), { target: { value: ID } })
+    const folder = await screen.findByRole('textbox', { name: 'Folder on Mac mini' })
+    await waitFor(() => expect((folder as HTMLInputElement).value).toBe('/home/me/api'))
+  }
+
+  it('shows the warning before the first start, and Accept and start records it there, then starts', async () => {
+    const order: string[] = []
+    const calls = stubFetch(bypassRoutes(false, () => { order.push('start'); return { body: { session_id: 'far-1' } } }, { body: { accepted: true } }))
+    await openOnMini()
+    const note = await screen.findByRole('note', { name: 'Bypass consent' })
+    expect(note.textContent).toMatch(/First bypass session on Mac mini/)
+    const button = screen.getByRole('button', { name: /Accept and start/ })
+    fireEvent.click(button)
+    await waitFor(() => expect(order).toEqual(['start']))
+    const consent = calls.findIndex((c) => c.url === `${far}/v1/claude/bypass-consent`)
+    const start = calls.findIndex((c) => c.url === `${far}/v1/agents`)
+    expect(consent).toBeGreaterThan(-1)
+    expect(calls[consent]?.init?.method).toBe('POST')
+    expect(start).toBeGreaterThan(consent)
+    // This computer's own consent was never touched.
+    expect(calls.some((c) => c.url === '/v1/claude/bypass-consent')).toBe(false)
+  })
+
+  it('starts without a word where it was accepted', async () => {
+    stubFetch(bypassRoutes(true, { body: { session_id: 'far-1' } }))
+    await openOnMini()
+    await waitFor(() => expect(screen.getByRole('button', { name: /^Start/ })).toBeTruthy())
+    expect(screen.queryByRole('note', { name: 'Bypass consent' })).toBeNull()
+  })
+
+  it('a refusal there shows the note instead of an error, and a consent it would not take is said', async () => {
+    stubFetch(bypassRoutes(true, { status: 409, body: { error: 'consent', code: 'bypass_consent' } }, { status: 403, body: { error: 'not allowed' } }))
+    await openOnMini()
+    fireEvent.click(screen.getByRole('button', { name: /^Start/ }))
+    expect(await screen.findByRole('note', { name: 'Bypass consent' })).toBeTruthy()
+    expect(screen.queryByRole('alert')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /Accept and start/ }))
+    expect((await screen.findByRole('alert')).textContent).toMatch(/does not take the consent from this computer yet/)
   })
 })
 

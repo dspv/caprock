@@ -305,7 +305,8 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   `/update-branch`, `GET /v1/projects/{id}/branches`, `copies`, `cleanup`,
   `POST /v1/projects/{id}/copies/remove`, `cleanup` and `cleanup/restore`,
   `GET /v1/projects/scan`, `POST /v1/projects/merge` and `POST
-  /v1/projects/{id}/split`. A phone's limits do not apply to it
+  /v1/projects/{id}/split`, and `POST /v1/claude/bypass-consent` (ADR-041,
+  amended 2026-11-26). A phone's limits do not apply to it
   (`phoneLimited`): `POST /v1/agents` may name any folder, `command`, `args`
   and `chat`; the folder picker, `GET /v1/browse/stat`, `GET
   /v1/browse/repos` and `GET /v1/recent-dirs` use the machine's own root;
@@ -1042,7 +1043,11 @@ Code: `internal/agents/exitreport.go`, `internal/api/agentexit.go`,
   it) and in `session_exits` (§ Session exits DDL).
 - **Early.** An exit within **15 s** of the start (`agents.EarlyExit`) with
   nothing typed into the session, not asked for by Caprock (End, a stop
-  signal, a shutdown) and not a permission-mode restart. An early exit is
+  signal, a shutdown) and not a permission-mode restart. What a terminal
+  sends by itself (a focus or mouse report) and the first message Caprock
+  types for the start are not "typed" (since 2026-11-26, #1086: a tab
+  attaching to a session that sat on Claude Code's bypass warning sent a
+  focus report, and the exit that followed was said nowhere). An early exit is
   logged at **WARN** in service.log, `owned session exited at once`, with the
   binary as resolved in the daemon's environment and its version (asked once and
   cached; a second line when it was not cached yet), the
@@ -2919,7 +2924,7 @@ went, written before the send), `morning_last_sent` (unix ms) and
 
 `GET /v1/gemini` reports whether asking Gemini is possible here: `{available, env_var, licensed, model}`. It performs **no network I/O** and **never returns the key** — `available` says only that one is present. `POST /v1/gemini/ask` takes `{prompt, model?}` and answers `{text, model, usage}`, where `usage` carries the response's own `promptTokenCount` / `candidatesTokenCount` / `cachedContentTokenCount` / `thoughtsTokenCount`. It is the one endpoint in the product that checks the licence **server-side** (402 without an active key) rather than leaving the paywall to the UI, because the call spends the user's Gemini quota and opens an outbound connection — the reasoning and its limits are in [ADR-023](08-decisions.md). With no key set it answers 412 with the variable to set, which is a different problem from 402 and is reported separately so the screen can say which. The key is read from `GEMINI_API_KEY` in the daemon's environment at call time; it is never stored, never accepted by `PUT /v1/settings`, and never present in `GET /v1/settings`.
 
-`POST /v1/claude/bypass-consent` writes `skipDangerousModePermissionPrompt: true` into the settings file `/v1/status.hooks.settings_path` names — the key Claude Code itself writes when its one-time bypass warning is answered *Yes, I accept* — backing the file up once and keeping every other key in place and order; an unparsable file is refused, never overwritten. A mutating route: cross-site requests and paired devices are refused, so the consent is given at the machine. `/v1/status.claude_bypass_accepted` reports the key. `POST /v1/agents` for a Claude Code session in `bypassPermissions` (asked for, or filled in from the preference or a continued session's mode) on a machine where it is false answers **409** `{error, code: "bypass_consent"}` and starts nothing: the session would open on Claude Code's warning, whose default answer is *No, exit*. Another agent, another mode and a terminal `command` are never refused; an unreadable settings file is not a refusal (ADR-041).
+`POST /v1/claude/bypass-consent` writes `skipDangerousModePermissionPrompt: true` into the settings file `/v1/status.hooks.settings_path` names — the key Claude Code itself writes when its one-time bypass warning is answered *Yes, I accept* — backing the file up once and keeping every other key in place and order; an unparsable file is refused, never overwritten. A mutating route: cross-site requests and phones are refused, so the consent is given at the machine — or, since 2026-11-26, from another computer of the owner's (`computerRoutes`, ADR-067), whose New agent shows the same warning before a bypass start there (#1086). `/v1/status.claude_bypass_accepted` reports the key. `POST /v1/agents` for a Claude Code session in `bypassPermissions` (asked for, or filled in from the preference or a continued session's mode) on a machine where it is false answers **409** `{error, code: "bypass_consent"}` and starts nothing: the session would open on Claude Code's warning, whose default answer is *No, exit*. Another agent, another mode and a terminal `command` are never refused; an unreadable settings file is not a refusal (ADR-041).
 
 `POST /v1/hooks/install` runs the same install as `caprock hooks install` (`hooks.InstallFor`: copy the shim into the data dir, merge Caprock's entries into the settings file this daemon reports in `/v1/status.hooks.settings_path`, backing it up first) and answers with what is registered afterwards (`{hooks: {settings_path, shim_path, installed, missing, shim_exists}, backup?}`); an error is an error status, never a quiet 200, and a daemon without an installer answers 501. It is a mutating route, so the CSRF guard refuses a cross-site request and a paired device cannot make it. Nothing else in settings.json is touched. `/v1/status.hooks`, `caprock status` and this answer all check against the command an install writes (`hooks.StatusFor`): the shim in the data dir, or the fallback `"<exe>" hook` when none sits beside the binary. Checking against the shim path alone recognised that fallback only for an executable named `caprock`, so on a renamed or preview build the button said installed and the next status said all nine were missing.
 

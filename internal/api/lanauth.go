@@ -674,6 +674,14 @@ var computerRoutes = map[string]bool{
 	"GET /v1/projects/scan":                  true,
 	"POST /v1/projects/merge":                true,
 	"POST /v1/projects/{id}/split":           true,
+
+	// Claude Code's one-time bypass warning, accepted from New agent on the
+	// owner's other computer (ADR-041, amended 2026-11-26): that sheet shows
+	// the warning before a bypass start there, which this machine would
+	// otherwise refuse (409 bypass_consent) or, if it could not tell, open on
+	// Claude Code's own warning screen, whose default answer is No, exit. A
+	// phone still cannot: the consent is a computer's, not a controller's.
+	"POST /v1/claude/bypass-consent": true,
 }
 
 // deviceVerdict is what a role may do with one request.

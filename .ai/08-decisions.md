@@ -2171,6 +2171,17 @@ on every start: with bypass the default, users would run without asking
 having agreed to nothing. Leaving Claude Code's screen with a hint: the
 Enter trap and the stuck phone session remain.
 
+**Amended 2026-11-26 (#1086): another computer of the owner's may give it.**
+New agent on another computer (ADR-067) never asked that computer, so two
+starts in Bypass on the owner's Windows PC ended about 8 s later on Claude
+Code's own warning, with nothing said. That sheet now reads the computer's
+`/v1/status.claude_bypass_accepted` before the first start and shows the same
+note and *Accept and start*, which posts `/v1/claude/bypass-consent` there:
+the route is a computer's (`computerRoutes`), since a computer is the owner
+at another desk and may already start any session there. A phone still
+cannot. A start that ends at once is said wherever it was started from
+(03-contracts.md § Session exits).
+
 ## ADR-043 — A new install asks before running commands; the mode picked is kept
 
 **Date:** 2026-10-08 · **Status:** accepted (owner, 2026-10-08; amends the

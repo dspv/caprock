@@ -37,6 +37,12 @@ export function earlyExitHint(tail: string): string | undefined {
   if (flat.includes('model_not_found') || flat.includes('isnotsupportedwhenusingcodex')) {
     return 'Your Codex sign-in can’t use this model. Pick another one.'
   }
+  // Claude Code's one-time bypass warning ("WARNING: Claude Code running in
+  // Bypass Permissions mode", No, exit selected), reached by a start that
+  // was not asked first (#1086).
+  if (flat.includes('bypasspermissionsmode')) {
+    return 'Claude Code stopped at its one-time warning for skipping permissions, whose default answer is No, exit. Start it again from New agent, which shows the warning with Accept and start, or pick a mode that asks.'
+  }
   if (t.includes('no conversation found')) {
     return 'Claude Code looks for a conversation only under the folder it was started in, and did not find this one there. Continue it from the folder the conversation began in, or from its own terminal.'
   }
