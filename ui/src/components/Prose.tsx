@@ -593,7 +593,7 @@ function CodeBlock({ lang, text, size = 'doc' }: { lang: string; text: string; s
           </button>
         </div>
         <ScrollX>
-          <pre data-lang={lang || undefined} className="mono m-0 w-max min-w-full px-3 py-2.5 text-[0.86em] leading-[1.55] text-fg">
+          <pre data-lang={lang || undefined} className="mono m-0 w-max min-w-full px-3 py-2.5 text-[0.9em] leading-[1.55] text-fg">
             {text}
           </pre>
         </ScrollX>
@@ -647,7 +647,7 @@ export function ProseDoc({ text, blocks: given, link, image, size = 'doc', onPat
   const blocks = given ?? parseDoc(text, chat ? { reply: true } : {})
   const anchors = chat ? [] : docHeadings(blocks)
   let h = 0
-  const inl = (parts: DocInline[]) => renderDocInline(parts, link, image, onPath)
+  const inl = (parts: DocInline[]) => renderDocInline(parts, link, image, onPath, chat)
   const headings = chat ? CHAT_HEADING_CLASS : HEADING_CLASS
   // A list item sits close under the line before it: the gap less a step.
   const itemPull = chat ? '-mt-1.5' : '-mt-3'
@@ -721,7 +721,7 @@ export function codeBlocksOf(text: string): { lang: string; text: string }[] {
   return parseDoc(text, { reply: true }).flatMap((b) => (b.kind === 'code' ? [{ lang: b.lang, text: b.text }] : []))
 }
 
-function renderDocInline(parts: DocInline[], link?: DocLink, image?: DocImage, onPath?: (path: string) => void) {
+function renderDocInline(parts: DocInline[], link?: DocLink, image?: DocImage, onPath?: (path: string) => void, chat = false) {
   const cls = 'text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent'
   // With no `link` from the caller, a web address still opens: an http(s)
   // one, in a new tab; anything else stays text.
@@ -744,7 +744,7 @@ function renderDocInline(parts: DocInline[], link?: DocLink, image?: DocImage, o
       if (drawn) return <Fragment key={i}>{drawn}</Fragment>
       return <span key={i} className="italic text-fg-muted" title="An image">[{p.text}]</span>
     }
-    if (p.code) return <code key={i} className="mono rounded-[4px] bg-[var(--app-row-hover,var(--color-panel-2))] px-1 py-px text-[0.86em]">{onPath ? withPaths(p.text, onPath) : p.text}</code>
+    if (p.code) return <code key={i} className={`mono rounded-[4px] bg-[var(--app-row-hover,var(--color-panel-2))] px-1 py-px ${chat ? 'text-[0.9em]' : 'text-[0.86em]'}`}>{onPath ? withPaths(p.text, onPath) : p.text}</code>
     if (p.bold) return <strong key={i} className="font-semibold">{linked(p.text)}</strong>
     if (p.italic) return <em key={i}>{linked(p.text)}</em>
     if (p.strike) return <s key={i} className="text-fg-muted">{linked(p.text)}</s>

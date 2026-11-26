@@ -110,6 +110,17 @@ export default function NativeRoot() {
     void import('./keyboard').then((k) => k.showAccessoryBar()).catch(() => { /* no plugin */ })
   }, [])
 
+  // Back with a swipe from the left edge, as Safari has it (native/edgeSwipe).
+  useEffect(() => {
+    if (phase !== 'remote' && phase !== 'demo') return
+    let stop: (() => void) | undefined
+    let live = true
+    void import('./edgeSwipe').then(({ edgeSwipeBack }) => {
+      if (live) stop = edgeSwipeBack()
+    })
+    return () => { live = false; stop?.() }
+  }, [phase])
+
   // The app's Settings, laid over the page.
   useEffect(() => {
     const onHash = () => setSettings(window.location.hash === SETTINGS_HASH)

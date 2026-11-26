@@ -77,7 +77,7 @@ export function useHold(onHold: () => void, ms = HOLD_MS) {
   }
 }
 
-export function PhoneReply({ id, text, onPath, className = 'text-[14px] leading-[1.6]' }: {
+export function PhoneReply({ id, text, onPath, className = 'text-[16px] leading-[1.5]' }: {
   id: number
   text: string
   onPath?: (path: string) => void

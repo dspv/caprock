@@ -643,7 +643,7 @@ export function ChatView({ sessionId, earlier = NONE, canType, ended = false, cl
           {loaded && start === 0 && exhausted && earlier.length > 0 && <ClearedParts ids={earlier} onPath={onPath} plain={desk} phone={phone} />}
           {shown.map((m) => <Message key={m.id} m={m} onPath={onPath} plain={desk} phone={phone} />)}
           {outgoing.map((o) => (
-            <OutgoingBubble key={`out-${o.key}`} o={o} onRetry={() => void submitText(o.text, o.key)} onDismiss={() => setOutgoing((list) => list.filter((x) => x.key !== o.key))} />
+            <OutgoingBubble key={`out-${o.key}`} o={o} phone={phone} onRetry={() => void submitText(o.text, o.key)} onDismiss={() => setOutgoing((list) => list.filter((x) => x.key !== o.key))} />
           ))}
           {!ended && (turn || permission) && (
             <ChatWorking
@@ -686,7 +686,7 @@ export function ChatView({ sessionId, earlier = NONE, canType, ended = false, cl
           {/* One click sends a reply (lib/quickReplies.ts); only while it can be typed into (rule 7). */}
           {/* Not on a phone, where the row crowds a small screen. */}
           {canType && !phone && <QuickReplies sessionId={sessionId} onSend={submitText} chat={chat} className="px-3" />}
-          <TerminalKeys send={send} attach={attachPhotos} attachIn={attachIn} sendPaths={sendPaths} state={inputState} sessionId={sessionId} submitText={submitText} chips pickers voice={voice} deskVoice={!voice} foldKeys={foldKeys ?? phone} placeholder={chat || phone || desk ? 'Message…' : undefined} />
+          <TerminalKeys send={send} attach={attachPhotos} attachIn={attachIn} sendPaths={sendPaths} state={inputState} sessionId={sessionId} submitText={submitText} chips pickers voice={voice} deskVoice={!voice} foldKeys={foldKeys ?? phone} messenger={phone} placeholder={chat || phone || desk ? 'Message…' : undefined} />
         </div>
       )}
       {!showInput && footer && <div className="shrink-0 border-t border-border px-3 py-2.5 text-[13px] leading-snug text-fg-muted">{footer}</div>}
@@ -738,7 +738,7 @@ const Message = memo(function Message({ m, onPath, plain = false, phone = false 
   if (m.kind === 'user') {
     return (
       <div data-msg-id={m.id} className="flex flex-col items-end py-1.5">
-        <div className="grid max-w-[85%] min-w-0 grid-cols-[minmax(0,1fr)] gap-1.5 whitespace-pre-wrap rounded-[12px] rounded-br-[4px] bg-panel-2 px-3 py-2 text-[14px] leading-relaxed text-fg [overflow-wrap:anywhere]" title={m.ts}>
+        <div className={`grid max-w-[85%] min-w-0 grid-cols-[minmax(0,1fr)] gap-1.5 whitespace-pre-wrap rounded-[12px] rounded-br-[4px] bg-panel-2 px-3 py-2 ${phone ? 'text-[16px] leading-[1.5]' : 'text-[14px] leading-relaxed'} text-fg [overflow-wrap:anywhere]`} title={m.ts}>
           <PromptText text={m.text} eventId={m.id} />
         </div>
         {m.via === 'telegram' && <div className="mt-0.5 text-[11px] text-fg-faint" data-via="telegram">from Telegram</div>}
@@ -760,7 +760,8 @@ const Message = memo(function Message({ m, onPath, plain = false, phone = false 
     )
   }
   if (m.kind === 'notice') return <NoticeLine m={m} />
-  return <ToolLine m={m} plain={plain} />
+  // On a phone, as in the app's Chat view: each call in plain words, in the text's face.
+  return <ToolLine m={m} plain={plain || phone} />
 }, (a, b) => a.plain === b.plain && a.phone === b.phone && a.m.id === b.m.id && a.m.text === b.m.text && a.m.result === b.m.result && a.m.failed === b.m.failed && a.m.exitCode === b.m.exitCode)
 
 /** What Claude Code told itself (a background task done, a reminder): one quiet line, the text behind it. */
@@ -1009,10 +1010,10 @@ function sameText(s: string): string {
 }
 
 /** Your message the moment you send it, with its state under it. */
-function OutgoingBubble({ o, onRetry, onDismiss }: { o: Outgoing; onRetry: () => void; onDismiss: () => void }) {
+function OutgoingBubble({ o, onRetry, onDismiss, phone = false }: { o: Outgoing; onRetry: () => void; onDismiss: () => void; phone?: boolean }) {
   return (
-    <div data-outgoing={o.phase} className="flex justify-end py-1.5">
-      <div className="grid max-w-[85%] min-w-0 gap-1 rounded-[12px] rounded-br-[4px] bg-panel-2 px-3 py-2 text-[14px] leading-relaxed text-fg">
+    <div data-outgoing={o.phase} className={`flex justify-end py-1.5 ${phone ? 'chat-sent-in' : ''}`}>
+      <div className={`grid max-w-[85%] min-w-0 gap-1 rounded-[12px] rounded-br-[4px] bg-panel-2 px-3 py-2 ${phone ? 'text-[16px] leading-[1.5]' : 'text-[14px] leading-relaxed'} text-fg`}>
         <div className="whitespace-pre-wrap [overflow-wrap:anywhere]">{o.text}</div>
         <div className={`flex items-center justify-end gap-2 text-[11.5px] ${o.phase === 'failed' ? 'text-danger' : 'text-fg-faint'}`}>
           {o.phase === 'sending' ? 'Sending…' : o.phase === 'sent' ? 'Sent ✓' : (

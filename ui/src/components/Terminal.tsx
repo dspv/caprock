@@ -68,6 +68,63 @@ export const WEBGL_QUIET_MS = 1500
 /** Scrollback on a phone's terminal (TerminalView, `light`). */
 export const PHONE_SCROLLBACK = 2000
 
+/** The terminal's text size on a desktop. */
+export const DESK_TERM_FONT = 12
+/** A touch screen's range for it, A− to A+ or a pinch. */
+export const TERM_FONT_MIN = 8
+export const TERM_FONT_MAX = 22
+const TERM_FONT_KEY = 'caprock.phone.termFont'
+
+/** The touch screen's text size, as last set on this device. */
+export function readTermFont(): number {
+  try {
+    const n = Number(localStorage.getItem(TERM_FONT_KEY))
+    return Number.isFinite(n) && n >= TERM_FONT_MIN && n <= TERM_FONT_MAX ? Math.round(n) : DESK_TERM_FONT
+  } catch {
+    return DESK_TERM_FONT
+  }
+}
+
+function saveTermFont(n: number): void {
+  try { localStorage.setItem(TERM_FONT_KEY, String(n)) } catch { /* storage refused: it lasts the page */ }
+}
+
+/**
+ * A pinch on `el` sets the text size: the size at the start times how far
+ * the two fingers moved apart, whole pixels, within the range. The page's own
+ * zoom is held off while two fingers are down; one finger still scrolls.
+ */
+export function pinchFont(el: HTMLElement, current: () => number, set: (n: number) => void): () => void {
+  let d0 = 0
+  let f0 = 0
+  const dist = (e: TouchEvent) => {
+    const [a, b] = [e.touches[0], e.touches[1]]
+    return a && b ? Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) : 0
+  }
+  const down = (e: TouchEvent) => {
+    if (e.touches.length !== 2) { d0 = 0; return }
+    d0 = dist(e)
+    f0 = current()
+  }
+  const move = (e: TouchEvent) => {
+    if (e.touches.length !== 2 || !d0) return
+    e.preventDefault()
+    const n = Math.max(TERM_FONT_MIN, Math.min(TERM_FONT_MAX, Math.round(f0 * (dist(e) / d0))))
+    if (n !== current()) set(n)
+  }
+  const up = (e: TouchEvent) => { if (e.touches.length < 2) d0 = 0 }
+  el.addEventListener('touchstart', down, { passive: true })
+  el.addEventListener('touchmove', move, { passive: false })
+  el.addEventListener('touchend', up)
+  el.addEventListener('touchcancel', up)
+  return () => {
+    el.removeEventListener('touchstart', down)
+    el.removeEventListener('touchmove', move)
+    el.removeEventListener('touchend', up)
+    el.removeEventListener('touchcancel', up)
+  }
+}
+
 /** How long a terminal may stay silent before it is reported as not starting. */
 export const START_TIMEOUT_MS = 30_000
 
@@ -174,6 +231,20 @@ export function TerminalView({
   // throttle, a busy session's terminal took a third of the main thread with
   // WebGL on (.ai/04-ui.md § From a phone). A desktop is unchanged.
   const [light] = useState(touchScreen)
+  // The text size on a touch screen: pinched, or A− and A+ over the canvas,
+  // kept per device (.ai/04-ui.md § From a phone, *The terminal on a phone*).
+  const [fontSize, setFontSize] = useState(() => (light ? readTermFont() : DESK_TERM_FONT))
+  const fontNow = useRef(fontSize)
+  fontNow.current = fontSize
+  const termRef = useRef<Xterm | null>(null)
+  const fitRef = useRef<FitAddon | null>(null)
+  useEffect(() => {
+    const term = termRef.current
+    if (!term || term.options.fontSize === fontSize) return
+    term.options.fontSize = fontSize
+    try { fitRef.current?.fit() } catch { /* not laid out yet */ }
+    if (light) saveTermFont(fontSize)
+  }, [fontSize, light])
   // What the Changes tab left for the field ("In <file> around line N: ").
   const [draft] = useState(() => takeDraft(sessionId))
   useEffect(() => {
@@ -191,7 +262,7 @@ export function TerminalView({
       // system monospace. On Cyrillic that fallback is a different face
       // entirely, which is what made the terminal unreadable for the one user
       // who moved onto it full-time.
-      convertEol: false, cursorBlink: !light, fontFamily: v('--font-mono', 'monospace'), fontSize: 12,
+      convertEol: false, cursorBlink: !light, fontFamily: v('--font-mono', 'monospace'), fontSize: fontNow.current,
       // A copy: xterm keeps the object it is given.
       theme: dashTerminalTheme(),
       // Readable whatever a program paints behind its text (lib/termthemes).
@@ -204,6 +275,20 @@ export function TerminalView({
     const fit = new FitAddon()
     term.loadAddon(fit)
     term.open(host.current)
+    termRef.current = term
+    fitRef.current = fit
+    // A touch screen types through the field under the terminal: a tap on
+    // the canvas focuses xterm's hidden textarea, and on a phone that raised
+    // the keyboard over the very output being read (audit, 2026-11-26). No
+    // keyboard for it (`inputmode=none`), and the focus let go of at once.
+    const helper = term.textarea
+    const letGo = () => helper?.blur()
+    if (light && helper) {
+      helper.setAttribute('inputmode', 'none')
+      helper.addEventListener('focus', letGo)
+    }
+    // Two fingers change the text size, as a pinch does a page's.
+    const unpinch = light ? pinchFont(host.current, () => fontNow.current, (n) => setFontSize(n)) : () => {}
     // No blink while the page is out of sight: each one is a frame drawn.
     const unblink = blinkWhileVisible(term, !light)
     const themeWatch = typeof MutationObserver === 'undefined' ? null : new MutationObserver(() => { term.options.theme = dashTerminalTheme() })
@@ -472,6 +557,10 @@ export function TerminalView({
       document.removeEventListener('visibilitychange', look)
       hostEl.removeEventListener('pointerdown', claim)
       textarea?.removeEventListener('focus', claim)
+      helper?.removeEventListener('focus', letGo)
+      unpinch()
+      termRef.current = null
+      fitRef.current = null
       ro.disconnect(); dataSub.dispose(); sizeSub.dispose(); out.dispose(); unsuspend(); client.dispose(); unbench(); links.dispose(); unfont(); unblink(); themeWatch?.disconnect(); term.dispose()
     }
   }, [sessionId, owned, attempt, phone])
@@ -564,6 +653,12 @@ export function TerminalView({
       <div className="relative bg-term-bg border border-term-border rounded-sm p-1.5">
         {/* Shorter on a narrow screen, so the keys bar under it stays in view. */}
         <div ref={host} data-term-host data-term-session={sessionId} className="h-[52vh] sm:h-[70vh]" />
+        {light && start.phase === 'ready' && (
+          <div data-term-font className="absolute bottom-2 right-2 z-10 flex overflow-hidden rounded-full border" style={{ background: TERMINAL_THEME.background, borderColor: TERMINAL_THEME.selectionBackground, color: TERMINAL_THEME.foreground }}>
+            <button type="button" aria-label="Smaller terminal text" disabled={fontSize <= TERM_FONT_MIN} onClick={() => setFontSize((n) => Math.max(TERM_FONT_MIN, n - 1))} className="grid h-10 w-11 place-items-center text-[13px] disabled:opacity-40">A−</button>
+            <button type="button" aria-label="Larger terminal text" disabled={fontSize >= TERM_FONT_MAX} onClick={() => setFontSize((n) => Math.min(TERM_FONT_MAX, n + 1))} className="grid h-10 w-11 place-items-center border-l text-[16px] disabled:opacity-40" style={{ borderColor: TERMINAL_THEME.selectionBackground }}>A+</button>
+          </div>
+        )}
         {start.phase !== 'ready' && (
           <TerminalStart phase={start.phase} since={start.since} onRetry={() => setAttempt((n) => n + 1)} />
         )}

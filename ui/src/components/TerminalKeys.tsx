@@ -3,7 +3,7 @@ import { INPUT_HIGHLIGHT_KEY, keys } from '@/lib/appkeys'
 import type { TermState } from '@/lib/termv2'
 import { useSavedPromptsFor } from '@/lib/saved'
 import { attachLabels, isImageName } from '@/lib/attach'
-import { AttachPicker } from './AttachPicker'
+import { AttachMenuItems, AttachPicker, MenuItem, useAttachInputs } from './AttachPicker'
 import { ChatPickerList, useChatPicker } from './ChatPicker'
 import { joinDictation, speechHint, speechSupport, speechWhere, startDictation, type Dictation } from '@/lib/speech'
 import { DeskMic, DeskVoiceLine, useDeskVoice } from './DeskVoice'
@@ -148,7 +148,7 @@ export function heldLabel(h: { text: string; paths?: readonly string[] }): strin
   return h.text ? `${files} ${h.text}` : files
 }
 
-export function TerminalKeys({ send, attach, attachIn, sendPaths, initial = '', state, isPromptWaiting, sessionId, chips = false, submitText, pickers = false, voice = false, deskVoice = false, foldKeys = false, placeholder }: {
+export function TerminalKeys({ send, attach, attachIn, sendPaths, initial = '', state, isPromptWaiting, sessionId, chips = false, submitText, pickers = false, voice = false, deskVoice = false, foldKeys = false, placeholder, messenger = false }: {
   send: (bytes: string) => void
   /** Attaches photos. Where it returns the saved paths (the chat; one per
    *  file, '' for one that failed), each shows as an "Image N" chip over the
@@ -184,6 +184,10 @@ export function TerminalKeys({ send, attach, attachIn, sendPaths, initial = '', 
   foldKeys?: boolean
   /** The field's hint, in place of the terminal's *Type · / commands · @ files*. */
   placeholder?: string
+  /** The phone's chat: one row, as in a messenger — **+** (Photos, Files,
+   *  Keys, the dictation language), the field as a pill, the mic while it
+   *  is empty and Send once it is not (.ai/04-ui.md § From a phone). */
+  messenger?: boolean
 }) {
   // A started message, else what was in the field when the page went.
   const [text, setText] = useState(() => initial || loadDraft(sessionId))
@@ -314,6 +318,15 @@ export function TerminalKeys({ send, attach, attachIn, sendPaths, initial = '', 
   // § From a phone, *The keyboard goes away*). Read once: a desktop never is.
   const [touch] = useState(touchScreen)
   const [focused, setFocused] = useState(false)
+  // The messenger's + menu, and which of its two lists it shows.
+  const [plus, setPlus] = useState(false)
+  const [plusView, setPlusView] = useState<'main' | 'lang'>('main')
+  useEffect(() => {
+    if (!plus) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setPlus(false) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [plus])
   // One line idle, growing with what is typed up to MAX_LINES, then scrolling:
   // a fixed two-line box hid most of a pre-filled "In <file> around line N: ".
   useLayoutEffect(() => {
@@ -361,6 +374,8 @@ export function TerminalKeys({ send, attach, attachIn, sendPaths, initial = '', 
   // as picked ones are, and a path already on disk (the desktop app's drop
   // of a document) becomes a chip as it is, each in the order dropped.
   const onPicked = (files: File[]) => addAttachments(files)
+  const attachInputs = useAttachInputs((files) => void onPicked(files), 'photo-picker', touch)
+  const attachPick = messenger && attach ? attachInputs : null
   const addAttachments: AttachIn = async (items) => {
     const files = items.filter((i): i is File => typeof i !== 'string')
     if (!attach || items.length === 0) return
@@ -614,9 +629,184 @@ export function TerminalKeys({ send, attach, attachIn, sendPaths, initial = '', 
     </ul>
   )
 
+  const renderField = (cls: string, style: React.CSSProperties) => (
+  <textarea
+    ref={field}
+    value={text}
+    onChange={(e) => { setText(e.target.value); trackCaret(e.target); desk.dismiss() }}
+    readOnly={desk.busy}
+    onSelect={(e) => trackCaret(e.currentTarget)}
+    onKeyDown={(e) => {
+      if (chooser.onKeyDown(e)) return
+      // On a touch screen Return is a new line, as in a messenger with
+      // more than one line to say; Send sends, and so does ⌘/Ctrl+Return
+      // from a tablet's keyboard.
+      if (e.key === 'Enter' && !e.shiftKey && (!touch || e.metaKey || e.ctrlKey)) {
+        e.preventDefault()
+        submit()
+      }
+    }}
+    onFocus={() => setFocused(true)}
+    onBlur={() => setFocused(false)}
+    enterKeyHint={touch ? 'enter' : undefined}
+    rows={1}
+    placeholder={placeholder ?? (pickers ? 'Type · / commands · @ files' : 'Type to the session…')}
+    aria-label="Type to the session"
+    {...(pickers ? {
+      'aria-autocomplete': 'list' as const,
+      'aria-expanded': chooser.open,
+      'aria-controls': listId,
+      'aria-activedescendant': chooser.open && chooser.rows.length > 0 ? `${listId}-${chooser.active}` : undefined,
+    } : {})}
+    // The phone keyboard's own help stays on (owner, 2026-11-20,
+    // translated: "I can hardly type one word right"). The field was
+    // born as a terminal's keys bar, with autocorrect, capitals and
+    // spelling off, and what is typed here is a message to an agent.
+    autoCapitalize="sentences"
+    autoCorrect="on"
+    spellCheck
+    data-filled={text.trim() || attached.length > 0 ? '' : undefined}
+    title={`${keys(INPUT_HIGHLIGHT_KEY)} turns the highlight off or on`}
+    className={cls}
+    style={style}
+  />
+  )
+
   const chipRow = attached.length > 0 && (
     <AttachedChips attached={attached} onRemove={(i) => { dropAttached(i); field.current?.focus() }} />
   )
+
+  const hasText = !!text.trim() || attached.length > 0
+  const hideButton = touch && focused && (
+    <button
+      type="button"
+      data-hide-keyboard
+      // The field keeps the focus until the click, so the button is
+      // still there to take it (a press would blur it first elsewhere).
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={() => hideKeyboard(field.current)}
+      aria-label="Hide the keyboard"
+      title="Hide the keyboard"
+      className={messenger ? 'grid h-11 w-9 shrink-0 place-items-center rounded-full text-fg-muted active:bg-panel-2' : 'mr-auto grid h-11 w-11 shrink-0 place-items-center rounded-sm border border-border-strong bg-panel-2 text-fg-muted hover:border-accent'}
+    >
+      <KeyboardDownIcon />
+    </button>
+  )
+  const voiceLines = (
+    <>
+      {langIntro && !listening && !voiceNote && (
+        <div role="status" className="text-[13px] leading-snug text-fg-muted">
+          {messenger
+            ? <>Dictation listens for <b className="font-medium text-fg">{langName(lang)}</b>. Switch it under <b className="font-medium text-accent">+</b>.</>
+            : <>Dictation listens for <b className="font-medium text-fg">{langName(lang)}</b>. Tap <b className="font-medium text-accent">{langChip(lang)}</b> beside the mic to switch.</>}
+        </div>
+      )}
+      <DeskVoiceLine v={desk} />
+      {(listening || voiceNote) && (
+        <div role="status" aria-live="polite" className={`text-[13px] leading-snug ${listening ? 'text-fg' : 'text-fg-muted'}`}>
+          {listening
+            ? <><span className="text-danger">●</span> Listening in {langName(recLang)} — tap the mic again to stop, then Send. {speechWhere()}</>
+            : voiceNote}
+        </div>
+      )}
+    </>
+  )
+
+  if (messenger) {
+    // The phone's chat as a messenger (.ai/04-ui.md § From a phone, *One row*):
+    // + for what is rare (Photos, Files, Keys, the dictation language), the
+    // field as a pill in the text's own face, then the mic while it is empty
+    // and Send once it is not.
+    return (
+      <div className="grid gap-2 border-t border-border px-2 pt-2 pb-[max(8px,env(safe-area-inset-bottom))]" data-composer="messenger">
+        {heldList}
+        {chips && sessionId && (
+          <SavedChips sessionId={sessionId} onPick={(t) => setText((cur) => (cur.trim() ? `${cur.replace(/\s+$/, '')}\n${t}` : t))} />
+        )}
+        <div className="relative grid gap-2">
+          {pickers && <ChatPickerList p={chooser} listId={listId} />}
+          {chipRow}
+          {voiceLines}
+          <div className="flex min-w-0 items-end gap-1.5">
+            <span className="relative shrink-0">
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => { setPlusView('main'); setPlus((v) => !v) }}
+                disabled={attaching}
+                aria-haspopup="menu"
+                aria-expanded={plus}
+                aria-label="More: attach, keys, dictation language"
+                title="Photos, Files, Keys and the dictation language"
+                data-testid="composer-plus"
+                className={`grid h-11 w-11 place-items-center rounded-full border text-fg disabled:opacity-50 ${plus || keysOpen ? 'border-accent text-accent' : 'border-border-strong bg-panel-2'}`}
+              >
+                {attaching ? <span aria-hidden className="h-4 w-4 animate-spin rounded-full border-2 border-border-strong border-t-accent motion-reduce:animate-none" /> : <PlusIcon open={plus} />}
+              </button>
+              {attachPick?.inputs}
+              {plus && (
+                <>
+                  <div className="fixed inset-0 z-40" aria-hidden onClick={() => setPlus(false)} />
+                  <div role="menu" aria-label={plusView === 'lang' ? 'Dictation language' : 'More'} data-composer-plus
+                    className="absolute bottom-full left-0 z-50 mb-2 max-h-[50dvh] w-64 overflow-y-auto rounded-[14px] border border-border-strong bg-panel py-1 shadow-lg">
+                    {plusView === 'lang' ? (
+                      <LangList current={lang} onPick={(t) => { pickLang(t); setPlus(false) }} />
+                    ) : (
+                      <>
+                        {attachPick && <AttachMenuItems onPick={(which) => { setPlus(false); attachPick.open(which) }} />}
+                        <MenuItem onClick={() => { setPlus(false); setKeysOpen((v) => !v) }} icon={<KeysIcon />} title={keysOpen ? 'Hide keys' : 'Keys'} note="Esc, Tab, arrows, Enter, Ctrl+C" />
+                        {voice && (
+                          <MenuItem
+                            onClick={() => {
+                              if (langIntro) { markLangIntroSeen(); setLangIntro(false) }
+                              setPlusView('lang')
+                            }}
+                            icon={<span className="grid w-[22px] shrink-0 place-items-center text-[12px] font-semibold text-fg-muted">{langChip(lang)}</span>}
+                            title="Dictation language"
+                            note={langName(lang)}
+                          />
+                        )}
+                      </>
+                    )}
+                  </div>
+                </>
+              )}
+            </span>
+            <div className="min-w-0 flex-1">
+              {renderField('input composer-field composer-pill w-full min-w-0 resize-none overflow-y-auto', { fontSize: 16, lineHeight: '22px', paddingTop: 10, paddingBottom: 10, paddingLeft: 14, paddingRight: 14, maxHeight: FIELD_MAX_PX })}
+            </div>
+            {hideButton}
+            {voice && (!hasText || listening) && (
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={toggleVoice}
+                aria-pressed={listening}
+                aria-label={listening ? 'Stop dictating' : 'Dictate'}
+                title={listening ? 'Stop dictating' : 'Dictate: speak, read it in the field, then Send'}
+                className={`grid h-11 w-11 shrink-0 place-items-center rounded-full border ${listening ? 'border-danger bg-danger/15 text-danger' : 'border-border-strong bg-panel-2 text-fg'}`}
+              >
+                <MicIcon />
+              </button>
+            )}
+            {(hasText || !voice) && (
+              <button
+                type="button"
+                onClick={() => submit()}
+                aria-label="Send"
+                title="Send"
+                data-composer-send
+                className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-accent text-bg hover:brightness-110 composer-send-in"
+              >
+                <SendIcon />
+              </button>
+            )}
+          </div>
+        </div>
+        {keysOpen && <KeyGrid onKey={sendKey} />}
+      </div>
+    )
+  }
 
   return (
     <div className="grid gap-2 border-t border-border px-2 py-2">
@@ -640,77 +830,12 @@ export function TerminalKeys({ send, attach, attachIn, sendPaths, initial = '', 
           * likewise, and it makes one line a 44px target. */}
         {pickers && <ChatPickerList p={chooser} listId={listId} />}
         {chipRow}
-        <textarea
-          ref={field}
-          value={text}
-          onChange={(e) => { setText(e.target.value); trackCaret(e.target); desk.dismiss() }}
-          readOnly={desk.busy}
-          onSelect={(e) => trackCaret(e.currentTarget)}
-          onKeyDown={(e) => {
-            if (chooser.onKeyDown(e)) return
-            // On a touch screen Return is a new line, as in a messenger with
-            // more than one line to say; Send sends, and so does ⌘/Ctrl+Return
-            // from a tablet's keyboard.
-            if (e.key === 'Enter' && !e.shiftKey && (!touch || e.metaKey || e.ctrlKey)) {
-              e.preventDefault()
-              submit()
-            }
-          }}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          enterKeyHint={touch ? 'enter' : undefined}
-          rows={1}
-          placeholder={placeholder ?? (pickers ? 'Type · / commands · @ files' : 'Type to the session…')}
-          aria-label="Type to the session"
-          {...(pickers ? {
-            'aria-autocomplete': 'list' as const,
-            'aria-expanded': chooser.open,
-            'aria-controls': listId,
-            'aria-activedescendant': chooser.open && chooser.rows.length > 0 ? `${listId}-${chooser.active}` : undefined,
-          } : {})}
-          // The phone keyboard's own help stays on (owner, 2026-11-20,
-          // translated: "I can hardly type one word right"). The field was
-          // born as a terminal's keys bar, with autocorrect, capitals and
-          // spelling off, and what is typed here is a message to an agent.
-          autoCapitalize="sentences"
-          autoCorrect="on"
-          spellCheck
-          data-filled={text.trim() || attached.length > 0 ? '' : undefined}
-          title={`${keys(INPUT_HIGHLIGHT_KEY)} turns the highlight off or on`}
-          className="input composer-field w-full min-w-0 resize-none overflow-y-auto leading-snug"
-          style={{ fontSize: 16, lineHeight: '22px', paddingTop: 10, paddingBottom: 10, maxHeight: FIELD_MAX_PX }}
-        />
-        {langIntro && !listening && !voiceNote && (
-          <div role="status" className="text-[13px] leading-snug text-fg-muted">
-            Dictation listens for <b className="font-medium text-fg">{langName(lang)}</b>. Tap <b className="font-medium text-accent">{langChip(lang)}</b> beside the mic to switch.
-          </div>
-        )}
-        <DeskVoiceLine v={desk} />
-        {(listening || voiceNote) && (
-          <div role="status" aria-live="polite" className={`text-[13px] leading-snug ${listening ? 'text-fg' : 'text-fg-muted'}`}>
-            {listening
-              ? <><span className="text-danger">●</span> Listening in {langName(recLang)} — tap the mic again to stop, then Send. {speechWhere()}</>
-              : voiceNote}
-          </div>
-        )}
+        {renderField('input composer-field w-full min-w-0 resize-none overflow-y-auto leading-snug', { fontSize: 16, lineHeight: '22px', paddingTop: 10, paddingBottom: 10, maxHeight: FIELD_MAX_PX })}
+        {voiceLines}
         <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
         {/* In Keys' place while typing: a row of six did not fit 390px, and
           * the keys are in the ··· menu too. */}
-        {touch && focused && (
-          <button
-            type="button"
-            data-hide-keyboard
-            // The field keeps the focus until the click, so the button is
-            // still there to take it (a press would blur it first elsewhere).
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => hideKeyboard(field.current)}
-            aria-label="Hide the keyboard"
-            title="Hide the keyboard"
-            className={`mr-auto grid h-11 w-11 shrink-0 place-items-center rounded-sm border border-border-strong bg-panel-2 text-fg-muted hover:border-accent`}
-          >
-            <KeyboardDownIcon />
-          </button>
-        )}
+        {hideButton}
         {foldKeys && !(touch && focused) && (
           <button
             type="button"
@@ -893,6 +1018,30 @@ function DocIcon() {
 
 function PhotoIcon() {
   return <svg {...ICON} className="text-fg-muted"><rect x="3" y="5" width="18" height="14" rx="2" /><circle cx="9" cy="10" r="1.6" /><path d="M21 16l-5-5-8 8" /></svg>
+}
+
+/** + that turns to × while its menu is open. */
+function PlusIcon({ open }: { open: boolean }) {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden
+      className={`transition-transform duration-150 motion-reduce:transition-none ${open ? 'rotate-45' : ''}`}>
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  )
+}
+
+/** An arrow up: send. */
+function SendIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M12 19V5M6 11l6-6 6 6" />
+    </svg>
+  )
+}
+
+/** Keys on a keyboard: the raw keys. */
+function KeysIcon() {
+  return <svg {...ICON} className="shrink-0 text-fg-muted"><rect x="3" y="6" width="18" height="12" rx="2" /><path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10" /></svg>
 }
 
 /** A keyboard over a chevron pointing down: put the keyboard away. */

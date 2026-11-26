@@ -89,7 +89,11 @@ export function PhoneSessionBar({
   const restActive = rest.includes(active)
   const away = overlay && hidden && !sheet && !menu && !panel
   const extras = !!keys || voiceLang
-  const seg = (on: boolean) => `h-8 rounded-[7px] px-2.5 text-[13px] ${on ? 'bg-accent font-medium text-panel' : 'text-fg'}`
+  // Each segment is the bar's full 44px to a finger; the pill drawn inside
+  // it stays 32px, so the bar keeps its height (audit, 2026-11-26: 32px
+  // targets were missed).
+  const seg = 'relative grid h-11 place-items-center px-0.5'
+  const pill = (on: boolean) => `grid h-8 place-items-center rounded-[7px] px-2.5 text-[13px] ${on ? 'bg-accent font-medium text-panel' : 'text-fg'}`
   return (
     <>
       <div
@@ -114,10 +118,11 @@ export function PhoneSessionBar({
             {alert && <span role="img" aria-label={alert.label} title={alert.label} className={`inline-block h-2 w-2 shrink-0 rounded-full ring-2 ring-offset-1 ring-offset-panel ${alert.tone === 'danger' ? 'bg-danger ring-danger/40' : alert.tone === 'warn' ? 'bg-warn ring-warn/40' : 'bg-fg-faint ring-border'}`} />}
             <span aria-hidden className={`shrink-0 text-[10px] text-fg-faint transition-transform motion-reduce:transition-none ${sheet ? 'rotate-180' : ''}`}>▾</span>
           </button>
-          <span role="tablist" aria-label="Session views" className="inline-flex shrink-0 items-center rounded-[9px] bg-panel-2 p-0.5">
+          <span role="tablist" aria-label="Session views" className="relative inline-flex h-11 shrink-0 items-center px-0.5">
+            <span aria-hidden className="absolute inset-x-0 top-1/2 h-9 -translate-y-1/2 rounded-[9px] bg-panel-2" />
             {talk.map((v) => (
-              <button key={v} type="button" role="tab" aria-selected={active === v} onClick={() => { setMenu(false); setSheet(false); onPick(v) }} className={seg(active === v)}>
-                {LABEL[v]}
+              <button key={v} type="button" role="tab" aria-selected={active === v} onClick={() => { setMenu(false); setSheet(false); onPick(v) }} className={seg}>
+                <span className={pill(active === v)}>{LABEL[v]}</span>
               </button>
             ))}
             {(rest.length > 0 || extras) && (
@@ -129,9 +134,11 @@ export function PhoneSessionBar({
                 aria-expanded={menu}
                 aria-label={restActive ? `${LABEL[active]} — other views` : 'Other views'}
                 onClick={() => { setSheet(false); setPanel(null); setMenu((v) => !v) }}
-                className={seg(restActive)}
+                className={seg}
               >
-                {restActive ? <>{LABEL[active]} <span aria-hidden className="text-[10px]">▾</span></> : <span aria-hidden className="tracking-[1px]">···</span>}
+                <span className={pill(restActive)}>
+                  {restActive ? <span>{LABEL[active]} <span aria-hidden className="text-[10px]">▾</span></span> : <span aria-hidden className="tracking-[1px]">···</span>}
+                </span>
               </button>
             )}
           </span>

@@ -59,8 +59,12 @@ export function useNarrowScreen(): boolean {
  * followed as it happens (`scroll` on the visual viewport). Where nothing
  * pans — a desktop, the iOS app whose WebView is resized instead — the offset
  * is 0 and the height is what it was.
+ *
+ * `follow`: the height eases to its new value rather than jumping, so the
+ * field rides up and down with the keyboard (the iOS app, whose WebView is
+ * resized the moment the keyboard starts to move). None under reduced motion.
  */
-export function useFillViewport<T extends HTMLElement>(on: boolean, gap = 8): (el: T | null) => void {
+export function useFillViewport<T extends HTMLElement>(on: boolean, gap = 8, follow = false): (el: T | null) => void {
   const [el, setEl] = useState<T | null>(null)
   useEffect(() => {
     if (!on || !el) return
@@ -75,6 +79,8 @@ export function useFillViewport<T extends HTMLElement>(on: boolean, gap = 8): (e
     }
     const schedule = () => { if (!raf) raf = requestAnimationFrame(fit) }
     fit()
+    const still = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (follow && !still) el.style.transition = `height ${FOLLOW_MS}ms cubic-bezier(0.2, 0.8, 0.2, 1)`
     vv?.addEventListener('resize', schedule)
     vv?.addEventListener('scroll', schedule)
     window.addEventListener('resize', schedule)
@@ -87,9 +93,32 @@ export function useFillViewport<T extends HTMLElement>(on: boolean, gap = 8): (e
       window.removeEventListener('resize', schedule)
       ro?.disconnect()
       el.style.height = ''
+      el.style.transition = ''
     }
-  }, [on, el, gap])
+  }, [on, el, gap, follow])
   return setEl
+}
+
+/** How long the chat takes to follow the keyboard, about the keyboard's own time. */
+export const FOLLOW_MS = 250
+
+/** Whether the focus is in a chat's field (`.composer-field`): someone is typing. */
+export function useComposerFocus(on: boolean): boolean {
+  const [typing, setTyping] = useState(false)
+  useEffect(() => {
+    if (!on) { setTyping(false); return }
+    const isField = (el: EventTarget | null) => el instanceof Element && el.classList.contains('composer-field')
+    const into = (e: FocusEvent) => setTyping(isField(e.target))
+    const out = (e: FocusEvent) => { if (!isField(e.relatedTarget)) setTyping(false) }
+    document.addEventListener('focusin', into)
+    document.addEventListener('focusout', out)
+    setTyping(isField(document.activeElement))
+    return () => {
+      document.removeEventListener('focusin', into)
+      document.removeEventListener('focusout', out)
+    }
+  }, [on])
+  return typing
 }
 
 /** How far a finger must move the chat before the bar reacts, in px. */
