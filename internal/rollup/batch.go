@@ -233,6 +233,7 @@ func (b *Batch) Flush() (stored, deduped int, err error) {
 	if err != nil {
 		return 0, 0, err
 	}
+	foldUpdates(pending, updates)
 	b.r.publishBatch(pending)
 	for _, upd := range updates {
 		b.r.publishUpdate(upd, false)
@@ -257,6 +258,28 @@ func (b *Batch) Abort() {
 
 func (b *Batch) reset() {
 	b.n, b.stored, b.deduped, b.priced, b.pending, b.updates = 0, 0, 0, false, nil, nil
+}
+
+// foldUpdates gives a pending event the payload a later line of the same
+// batch merged into its row. Claude Code writes a reply as a thinking line
+// and then a text line; read in one pass, the first is stored and the second
+// only grows its row, so the "event" frame carried the wordless first line
+// and the words came only in the "event_update" right after it. A client that
+// took both in one go kept the first and showed the prompt with no answer
+// (owner's Chat, 2026-11-26). The update is still sent: it is the same row.
+func foldUpdates(pending []Result, updates []*event.Event) {
+	if len(updates) == 0 || len(pending) == 0 {
+		return
+	}
+	byID := make(map[int64]*event.Event, len(updates))
+	for _, upd := range updates {
+		byID[upd.ID] = upd
+	}
+	for i := range pending {
+		if upd, ok := byID[pending[i].Event.ID]; ok && pending[i].Event.Kind == upd.Kind {
+			pending[i].Event.Payload = upd.Payload
+		}
+	}
 }
 
 // publishBatch sends every committed event's frame, in order, and one session

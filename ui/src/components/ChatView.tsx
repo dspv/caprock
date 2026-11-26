@@ -179,11 +179,14 @@ export function ChatView({ sessionId, earlier = NONE, canType, ended = false, cl
     setEvents(next)
     // A reply rewritten in place (an `event_update`) counts when it became a
     // message: its first line had no words, so it was not one before.
+    // Counted once per id: a reply's event and its update can come in one batch.
     const held = new Map(prev.map((e) => [e.id, e]))
-    return incoming.filter((e) => {
-      const was = held.get(e.id)
-      return isMessageEvent(e) && (!was || !isMessageEvent(was))
-    }).length
+    const now = new Map(next.map((e) => [e.id, e]))
+    return new Set(incoming.map((e) => e.id).filter((id) => {
+      const was = held.get(id)
+      const is = now.get(id)
+      return !!is && isMessageEvent(is) && (!was || !isMessageEvent(was))
+    })).size
   }, [])
 
   const loadNewest = useCallback(async (first: boolean) => {

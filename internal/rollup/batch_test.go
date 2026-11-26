@@ -3,6 +3,7 @@ package rollup
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"sync"
@@ -437,5 +438,48 @@ func TestAnotherWriterLandsBesideManyBatches(t *testing.T) {
 	t.Logf("worst wait %v", worst)
 	if worst > time.Second {
 		t.Fatalf("a write waited %v beside the import", worst)
+	}
+}
+
+// A reply read in one pass is a thinking line, stored with no text, and a
+// text line that only grows that row. The "event" frame the batch publishes
+// carries the words: a client that takes it together with the
+// "event_update" after it must not be left with the wordless first line
+// (owner's Chat, 2026-11-26: the prompt shown, no answer under it).
+func TestBatchEventFrameCarriesMergedText(t *testing.T) {
+	r, sub, _ := fileRecorder(t)
+	ctx := context.Background()
+	mk := func(text string) *event.Event {
+		return &event.Event{
+			SessionID: "s1", Source: event.SourceTranscript, Kind: event.KindTurnAssistant, Key: "msg:m1", MsgID: "m1",
+			Ts: time.Date(2026, 11, 26, 13, 44, 34, 0, time.UTC), Model: "claude-opus-5",
+			Tokens: &event.TokenDelta{In: 2, Out: 1103}, Payload: json.RawMessage(fmt.Sprintf(`{"text":%q}`, text)),
+		}
+	}
+	b := r.Batch(ctx)
+	if _, err := b.Record(ctx, mk(""), SessionInfo{Cwd: "/p"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.Record(ctx, mk("No, that will not work."), SessionInfo{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := b.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	var sawEvent, sawUpdate bool
+	for _, f := range drain(sub) {
+		ev, _ := f.Data.(event.Event)
+		switch f.Type {
+		case bus.FrameEvent:
+			sawEvent = true
+			if string(ev.Payload) != `{"text":"No, that will not work."}` {
+				t.Fatalf("event frame payload %s, want the merged text", ev.Payload)
+			}
+		case bus.FrameEventUpdate:
+			sawUpdate = true
+		}
+	}
+	if !sawEvent || !sawUpdate {
+		t.Fatalf("event frame %v, update frame %v; want both", sawEvent, sawUpdate)
 	}
 }

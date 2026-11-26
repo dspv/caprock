@@ -69,16 +69,30 @@ export function compareEvents(a: Pick<Event, 'ts' | 'id'>, b: Pick<Event, 'ts' |
  * which has none when the reply opens with thinking, and says so with an
  * `event_update` frame (a refetch shows it too). Kept as first seen, a chat
  * showed the turn's cost and never its answer (a user's report, 2026-10-19).
+ *
+ * The same holds inside one `incoming`: the daemon sends a reply's `event`
+ * frame and its `event_update` back to back after one commit (rollup
+ * Batch.Flush), and the chat hands both to one call. The update replaces the
+ * row just taken from that same batch; dropped as "already seen", the chat
+ * kept the wordless first line and showed the prompt with no answer under it
+ * (owner's Chat, 2026-11-26).
  */
 export function mergeEvents(current: readonly Event[], incoming: readonly Event[]): readonly Event[] {
   if (incoming.length === 0) return current
   const seen = new Set(current.map((e) => e.id))
   const fresh: Event[] = []
+  /** Where each id taken from this `incoming` sits in `fresh`. */
+  const freshAt = new Map<number, number>()
   let index: Map<number, number> | null = null
   let base: Event[] | null = null
   for (const e of incoming) {
     if (seen.has(e.id)) {
       if (e.kind !== 'turn.assistant') continue
+      const f = freshAt.get(e.id)
+      if (f !== undefined) {
+        fresh[f] = e
+        continue
+      }
       index ??= new Map(current.map((c, i) => [c.id, i]))
       const i = index.get(e.id)
       if (i === undefined) continue
@@ -89,6 +103,7 @@ export function mergeEvents(current: readonly Event[], incoming: readonly Event[
       continue
     }
     seen.add(e.id)
+    freshAt.set(e.id, fresh.length)
     fresh.push(e)
   }
   const held: readonly Event[] = base ?? current

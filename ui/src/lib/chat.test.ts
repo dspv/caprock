@@ -29,6 +29,16 @@ function shuffle<T>(xs: T[], seed = 7): T[] {
 }
 
 describe('mergeEvents', () => {
+  it('a reply and its merged words in one batch: the words win, the row is held once', () => {
+    const user = ev(1)
+    const stop = ev(4, { kind: 'agent.stop', payload: {} })
+    const first = ev(5, { ts: ev(3).ts, source: 'transcript', kind: 'turn.assistant', payload: { text: '' } })
+    const grown = { ...first, payload: { text: 'No, that will not work.' } }
+    const held = mergeEvents([user, stop], [first, grown])
+    expect(held.map((e) => e.id)).toEqual([1, 5, 4])
+    expect(toMessages(held).map((m) => [m.kind, m.text])).toEqual([['user', 'message 1'], ['assistant', 'No, that will not work.']])
+  })
+
   it('50 events out of order and 10 duplicates, one at a time: server order, each once', () => {
     const server = Array.from({ length: 50 }, (_, i) => ev(i + 1))
     const delivery = shuffle([...server, ...shuffle(server, 3).slice(0, 10)])
