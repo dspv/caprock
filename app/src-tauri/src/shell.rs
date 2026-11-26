@@ -292,7 +292,8 @@ pub fn listen_for_drops<R: tauri::Runtime>(w: &WebviewWindow<R>) {
 /// This runs on the main thread, which also draws every window, so it does
 /// no file I/O there. A drop from Finder (the common case) needs none: its
 /// paths are handed over as they are, at once. Only a drop with a file in a
-/// transient place (`keep_transient`) is copied, and that copy runs on a
+/// transient place (`keep_transient`) or an image in a folder macOS guards
+/// (`keep_for_session`, ADR-106) is copied, and that copy runs on a
 /// worker thread, which then records the paths and evaluates the script
 /// (Tauri queues `eval` to the main thread). With the Mac swapping, a disk
 /// read or write on the main thread can stall for seconds, and the app with
@@ -321,7 +322,8 @@ fn handle_drop<R: tauri::Runtime>(w: &WebviewWindow<R>, e: &tauri::DragDropEvent
     };
     let scale = w.scale_factor().unwrap_or(1.0);
     let at = (position.x, position.y);
-    if !paths.iter().any(|p| is_transient(p)) {
+    let home = drop_home();
+    if !paths.iter().any(|p| needs_copy(p, home.as_deref())) {
         deliver_drop(w, paths, at, scale);
         return;
     }
@@ -335,7 +337,7 @@ fn handle_drop<R: tauri::Runtime>(w: &WebviewWindow<R>, e: &tauri::DragDropEvent
         let paths: Vec<PathBuf> = paths
             .iter()
             .map(|p| match &paste {
-                Some(dir) => keep_transient(p, dir),
+                Some(dir) => keep_for_session(p, dir, home.as_deref()),
                 None => p.clone(),
             })
             .collect();
@@ -376,18 +378,104 @@ pub fn keep_transient(p: &std::path::Path, paste_dir: &std::path::Path) -> PathB
     if !is_transient(p) || !p.is_file() {
         return p.to_path_buf();
     }
-    let Some(name) = p.file_name() else {
-        return p.to_path_buf();
-    };
+    copy_to_paste(p, paste_dir).unwrap_or_else(|| p.to_path_buf())
+}
+
+/// Copies the file p into a fresh `drop-<nanos>/` folder of the paste
+/// directory, under its own name. `None` when it has no name or the copy
+/// fails.
+fn copy_to_paste(p: &std::path::Path, paste_dir: &std::path::Path) -> Option<PathBuf> {
+    let name = p.file_name()?;
     let stamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);
     let dir = paste_dir.join(format!("drop-{stamp}"));
     let copy = dir.join(name);
-    match std::fs::create_dir_all(&dir).and_then(|_| std::fs::copy(p, &copy)) {
-        Ok(_) => copy,
-        Err(_) => p.to_path_buf(),
+    std::fs::create_dir_all(&dir)
+        .and_then(|_| std::fs::copy(p, &copy))
+        .ok()
+        .map(|_| copy)
+}
+
+/// The account's home for the drop rules, from `HOME`: no disk access, so
+/// the main thread may ask it. `None` off macOS, where no folder is guarded.
+fn drop_home() -> Option<PathBuf> {
+    if !cfg!(target_os = "macos") {
+        return None;
+    }
+    std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .filter(|h| h.is_absolute())
+}
+
+/// The folders under the home that macOS guards with a "Files and Folders"
+/// prompt (`tcc.Guarded` in the daemon): the account's Desktop, Documents,
+/// Downloads, iCloud Drive and cloud storage.
+const GUARDED_REL: [&str; 5] = [
+    "Desktop",
+    "Documents",
+    "Downloads",
+    "Library/Mobile Documents",
+    "Library/CloudStorage",
+];
+
+/// The image kinds Claude Code attaches as `[Image #N]` when it can read the
+/// file it was given.
+const IMAGE_EXTS: [&str; 5] = ["png", "jpg", "jpeg", "gif", "webp"];
+
+/// Biggest guarded image copied for a session; a bigger one is typed where
+/// it is.
+pub const GUARDED_COPY_MAX: u64 = 30 << 20;
+
+/// Whether p is an image in a folder macOS guards (ADR-106). The session
+/// that gets the path may be refused it with no prompt (0.197.0: an image
+/// dragged from Downloads arrived as a bare path instead of `[Image #N]`),
+/// while this app may read it: the user dropped it here. Decided from the
+/// path alone, so the main thread may ask it.
+pub fn is_guarded_image(p: &std::path::Path, home: Option<&std::path::Path>) -> bool {
+    let Some(home) = home else {
+        return false;
+    };
+    let image = p
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| IMAGE_EXTS.iter().any(|x| e.eq_ignore_ascii_case(x)));
+    image
+        && GUARDED_REL.iter().any(|rel| {
+            p.strip_prefix(home.join(rel))
+                .is_ok_and(|r| !r.as_os_str().is_empty())
+        })
+}
+
+/// Whether a dropped path is copied before it is typed: a transient file, or
+/// an image in a guarded folder. Path alone, no disk access.
+pub fn needs_copy(p: &std::path::Path, home: Option<&std::path::Path>) -> bool {
+    is_transient(p) || is_guarded_image(p, home)
+}
+
+/// The path to type for a dropped p: a transient file as `keep_transient`
+/// does, and an image in a guarded folder (ADR-106) copied into the paste
+/// directory the same way, when it is a file of at most `GUARDED_COPY_MAX`.
+/// Only images: a source file dropped from a project in Documents is typed
+/// where it is, or the agent would edit a copy. Anything else, or a copy
+/// that fails (this app refused too), is typed as it is. Worker thread only.
+pub fn keep_for_session(
+    p: &std::path::Path,
+    paste_dir: &std::path::Path,
+    home: Option<&std::path::Path>,
+) -> PathBuf {
+    if is_transient(p) {
+        return keep_transient(p, paste_dir);
+    }
+    if !is_guarded_image(p, home) {
+        return p.to_path_buf();
+    }
+    match std::fs::metadata(p) {
+        Ok(m) if m.is_file() && m.len() <= GUARDED_COPY_MAX => {
+            copy_to_paste(p, paste_dir).unwrap_or_else(|| p.to_path_buf())
+        }
+        _ => p.to_path_buf(),
     }
 }
 
@@ -966,6 +1054,67 @@ mod tests {
     }
 
     #[test]
+    fn an_image_from_a_guarded_folder_is_copied_and_anything_else_stays() {
+        let home = scratch("home");
+        let paste = home.join("paste");
+        let dl = home.join("Downloads");
+        std::fs::create_dir_all(&dl).unwrap();
+        let img = dl.join("shot \u{1f600}.PNG");
+        std::fs::write(&img, b"png").unwrap();
+        let got = keep_for_session(&img, &paste, Some(&home));
+        assert!(got.starts_with(&paste), "{got:?}");
+        assert_eq!(got.file_name(), img.file_name());
+        assert_eq!(std::fs::read(&got).unwrap(), b"png");
+        // A source file in a guarded folder is typed where it is: the agent
+        // must edit the user's file, not a copy.
+        let src = home.join("Documents").join("proj").join("main.go");
+        std::fs::create_dir_all(src.parent().unwrap()).unwrap();
+        std::fs::write(&src, b"package main").unwrap();
+        assert_eq!(keep_for_session(&src, &paste, Some(&home)), src);
+        // An image outside the guarded folders, and any image with no home
+        // (off macOS), is typed where it is.
+        let free = home.join("Screenshots").join("a.png");
+        std::fs::create_dir_all(free.parent().unwrap()).unwrap();
+        std::fs::write(&free, b"png").unwrap();
+        assert_eq!(keep_for_session(&free, &paste, Some(&home)), free);
+        assert_eq!(keep_for_session(&img, &paste, None), img);
+        // A missing image, and a folder named like one, stay as they are.
+        let gone = dl.join("gone.png");
+        assert_eq!(keep_for_session(&gone, &paste, Some(&home)), gone);
+        let dir = dl.join("album.png");
+        std::fs::create_dir_all(&dir).unwrap();
+        assert_eq!(keep_for_session(&dir, &paste, Some(&home)), dir);
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn guarded_images_are_told_from_the_path_alone() {
+        let home = std::path::Path::new("/Users/a");
+        for p in [
+            "/Users/a/Downloads/x.png",
+            "/Users/a/Desktop/Screenshot 2026.jpeg",
+            "/Users/a/Documents/p/assets/logo.WEBP",
+            "/Users/a/Library/Mobile Documents/com~apple~CloudDocs/a.gif",
+            "/Users/a/Library/CloudStorage/Dropbox/a.jpg",
+        ] {
+            assert!(needs_copy(std::path::Path::new(p), Some(home)), "{p}");
+        }
+        for p in [
+            "/Users/a/Downloads/x.pdf",
+            "/Users/a/Downloads",
+            "/Users/a/Screenshots/x.png",
+            "/Users/a/DownloadsOld/x.png",
+            "/Users/b/Downloads/x.png",
+        ] {
+            assert!(!needs_copy(std::path::Path::new(p), Some(home)), "{p}");
+        }
+        assert!(!needs_copy(
+            std::path::Path::new("/Users/a/Downloads/x.png"),
+            None
+        ));
+    }
+
+    #[test]
     fn only_a_temporary_hand_over_place_is_transient() {
         assert!(is_transient(std::path::Path::new(
             "/var/folders/x/T/TemporaryItems/NSIRD_screencaptureui_1/Screenshot.png"
@@ -1000,6 +1149,7 @@ mod tests {
             .expect("the copy runs on a worker thread");
         for io in [
             "keep_transient(",
+            "keep_for_session(",
             "std::fs",
             "is_file(",
             "metadata(",
@@ -1007,7 +1157,7 @@ mod tests {
         ] {
             assert!(!main.contains(io), "{io} on the main thread: {main}");
         }
-        assert!(worker.contains("keep_transient("), "{worker}");
+        assert!(worker.contains("keep_for_session("), "{worker}");
     }
 
     // The paths a user drags, by the kinds that break drop handlers: names

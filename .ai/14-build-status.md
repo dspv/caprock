@@ -77,6 +77,23 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-11-26 — unreleased: a session refused a guarded folder (ADR-106)
+
+Sessions on 0.197.0 were refused `~/Downloads` with no prompt, and an image
+dragged from there typed as a path. Measured on the owner's Mac: helper
+holders' `claude` answers to Caprock Terminal, a pre-helper holder's to
+its per-version binary; the helper had no folder usage strings. It now
+has five (`check-app-mic.sh` checks them); the app copies an image
+dropped from a guarded folder into the paste directory
+(`keep_for_session`); a terminal showing `Operation not permitted` for a
+guarded place gets a strip naming the System Settings entry
+(`GET /v1/sessions/{id}/privacy`, `tcc.Responsible`) and **Open
+Settings** (`POST …/privacy/open`, Full Disk Access pane, on the click).
+To verify on the first signed release: whether a new terminal's `ls
+~/Downloads` now prompts as Caprock Terminal (ADR-106 § Unverified has
+the steps), and that a Downloads image dropped in the app arrives as
+`[Image #N]`.
+
 ### 2026-11-26 — unreleased: resume after an API error (ADR-105)
 
 A Claude Code session Caprock started whose turn ended on a transient API

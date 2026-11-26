@@ -1548,6 +1548,22 @@ or Photos library, cloud storage or a volume in the background.
 - **What to allow.** Allow the folders your projects live in, or the ones
   you ask an agent to read. Saying no does not break Caprock; that session
   just cannot read that folder.
+- **A session refused a folder without asking.** macOS does not always
+  ask: in 0.197.0 sessions were refused Downloads with "Operation not
+  permitted" and no prompt. When a terminal shows that refusal for
+  Desktop, Documents, Downloads, iCloud Drive, cloud storage or a drive, a
+  line under it names the folder and the entry to switch on, as System
+  Settings lists it (usually **Caprock Terminal**), and **Open Settings**
+  opens System Settings → Privacy & Security → Full Disk Access and shows
+  that program in Finder, so you can drag it into the list if it is not
+  there. Switching on its Downloads (or other folder) entry under **Files &
+  Folders** is the narrower choice when it is listed there. Nothing opens
+  until you click.
+- **An image dragged from a guarded folder** (Downloads, Desktop,
+  Documents, iCloud Drive) into a terminal in the app is copied into
+  Caprock's paste folder first, so Claude Code attaches it as `[Image #N]`
+  even when the session itself may not read that folder. Other files are
+  typed where they are, so an agent edits your file, not a copy.
 - **Sessions started before this change** keep asking the way they did
   (as `claude`, the shell, or "caprock" for the oldest) until they end.
 - **Asking again after an update.** The app is signed with Caprock's Apple

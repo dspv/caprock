@@ -908,6 +908,15 @@ func (m *Manager) Get(sessionID string) (*Agent, bool) {
 	return a, a != nil
 }
 
+// SessionPID is the pid of a running session's own program (the child of its
+// pty-host), 0 when this daemon does not hold it.
+func (m *Manager) SessionPID(sessionID string) int {
+	if a, ok := m.Get(sessionID); ok {
+		return a.PID()
+	}
+	return 0
+}
+
 // List returns running agents.
 func (m *Manager) List() []*Agent {
 	m.mu.Lock()

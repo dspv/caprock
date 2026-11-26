@@ -2291,6 +2291,19 @@ export interface SubscriptionsResponse {
  * How an owned session's program ended (GET /v1/agents/{id}/exit,
  * internal/agents ExitReport).
  */
+/**
+ * Who macOS asks about for a session (GET /v1/sessions/{id}/privacy,
+ * ADR-106): the entry System Settings lists, such as "Caprock Terminal" or a
+ * Claude Code version like "2.1.332". `live` is false when it is the helper
+ * beside the daemon rather than read from the running process.
+ */
+export interface SessionPrivacy {
+  name: string
+  program?: string
+  reveal?: string
+  live: boolean
+}
+
 export interface AgentExit {
   session_id: string
   /** Which coding agent it was; absent when only the store remembers it. */
@@ -3057,6 +3070,10 @@ export const api = {
   spawn: (req: SpawnRequest) => post<SpawnResult>('/v1/agents', req),
   /** How an owned session's program ended (GET /v1/agents/{id}/exit): the tab of one that exited at once shows it. */
   agentExit: (id: string) => get<AgentExit>(`/v1/agents/${encodeURIComponent(id)}/exit`),
+  /** Who macOS asks about for this session, as System Settings lists it (macOS daemons only; ADR-106). */
+  sessionPrivacy: (id: string) => get<SessionPrivacy>(`/v1/sessions/${encodeURIComponent(id)}/privacy`),
+  /** Opens System Settings' privacy pane on this Mac and shows the program in Finder, on the user's click (ADR-106). */
+  openSessionPrivacy: (id: string, pane: 'full_disk' | 'files' = 'full_disk') => post<SessionPrivacy>(`/v1/sessions/${encodeURIComponent(id)}/privacy/open`, { pane }),
   /** GET /v1/attempts/{group}: the attempts started together, with their spend and changes (ADR-052). */
   attempts: (group: string) => get<AttemptsResponse>(`/v1/attempts/${encodeURIComponent(group)}`),
   /** The models an agent's own CLI lists — Codex's on-disk catalog and its
