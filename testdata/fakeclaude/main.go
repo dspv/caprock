@@ -5,7 +5,8 @@
 // `you-said:<line>`, draws a permission dialog on `ask[tag]` (its footer ends
 // `asked<tag>`), animates Claude Code's subagent list on `agents [frames] [tag]` and
 // draws its input box on `box` (agents.go), prints Claude Code's voice
-// failure lines on `voice-silent` and `voice-denied` and draws the first in
+// failure lines on `voice-silent` and `voice-denied` (and a refused Downloads
+// read on `eperm-downloads`) and draws the first in
 // its footer under the input box on `voice-footer [tag]` (voice.go), prints the arguments
 // it was started with on `argv`, exits with code 3 on `quit`, and
 // exits cleanly on `/exit` or
@@ -76,6 +77,13 @@ func answer(line string) {
 	}
 	if line == "voice-denied" {
 		fmt.Print("Microphone access is denied.\r\n")
+		return
+	}
+	// macOS refusing a guarded folder, as Claude Code's Read tool reports it,
+	// for the folder access strip (ui/src/lib/termprivacy.ts). Only printed:
+	// nothing is read.
+	if line == "eperm-downloads" {
+		fmt.Print("  ⎿  Error: EPERM: operation not permitted, open '/Users/e2e/Downloads/shot.png'\r\n")
 		return
 	}
 	// The same failure where Claude Code shows it: in its footer, under the

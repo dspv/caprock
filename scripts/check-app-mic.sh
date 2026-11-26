@@ -8,7 +8,7 @@
 # which answers for everything a Caprock terminal runs: its executable
 # carries the entitlement and its own Info.plist the usage string, under its
 # own bundle id. The app's Info.plist also says why it asks for speech
-# recognition (the chat's voice input, ADR-102). Reads the bundle only; records nothing and raises no dialog.
+# recognition (the chat's voice input, ADR-102), and the helper says why its programs may read the guarded folders (ADR-106). Reads the bundle only; records nothing and raises no dialog.
 #
 #   scripts/check-app-mic.sh path/to/Caprock.app
 #
@@ -42,6 +42,11 @@ hplist() { /usr/libexec/PlistBuddy -c "Print :$1" "$HELPER/Contents/Info.plist" 
 [[ "$(hplist CFBundleExecutable)" == caprock-pty-host ]] ||
   die "Caprock Terminal.app's executable is '$(hplist CFBundleExecutable)', not caprock-pty-host"
 [[ -n "$(hplist NSMicrophoneUsageDescription)" ]] || die "Caprock Terminal.app's Info.plist has no NSMicrophoneUsageDescription"
+# The guarded folders a terminal's programs read (ADR-106).
+for key in NSDesktopFolderUsageDescription NSDocumentsFolderUsageDescription NSDownloadsFolderUsageDescription \
+  NSRemovableVolumesUsageDescription NSNetworkVolumesUsageDescription; do
+  [[ -n "$(hplist "$key")" ]] || die "Caprock Terminal.app's Info.plist has no $key"
+done
 hexe="$HELPER/Contents/MacOS/caprock-pty-host"
 [[ -x "$hexe" ]] || die "no caprock-pty-host in Caprock Terminal.app"
 ents="$(codesign -d --entitlements - --xml "$hexe" 2>/dev/null || true)"

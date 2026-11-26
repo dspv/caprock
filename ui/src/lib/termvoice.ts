@@ -129,6 +129,22 @@ export function hideVoice(sessionId: string, now = Date.now()): void {
  * it, so no write would bring the scan.
  */
 export function attachVoiceWatch(term: Terminal, enabled: () => boolean, onFound: () => void): { dispose: () => void; rescan: () => void } {
+  return attachScreenWatch(term, enabled, (rows, cols) => (findVoiceFailure(rows, cols) ? true : null), () => onFound())
+}
+
+/**
+ * Watches the bottom of `term` for what `find` recognises and calls
+ * `onFound` once with it. The scan is the voice watch's: at most once per
+ * VOICE_SCAN_MS while output flows, over the last VOICE_SCAN_ROWS rows with
+ * anything on them, never while `enabled()` says no, and it stops at the
+ * first find. Shared with the guarded-folder watch (lib/termprivacy).
+ */
+export function attachScreenWatch<T>(
+  term: Terminal,
+  enabled: () => boolean,
+  find: (rows: readonly Row[], cols: number) => T | null,
+  onFound: (found: T) => void,
+): { dispose: () => void; rescan: () => void } {
   let done = false
   let timer = 0
   let last = 0
@@ -148,10 +164,11 @@ export function attachVoiceWatch(term: Terminal, enabled: () => boolean, onFound
       const line = b.getLine(y)
       rows.push({ text: line?.translateToString(false) ?? '', wrapped: !!line?.isWrapped && y > from })
     }
-    if (!findVoiceFailure(rows, term.cols)) return
+    const found = find(rows, term.cols)
+    if (found === null) return
     done = true
     sub.dispose()
-    onFound()
+    onFound(found)
   }
   const schedule = () => {
     if (done || timer || !enabled()) return

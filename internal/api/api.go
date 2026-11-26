@@ -789,6 +789,9 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/sessions/{id}/calls", s.handleSessionCalls)
 	m.HandleFunc("GET /v1/sessions/{id}/notes", s.handleSessionNotes)
 	m.HandleFunc("GET /v1/sessions/{id}/todos", s.handleSessionTodos)
+	// Who macOS asks about for a session, and its pane on a click (ADR-106).
+	m.HandleFunc("GET /v1/sessions/{id}/privacy", s.handleSessionPrivacy)
+	m.HandleFunc("POST /v1/sessions/{id}/privacy/open", s.handleSessionPrivacyOpen)
 	m.HandleFunc("GET /v1/sessions/{id}/prs", s.handleSessionPRs)
 	m.HandleFunc("POST /v1/sessions/{id}/prs/{number}/rerun", s.handleSessionPRRerun)
 	m.HandleFunc("POST /v1/sessions/{id}/prs/{number}/update-branch", s.handleSessionPRUpdateBranch)

@@ -34,5 +34,21 @@
 	<string>Apache-2.0</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>A program in a Caprock terminal wants the microphone, for example an agent's voice input.</string>
+	<!-- The folders macOS guards with a "Files and Folders" prompt (ADR-106).
+	     Caprock Terminal answers for every program in a Caprock terminal, so
+	     an agent reading ~/Downloads is asked about as Caprock Terminal. 0.197.0
+	     shipped without these keys and sessions were refused Downloads with no
+	     prompt; Apple's DTS checks for these strings first when a prompt is
+	     missing. scripts/check-app-mic.sh checks they are here. -->
+	<key>NSDesktopFolderUsageDescription</key>
+	<string>A program in a Caprock terminal wants a file on your Desktop, for example an agent reading an image you gave it.</string>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>A program in a Caprock terminal wants a file in your Documents folder, for example an agent working on a project kept there.</string>
+	<key>NSDownloadsFolderUsageDescription</key>
+	<string>A program in a Caprock terminal wants a file in your Downloads folder, for example an agent reading an image you downloaded.</string>
+	<key>NSRemovableVolumesUsageDescription</key>
+	<string>A program in a Caprock terminal wants a file on a removable drive.</string>
+	<key>NSNetworkVolumesUsageDescription</key>
+	<string>A program in a Caprock terminal wants a file on a network drive.</string>
 </dict>
 </plist>

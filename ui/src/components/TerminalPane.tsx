@@ -94,6 +94,10 @@
  *   session Caprock started whose terminal shows Claude Code's voice failing
  *   gets a strip under it — *Voice works after restarting this session.*,
  *   *Restart here* (the same conversation resumed in this tab), ×.
+ * - **A guarded folder refused** (lib/termprivacy, ADR-106): on macOS, any
+ *   terminal that shows `Operation not permitted` for Desktop, Documents,
+ *   Downloads, iCloud Drive, cloud storage or a drive gets a strip naming
+ *   the System Settings entry to switch on, *Open Settings*, ×.
  */
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Terminal as Xterm } from '@xterm/xterm'
@@ -132,8 +136,10 @@ import { blinkWhileVisible, pageHidden, suspendWhileHidden } from '@/lib/visible
 import { attachInputBoxBand, type InputBoxBand } from '@/lib/terminputbox'
 import { attachUpdateWatch, dismissNotice, requestShellBeside, type UpdateNotice } from '@/lib/termupdate'
 import { UpdateNoticeBar } from './UpdateNoticeBar'
-import { attachVoiceWatch, daemonPlatform, hideVoice, isVoiceHidden, macDaemon, PLATFORM_RETRY_MS } from '@/lib/termvoice'
+import { attachScreenWatch, attachVoiceWatch, daemonPlatform, hideVoice, isVoiceHidden, macDaemon, PLATFORM_RETRY_MS } from '@/lib/termvoice'
+import { findPrivacyRefusal, hidePrivacy, isPrivacyHidden, type GuardedFolder } from '@/lib/termprivacy'
 import { VoiceRestartStrip } from './VoiceRestartStrip'
+import { PrivacyStrip } from './PrivacyStrip'
 import { EarlyExit } from './EarlyExit'
 import { newShellCloseKey, newShellHintText, onlyPrompt } from '@/lib/newshellhint'
 
@@ -377,6 +383,10 @@ export function TerminalPane({
   const macRef = useRef(false)
   const voicesRef = useRef<{ rescan: () => void } | null>(null)
   useEffect(() => { setVoice(false) }, [sessionId])
+  // macOS refused this session a guarded folder (lib/termprivacy): the strip.
+  const [refused, setRefused] = useState<GuardedFolder | null>(null)
+  const privacyRef = useRef<{ rescan: () => void } | null>(null)
+  useEffect(() => { setRefused(null) }, [sessionId])
   // The new shell's hint, where it sits (lib/newshellhint); null when not shown.
   const [shellLine, setShellLine] = useState<{ top: number; left: number } | null>(null)
   const shellHintRef = useRef(shellHint)
@@ -425,6 +435,8 @@ export function TerminalPane({
     const updates = attachUpdateWatch(term, setUpdate)
     const voices = attachVoiceWatch(term, () => voiceRef.current && macRef.current && !isVoiceHidden(sessionId), () => setVoice(true))
     voicesRef.current = voices
+    const privacy = attachScreenWatch(term, () => macRef.current && !isPrivacyHidden(sessionId), findPrivacyRefusal, setRefused)
+    privacyRef.current = privacy
     // A local dev server's address gets *Preview on phone* beside it, where a
     // page can show (the desktop app); seen anywhere, ⌘K lists it (lib/devservers).
     const devServers = attachDevServerWatch(term, {
@@ -1122,6 +1134,8 @@ export function TerminalPane({
       updates.dispose()
       voices.dispose()
       voicesRef.current = null
+      privacy.dispose()
+      privacyRef.current = null
       devServers.dispose()
       term.dispose()
     }
@@ -1134,9 +1148,10 @@ export function TerminalPane({
   // the footer and writes nothing after it, so a pane that turned on after
   // the line was drawn — the page loaded with this tab open, its terminal
   // replayed before the sessions list answered — would otherwise wait for a
-  // write that never comes. A failed ask is asked again.
+  // write that never comes. A failed ask is asked again. Every pane asks
+  // (one request per page, cached): the guarded-folder watch
+  // (lib/termprivacy) is on for shells and agents alike.
   useEffect(() => {
-    if (!voiceRestart) return
     let alive = true
     let retry = 0
     const ask = () => {
@@ -1145,6 +1160,7 @@ export function TerminalPane({
         if (!p) { retry = window.setTimeout(ask, PLATFORM_RETRY_MS); return }
         macRef.current = macDaemon(p)
         voicesRef.current?.rescan()
+        privacyRef.current?.rescan()
       })
     }
     ask()
@@ -1253,6 +1269,13 @@ export function TerminalPane({
         sessionId={sessionId}
         onRestarted={() => { hideVoice(sessionId); setVoice(false) }}
         onDismiss={() => { hideVoice(sessionId); setVoice(false); api.current?.focus() }}
+      />
+    )}
+    {refused && (
+      <PrivacyStrip
+        sessionId={sessionId}
+        folder={refused}
+        onDismiss={() => { hidePrivacy(sessionId); setRefused(null); api.current?.focus() }}
       />
     )}
     {quickReplies && <QuickReplies sessionId={sessionId} className={composer ? 'pb-0' : ''} />}

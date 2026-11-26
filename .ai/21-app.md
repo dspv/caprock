@@ -2801,6 +2801,25 @@ the fallback since the Developer ID; see *With a Developer ID*):
   the daemon still asks for is what the user opened, and Desktop, Documents
   or Downloads when a session runs there (finding its repository reads up
   that folder, `tcc.GuardedBeyondWork`).
+- **Refused without a prompt** (ADR-106, 2026-11-26). On 0.197.0 the owner
+  and a second user found sessions refused `~/Downloads` (EPERM) with no
+  prompt, and an image dragged from Downloads typed as a bare path instead
+  of Claude Code's `[Image #N]`. Measured on the owner's Mac
+  (`responsibility_get_pid_responsible_for_pid`): a `claude` in a helper
+  holder answers to Caprock Terminal; one in a holder from before the
+  helper answers for itself as `~/.local/share/claude/versions/2.1.332`,
+  one TCC client per Claude Code version. Caprock Terminal's Info.plist
+  had no folder usage strings; it now carries
+  `NSDesktopFolderUsageDescription`, `NSDocumentsFolderUsageDescription`,
+  `NSDownloadsFolderUsageDescription`, `NSRemovableVolumesUsageDescription`
+  and `NSNetworkVolumesUsageDescription` (`scripts/check-app-mic.sh` checks
+  them). Whether that brings the prompt back is to see on a signed build.
+  Two fallbacks do not wait on it: an image dropped from a guarded folder
+  is copied into the paste directory by the app, which the drop lets read
+  it (`keep_for_session` in `src/shell.rs`, images up to 30 MB, other files
+  typed as they are); and a terminal that shows the refusal gets a line
+  naming the entry and a button to the Full Disk Access pane
+  ([04-ui.md](04-ui.md), the *A guarded folder refused* terminal bullet).
 - **One certificate, one answer** (2026-10-14). TCC stores an answer with
   the program's designated requirement and asks again when the next build
   does not satisfy it. An ad-hoc signature's requirement is its cdhash

@@ -8435,3 +8435,121 @@ gateway error usually clears in minutes; the owner found out hours later.
 
 **Revisit if** Claude Code starts resuming a failed turn itself, or writes
 the retryable flag into the line.
+
+## ADR-106 — A session refused a guarded folder: say which switch, copy dropped images, give the helper its folder strings
+
+**Date:** 2026-11-26 · **Status:** accepted (decided without the owner; he
+may overrule it). Builds on
+[ADR-101](#adr-101--caprock-terminals-answer-to-macos-as-caprock-terminal-a-signed-helper-app)
+and [ADR-044](#adr-044--sessions-answer-for-themselves-to-macos-privacy-prompts-background-reads-skip-every-guarded-place);
+how sessions are spawned is unchanged. Contract: [03-contracts.md § Session
+privacy](03-contracts.md).
+
+**Context.** On 0.197.0 the owner and a second user found that Claude Code
+sessions in Caprock could not read `~/Downloads` (EPERM), that macOS never
+asked, and that an image dragged from Downloads into a session arrived as
+a long path instead of `[Image #N]` (images from `~/Screenshots`, which
+macOS does not guard, worked). System Settings → Privacy & Security → Full
+Disk Access listed one entry per Claude Code version (2.1.291 … 2.1.330),
+two "caprock" entries and "Caprock Terminal", all off.
+
+What was measured on the owner's Mac (2026-11-26), without a dialog,
+through `responsibility_get_pid_responsible_for_pid` (read-only) and each
+responsible process's executable:
+
+- A `claude` in a holder running in the helper answers to **Caprock
+  Terminal** (`…/caprock/bin/Caprock Terminal.app/Contents/MacOS/caprock-pty-host`),
+  and the helper answers for itself: ADR-101 works as built.
+- A `claude` in a holder from before the helper (`caprock/bin/caprock-pty-host`,
+  still running since an earlier release) answers for itself as
+  `~/.local/share/claude/versions/2.1.332`, a new TCC client for every
+  Claude Code version — the per-version entries the owner sees. Claude Code
+  has the same problem in any terminal that disclaims
+  ([anthropics/claude-code#66216](https://github.com/anthropics/claude-code/issues/66216)).
+- The daemon is a launchd agent and answers for itself (`caprock`).
+- The installed helper (0.197.0, Developer ID, team `47538322FW`, hardened
+  runtime, `audio-input`) has `NSMicrophoneUsageDescription` and **no
+  folder usage string** (`NSDownloadsFolderUsageDescription` and the
+  rest), and is `LSBackgroundOnly`.
+
+What could not be measured: why `tccd` did not prompt for Caprock
+Terminal. Its info-level log lives in memory for minutes, the failing reads
+were hours old, and no test may read `~/Downloads` or raise a prompt. Three
+candidates, from Apple's forums: a missing folder usage string (DTS checks
+it first; one developer's Downloads prompt appeared only after adding it,
+[thread 131568](https://developer.apple.com/forums/thread/131568),
+[thread 793660](https://developer.apple.com/forums/thread/793660)); the
+helper being a background-only app started by a launchd agent rather than
+by the user (prompts belong to the GUI session,
+[thread 128641](https://developer.apple.com/forums/thread/128641)); and
+macOS 27, which the owner runs, denying more without a prompt by design
+([thread 847030](https://developer.apple.com/forums/thread/847030), DTS:
+"This is an intentional change"). A "Don't Allow" recorded earlier would
+show under Files & Folders, not Full Disk Access, which the owner looked at.
+
+**The decision.**
+
+- **The helper says why its programs read the guarded folders.** Caprock
+  Terminal's Info.plist gains `NSDesktopFolderUsageDescription`,
+  `NSDocumentsFolderUsageDescription`, `NSDownloadsFolderUsageDescription`,
+  `NSRemovableVolumesUsageDescription` and
+  `NSNetworkVolumesUsageDescription`; `scripts/check-app-mic.sh` fails a
+  bundle without them. Cheap, and the first thing Apple asks about.
+- **A dropped image does not depend on the session's access.** The app is
+  the process the user dropped the file on, and AppKit hands it access to
+  what was dropped, as it already does for the screenshot thumbnail's
+  `TemporaryItems` file (copied into the paste directory since v0.81.0). An
+  image (png, jpg, jpeg, gif, webp) from Desktop, Documents, Downloads,
+  iCloud Drive or cloud storage, up to 30 MB, is now copied the same way
+  on the drop's worker thread, and the copy's path is typed
+  (`keep_for_session`, `app/src-tauri/src/shell.rs`); the paste directory
+  is in every session's `--add-dir`. Only images: a source file dropped
+  from a project in Documents is typed where it is, or the agent would edit
+  a copy. A copy that fails is typed as before. The browser's drop already
+  sends the file's bytes (`POST /v1/paste`) and is unchanged.
+- **A refusal says which switch, and opens the pane on a click.** A
+  terminal (agent or shell) on a macOS daemon that shows `Operation not
+  permitted` or `EPERM` with a path into a guarded place gets one line:
+  the folder, the entry to switch on as System Settings lists it (asked of
+  the daemon, which reads the session's responsible program), and **Open
+  Settings**, which opens Privacy & Security → Full Disk Access
+  (`x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles`)
+  and shows the program in Finder, so it can be dragged into the list if
+  it is not there. Nothing opens without the click; nothing is stopped,
+  typed, granted or reset.
+
+**Rejected.**
+
+- *The app (`Caprock.app`) as the responsible process*, by starting holders
+  through LaunchServices or running the daemon from the bundle as an
+  `SMAppService` agent. It may be the real cure — a foreground app the user
+  launched is the clearest case for a prompt — but it moves every session's
+  process tree and cannot be tested without a signed, notarized build and
+  a person at the prompt. Kept as the next step if the usage strings do
+  not bring the prompt back (see Unverified).
+- *Disclaiming again so `claude` answers for itself.* That is what made
+  one entry per Claude Code version.
+- *`tccutil reset` or editing TCC.db.* It needs Full Disk Access and
+  overrides answers that are the user's to give.
+- *Copying every dropped file from a guarded folder.* Edits would land in
+  the copy.
+- *Opening the pane automatically on a refusal.* An OS window the user did
+  not ask for.
+
+**Unverified — needs a Developer ID build and a person.** (1) Whether a
+helper with the folder usage strings gets the Downloads prompt on macOS 27;
+on the owner's Mac, after the update, open a new Caprock terminal, run `ls
+~/Downloads`, and read `log show --last 5m --info --predicate 'process ==
+"tccd"'` for `promptPolicy` and `kTCCServiceSystemPolicyDownloadsFolder`
+with `Resp:` Caprock Terminal. (2) If not, whether switching Caprock
+Terminal on in Full Disk Access (or Files & Folders → Downloads) lets a
+new terminal read Downloads — if it does, the strip is the fix until the
+prompt is; if Files & Folders has no Caprock Terminal row, FDA is the only
+switch. (3) That the drop copy reads a Downloads image in the signed app
+(it does for `TemporaryItems`, the same mechanism). (4) Whether sessions
+in holders from before the helper (answering as a Claude Code version)
+should be offered a restart, as voice is (ADR-101's strip).
+
+**Revisit if** the prompt does not come back with the usage strings (then
+try the app as the responsible process), or Claude Code installs at one
+path.
