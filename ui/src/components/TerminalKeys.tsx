@@ -7,6 +7,8 @@ import { AttachPicker } from './AttachPicker'
 import { ChatPickerList, useChatPicker } from './ChatPicker'
 import { joinDictation, speechHint, speechSupport, speechWhere, startDictation, type Dictation } from '@/lib/speech'
 import { DeskMic, DeskVoiceLine, useDeskVoice } from './DeskVoice'
+import { touchScreen } from '@/lib/phone'
+import { hideKeyboard } from '@/lib/keyboard'
 import { COMMON_SPEECH_LANGS, langChip, langIntroDue, langName, markLangIntroSeen, myLangs, nextSpeechLang, setSpeechLang, speechLang } from '@/lib/speechlang'
 
 /** A newline inside the prompt: ESC CR, what a terminal sends for Alt+Enter
@@ -307,6 +309,11 @@ export function TerminalKeys({ send, attach, attachIn, sendPaths, initial = '', 
   }, [state, live])
   const [attaching, setAttaching] = useState(false)
   const field = useRef<HTMLTextAreaElement>(null)
+  // A phone or a tablet: Return is a new line and Send sends, the keyboard
+  // goes down after Send, and while it is up a button puts it away (.ai/04-ui.md
+  // § From a phone, *The keyboard goes away*). Read once: a desktop never is.
+  const [touch] = useState(touchScreen)
+  const [focused, setFocused] = useState(false)
   // One line idle, growing with what is typed up to MAX_LINES, then scrolling:
   // a fixed two-line box hid most of a pre-filled "In <file> around line N: ".
   useLayoutEffect(() => {
@@ -488,7 +495,9 @@ export function TerminalKeys({ send, attach, attachIn, sendPaths, initial = '', 
     }
     setText('')
     chooser.track('', 0)
-    field.current?.focus()
+    // On a phone the answer is what comes next, and the keyboard would cover it.
+    if (touch) hideKeyboard(field.current)
+    else field.current?.focus()
   }
 
   // Back into the field, to change or drop.
@@ -639,11 +648,17 @@ export function TerminalKeys({ send, attach, attachIn, sendPaths, initial = '', 
           onSelect={(e) => trackCaret(e.currentTarget)}
           onKeyDown={(e) => {
             if (chooser.onKeyDown(e)) return
-            if (e.key === 'Enter' && !e.shiftKey) {
+            // On a touch screen Return is a new line, as in a messenger with
+            // more than one line to say; Send sends, and so does ⌘/Ctrl+Return
+            // from a tablet's keyboard.
+            if (e.key === 'Enter' && !e.shiftKey && (!touch || e.metaKey || e.ctrlKey)) {
               e.preventDefault()
               submit()
             }
           }}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          enterKeyHint={touch ? 'enter' : undefined}
           rows={1}
           placeholder={placeholder ?? (pickers ? 'Type · / commands · @ files' : 'Type to the session…')}
           aria-label="Type to the session"
@@ -678,8 +693,25 @@ export function TerminalKeys({ send, attach, attachIn, sendPaths, initial = '', 
               : voiceNote}
           </div>
         )}
-        <div className="flex items-center justify-end gap-2">
-        {foldKeys && (
+        <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+        {/* In Keys' place while typing: a row of six did not fit 390px, and
+          * the keys are in the ··· menu too. */}
+        {touch && focused && (
+          <button
+            type="button"
+            data-hide-keyboard
+            // The field keeps the focus until the click, so the button is
+            // still there to take it (a press would blur it first elsewhere).
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => hideKeyboard(field.current)}
+            aria-label="Hide the keyboard"
+            title="Hide the keyboard"
+            className={`mr-auto grid h-11 w-11 shrink-0 place-items-center rounded-sm border border-border-strong bg-panel-2 text-fg-muted hover:border-accent`}
+          >
+            <KeyboardDownIcon />
+          </button>
+        )}
+        {foldKeys && !(touch && focused) && (
           <button
             type="button"
             aria-expanded={keysOpen}
@@ -861,6 +893,17 @@ function DocIcon() {
 
 function PhotoIcon() {
   return <svg {...ICON} className="text-fg-muted"><rect x="3" y="5" width="18" height="14" rx="2" /><circle cx="9" cy="10" r="1.6" /><path d="M21 16l-5-5-8 8" /></svg>
+}
+
+/** A keyboard over a chevron pointing down: put the keyboard away. */
+function KeyboardDownIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <rect x="3" y="3.5" width="18" height="11" rx="2" />
+      <path d="M7 7h.01M10.5 7h.01M14 7h.01M17 7h.01M7 10.5h.01M17 10.5h.01M10 10.5h4" />
+      <path d="M9 18l3 3 3-3" />
+    </svg>
+  )
 }
 
 function MicIcon() {

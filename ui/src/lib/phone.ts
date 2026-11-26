@@ -51,6 +51,14 @@ export function useNarrowScreen(): boolean {
  * the document, so scrolling does not feed back into the height; re-measured
  * when the viewport changes and when anything above it changes size (a
  * permission card arriving). Off (no height set) when `on` is false.
+ *
+ * The visual viewport's offset counts: with the keyboard up, iOS Safari pans
+ * the visual viewport down the layout one (`offsetTop` > 0) to keep the field
+ * in view, and a height from `vv.height` alone ended the chat that far above
+ * the keyboard, its field floating mid-screen (audit, 2026-11-26). The pan is
+ * followed as it happens (`scroll` on the visual viewport). Where nothing
+ * pans — a desktop, the iOS app whose WebView is resized instead — the offset
+ * is 0 and the height is what it was.
  */
 export function useFillViewport<T extends HTMLElement>(on: boolean, gap = 8): (el: T | null) => void {
   const [el, setEl] = useState<T | null>(null)
@@ -61,19 +69,21 @@ export function useFillViewport<T extends HTMLElement>(on: boolean, gap = 8): (e
     const fit = () => {
       raf = 0
       const top = el.getBoundingClientRect().top + window.scrollY
-      const visible = vv ? vv.height : window.innerHeight
+      const visible = vv ? vv.height + Math.max(0, vv.offsetTop) : window.innerHeight
       // Never smaller than a usable conversation; the page scrolls instead.
       el.style.height = `${Math.max(280, Math.round(visible - top - gap))}px`
     }
     const schedule = () => { if (!raf) raf = requestAnimationFrame(fit) }
     fit()
     vv?.addEventListener('resize', schedule)
+    vv?.addEventListener('scroll', schedule)
     window.addEventListener('resize', schedule)
     const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(schedule) : null
     if (el.parentElement) ro?.observe(el.parentElement)
     return () => {
       if (raf) cancelAnimationFrame(raf)
       vv?.removeEventListener('resize', schedule)
+      vv?.removeEventListener('scroll', schedule)
       window.removeEventListener('resize', schedule)
       ro?.disconnect()
       el.style.height = ''

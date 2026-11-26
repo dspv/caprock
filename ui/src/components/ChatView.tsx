@@ -26,6 +26,7 @@ import { shell } from '@/lib/shell'
 import { dialogOnScreen, DROP_PATHS_EVENT, DROP_ZONE_ATTR, dropZoneAt, type DroppedPaths } from '@/lib/xtermInput'
 import { compareEvents, isMessageEvent, mergeEvents, toMessages, toolInputText, type ChatMessage } from '@/lib/chat'
 import { BrainDropButton } from './BrainDrop'
+import { PhoneReply } from './PhoneReply'
 import { live, useLiveConn, useLiveLink } from '@/lib/live'
 import type { TermState } from '@/lib/termv2'
 import { useStickToBottom } from '@/lib/useStickToBottom'
@@ -39,6 +40,7 @@ import { requestOpenPath } from '@/lib/mdreader'
 import { TerminalKeys, type AttachIn } from './TerminalKeys'
 import { ChevronIcon } from './AppIcons'
 import { touchScreen } from '@/lib/phone'
+import { hideKeyboard, isTypingField } from '@/lib/keyboard'
 import { QuickReplies } from './QuickReplies'
 import { agentDisplayName, donePhrase, fmtElapsed, openTurn, promptParts, STALL_MS, type TurnState } from '@/lib/chatActivity'
 import { useNow } from '@/lib/useNow'
@@ -59,6 +61,8 @@ export const CHAT_HELD_MAX = CHAT_WINDOW * 2
 export const CHAT_GAP_PAGES = 10
 /** How near the top a reader gets before the next page is revealed. */
 const REVEAL_PX = 400
+/** How far a finger drags the conversation before the keyboard goes away, in px. */
+const DRAG_BLUR_PX = 8
 /** A tool result longer than this is cut, with the remainder counted. */
 const RESULT_CAP = 20_000
 
@@ -567,6 +571,28 @@ export function ChatView({ sessionId, earlier = NONE, canType, ended = false, cl
   // and Linux show none.
   const [voice] = useState(() => phone || touchScreen())
 
+  // A finger dragging the conversation puts the keyboard away, as in a
+  // messenger (.ai/04-ui.md § From a phone, *The keyboard goes away*): the
+  // reader went back to reading. Touch only; a tap alone keeps it.
+  useEffect(() => {
+    const el = box.current
+    if (!el || !voice) return
+    let y0 = -1
+    const down = (e: TouchEvent) => { y0 = e.touches.length === 1 ? e.touches[0]!.clientY : -1 }
+    const move = (e: TouchEvent) => {
+      if (y0 < 0 || Math.abs((e.touches[0]?.clientY ?? y0) - y0) < DRAG_BLUR_PX) return
+      y0 = -1
+      const f = document.activeElement
+      if (isTypingField(f) && root.current?.contains(f)) hideKeyboard(f)
+    }
+    el.addEventListener('touchstart', down, { passive: true })
+    el.addEventListener('touchmove', move, { passive: true })
+    return () => {
+      el.removeEventListener('touchstart', down)
+      el.removeEventListener('touchmove', move)
+    }
+  }, [voice])
+
   const stickRef = stick.ref
   const attach = useCallback((el: HTMLDivElement | null) => {
     box.current = el
@@ -614,8 +640,8 @@ export function ChatView({ sessionId, earlier = NONE, canType, ended = false, cl
               : <button type="button" className="link" onClick={() => void revealOlder()}>load earlier</button>}
             </div>
           </div>
-          {loaded && start === 0 && exhausted && earlier.length > 0 && <ClearedParts ids={earlier} onPath={onPath} plain={desk} />}
-          {shown.map((m) => <Message key={m.id} m={m} onPath={onPath} plain={desk} />)}
+          {loaded && start === 0 && exhausted && earlier.length > 0 && <ClearedParts ids={earlier} onPath={onPath} plain={desk} phone={phone} />}
+          {shown.map((m) => <Message key={m.id} m={m} onPath={onPath} plain={desk} phone={phone} />)}
           {outgoing.map((o) => (
             <OutgoingBubble key={`out-${o.key}`} o={o} onRetry={() => void submitText(o.text, o.key)} onDismiss={() => setOutgoing((list) => list.filter((x) => x.key !== o.key))} />
           ))}
@@ -678,7 +704,7 @@ export const CLEARED_DIVIDER = 'Context cleared — Claude no longer remembers t
  * per conversation): the newest page of each, read-only, with the divider
  * that says the model no longer has it. Fetched once per set of parts.
  */
-function ClearedParts({ ids, onPath, plain }: { ids: readonly string[]; onPath?: (path: string) => void; plain?: boolean }) {
+function ClearedParts({ ids, onPath, plain, phone }: { ids: readonly string[]; onPath?: (path: string) => void; plain?: boolean; phone?: boolean }) {
   const key = ids.join('\n')
   const [parts, setParts] = useState<{ id: string; messages: ChatMessage[] }[] | null>(null)
   useEffect(() => {
@@ -695,7 +721,7 @@ function ClearedParts({ ids, onPath, plain }: { ids: readonly string[]; onPath?:
     <>
       {parts.map((p) => (
         <div key={p.id} data-cleared-part={p.id}>
-          {p.messages.map((m) => <Message key={m.id} m={m} onPath={onPath} plain={plain} />)}
+          {p.messages.map((m) => <Message key={m.id} m={m} onPath={onPath} plain={plain} phone={phone} />)}
           <div role="separator" data-cleared-divider className="my-3 flex items-center gap-2 text-[11px] text-fg-faint">
             <span className="h-px flex-1 bg-border" />
             <span className="shrink-0">{CLEARED_DIVIDER}</span>
@@ -708,7 +734,7 @@ function ClearedParts({ ids, onPath, plain }: { ids: readonly string[]; onPath?:
 }
 
 /** A finished message never changes, so it renders once. */
-const Message = memo(function Message({ m, onPath, plain = false }: { m: ChatMessage; onPath?: (path: string) => void; plain?: boolean }) {
+const Message = memo(function Message({ m, onPath, plain = false, phone = false }: { m: ChatMessage; onPath?: (path: string) => void; plain?: boolean; phone?: boolean }) {
   if (m.kind === 'user') {
     return (
       <div data-msg-id={m.id} className="flex flex-col items-end py-1.5">
@@ -721,6 +747,8 @@ const Message = memo(function Message({ m, onPath, plain = false }: { m: ChatMes
     )
   }
   if (m.kind === 'assistant') {
+    // The phone's: Markdown as a document, the hold's menu for Copy and 2nd Brain.
+    if (phone) return <PhoneReply id={m.id} text={m.text} onPath={onPath} />
     return (
       <div data-msg-id={m.id} className="group py-1.5 [&_div]:text-fg [&>div]:text-[14px]">
         <Prose text={m.text} onPath={onPath} />
@@ -733,7 +761,7 @@ const Message = memo(function Message({ m, onPath, plain = false }: { m: ChatMes
   }
   if (m.kind === 'notice') return <NoticeLine m={m} />
   return <ToolLine m={m} plain={plain} />
-}, (a, b) => a.plain === b.plain && a.m.id === b.m.id && a.m.text === b.m.text && a.m.result === b.m.result && a.m.failed === b.m.failed && a.m.exitCode === b.m.exitCode)
+}, (a, b) => a.plain === b.plain && a.phone === b.phone && a.m.id === b.m.id && a.m.text === b.m.text && a.m.result === b.m.result && a.m.failed === b.m.failed && a.m.exitCode === b.m.exitCode)
 
 /** What Claude Code told itself (a background task done, a reminder): one quiet line, the text behind it. */
 function NoticeLine({ m }: { m: ChatMessage }) {

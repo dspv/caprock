@@ -49,7 +49,7 @@ CI when they drift.
 | `@capgo/capacitor-speech-recognition` | 8.4.6   | dictation with on-device recognition required                       |
 | `@aparajita/capacitor-biometric-auth` | 10.0.0  | the Face ID lock, passcode fallback                                 |
 | `@aparajita/capacitor-secure-storage` | 8.0.1   | the pairing and the lock setting in the Keychain (this device only) |
-| `@capacitor/keyboard`                 | 8.0.6   | the WebView resized natively above the keyboard                     |
+| `@capacitor/keyboard`                 | 8.0.6   | the WebView resized above the keyboard; Done and Keyboard.hide()    |
 | `@capacitor/app`                      | 8.1.2   | app lifecycle; the pairing link the Camera app opens the app with   |
 
 The bundle id is `dev.caprock.ios`, beside the desktop app's `dev.caprock.app`

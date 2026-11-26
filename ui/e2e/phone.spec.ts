@@ -242,7 +242,7 @@ test('the phone never scrolls sideways or cuts anything off, at 360, 390 and 430
       { name: 'chat, csv file', hash: `#/chats/${chat.session_id}`, ready: async (p) => { await tap(/^Files/)(p); await tap(/wide\.csv/)(p) } },
       { name: 'chat, keys open', hash: `#/chats/${chat.session_id}`, ready: tap(/^Keys$/) },
       { name: 'chat, typing a long line', hash: `#/chats/${chat.session_id}`, ready: typeLong },
-      { name: 'chat, long message queued', hash: `#/chats/${chat.session_id}`, ready: async (p) => { await typeLong(p); await p.keyboard.press('Enter'); await p.waitForTimeout(800) } },
+      { name: 'chat, long message queued', hash: `#/chats/${chat.session_id}`, ready: async (p) => { await typeLong(p); await tap(/^Send$/)(p); await p.waitForTimeout(800) } },
       { name: 'session chat', hash: `#/session/${s.id}?tab=chat` },
       { name: 'session, other views', hash: `#/session/${s.id}?tab=chat`, ready: tap(/other views|Other views/, 'tab') },
       { name: 'session, details', hash: `#/session/${s.id}?tab=chat`, ready: tap(/session details/) },

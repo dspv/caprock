@@ -836,6 +836,43 @@ describe('ChatView: a turn at work', () => {
   })
 })
 
+describe('ChatView: on a phone', () => {
+  const reply = (id: number, text: string): Event => ({ ...msg(id), source: 'transcript', kind: 'turn.assistant', payload: { text } })
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('a reply is Markdown: its code is a block, and no invisible 2nd Brain button sits under it', async () => {
+    store.events = [msg(1, 'show me'), reply(2, 'Here:\n\n```go\nfunc main() {}\n```\n\n1. one\n2. two')]
+    render(<ChatView sessionId="s" canType={false} phone />)
+    await screen.findByText('func main() {}')
+    expect(log().querySelector('pre')?.textContent).toBe('func main() {}')
+    expect(log().querySelector('[data-brain-drop]')).toBeNull()
+    expect(log().querySelector('[data-phone-reply]')).not.toBeNull()
+  })
+
+  it('the desktop chat keeps its renderer and its hover button', async () => {
+    store.events = [msg(1, 'show me'), reply(2, 'Here:\n\n```go\nfunc main() {}\n```')]
+    render(<ChatView sessionId="s" canType={false} />)
+    await screen.findByText(/func main/)
+    expect(log().querySelector('[data-phone-reply]')).toBeNull()
+    expect(log().querySelector('[data-brain-drop]')).not.toBeNull()
+  })
+
+  it('dragging the conversation puts the keyboard away', async () => {
+    vi.stubGlobal('matchMedia', (q: string) => ({ matches: q.includes('pointer: coarse'), media: q, addEventListener() {}, removeEventListener() {} }) as unknown as MediaQueryList)
+    store.events = [msg(1, 'hi')]
+    render(<ChatView sessionId="s" canType phone />)
+    await screen.findByText('hi')
+    const field = screen.getByLabelText('Type to the session')
+    act(() => field.focus())
+    // A tap is not a drag.
+    fireEvent.touchStart(log(), { touches: [{ clientX: 50, clientY: 200 }] })
+    fireEvent.touchMove(log(), { touches: [{ clientX: 50, clientY: 203 }] })
+    expect(document.activeElement).toBe(field)
+    fireEvent.touchMove(log(), { touches: [{ clientX: 50, clientY: 230 }] })
+    expect(document.activeElement).not.toBe(field)
+  })
+})
+
 describe('ChatView: what you send', () => {
   it('your bubble is there at once with Sending…, then Sent ✓, and gives way to the session\'s record of it', async () => {
     let release!: () => void

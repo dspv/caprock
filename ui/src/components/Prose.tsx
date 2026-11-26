@@ -30,8 +30,8 @@
  * the caller passes `onPath` — the chat does, and the click opens the file
  * in a file tab of the workspace. It opens nothing on the web.
  */
-import { Fragment, useState, type ReactNode } from 'react'
-import { mdPathsIn, slugOf, type OutlineItem } from '@/lib/mdreader'
+import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
+import { copyText, mdPathsIn, slugOf, type OutlineItem } from '@/lib/mdreader'
 import { extTitle } from '@/lib/externalLinks'
 import { safeHref, splitLinks, trimUrl } from '@/lib/autolink'
 
@@ -283,7 +283,15 @@ function withPaths(text: string, onPath: (path: string) => void): ReactNode {
  * through the daemon, and nothing is ever fetched from the web.
  */
 
-type DocInline = { text: string; bold?: boolean; code?: boolean; italic?: boolean; href?: string; image?: boolean; src?: string }
+type DocInline = { text: string; bold?: boolean; code?: boolean; italic?: boolean; strike?: boolean; href?: string; image?: boolean; src?: string }
+
+/**
+ * What an agent's reply needs beyond a project's document (the phone's chat,
+ * .ai/04-ui.md § From a phone, *Replies as Markdown*): `~~struck~~` words and
+ * a block indented four spaces as code. Off for a file tab, which reads as
+ * it always did.
+ */
+export interface DocOptions { reply?: boolean }
 
 export type DocBlock =
   | { kind: 'heading'; level: number; parts: DocInline[] }
@@ -295,12 +303,21 @@ export type DocBlock =
   | { kind: 'rule' }
 
 /** Links, images, `code`, **bold** and *italic* or _italic_, in one pass; a
- *  bare http(s) address in the text is found when it is drawn. */
-export function docInlines(line: string): DocInline[] {
+ *  bare http(s) address in the text is found when it is drawn. With
+ *  `reply`, ~~struck~~ words too. */
+export function docInlines(line: string, opts: DocOptions = {}): DocInline[] {
   const out: DocInline[] = []
-  const re = /!\[([^\]]*)\]\(([^)\s]*)(?:\s+"[^"]*")?\)|\[([^\]]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)|<(https?:\/\/[^>\s]+)>|`([^`]+)`|\*\*([^*]+)\*\*|__([^_]+)__|(?<![\w*])\*([^*\s][^*]*)\*(?!\w)|(?<!\w)_([^_\s][^_]*)_(?!\w)|\b(https?:\/\/[^\s<>"'`]+)/gi
+  const re = /!\[([^\]]*)\]\(([^)\s]*)(?:\s+"[^"]*")?\)|\[([^\]]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)|<(https?:\/\/[^>\s]+)>|`([^`]+)`|\*\*([^*]+)\*\*|__([^_]+)__|(?<![\w*])\*([^*\s][^*]*)\*(?!\w)|(?<!\w)_([^_\s][^_]*)_(?!\w)|\b(https?:\/\/[^\s<>"'`]+)|~~([^~\s](?:[^~]*[^~\s])?)~~/gi
   let last = 0
   for (let m = re.exec(line); m; m = re.exec(line)) {
+    if (m[12] !== undefined) {
+      // Struck words, in a reply only; a document keeps its tildes.
+      if (!opts.reply) continue
+      if (m.index > last) out.push({ text: line.slice(last, m.index) })
+      out.push({ text: m[12], strike: true })
+      last = m.index + m[0].length
+      continue
+    }
     // A bare address, taken whole before an underscore in it reads as italic.
     if (m[11] !== undefined) {
       const url = trimUrl(m[11])
@@ -324,12 +341,15 @@ export function docInlines(line: string): DocInline[] {
   return out
 }
 
-function cellsOf(line: string): DocInline[][] {
-  return line.trim().replace(/^\||\|$/g, '').split('|').map((c) => docInlines(c.trim()))
+const docInlinesOf = (line: string, opts: DocOptions) => docInlines(line, opts)
+
+function cellsOf(line: string, opts: DocOptions): DocInline[][] {
+  return line.trim().replace(/^\||\|$/g, '').split('|').map((c) => docInlines(c.trim(), opts))
 }
 
 /** Turns a Markdown document into blocks; whatever it does not know stays text. */
-export function parseDoc(src: string): DocBlock[] {
+export function parseDoc(src: string, opts: DocOptions = {}): DocBlock[] {
+  const docInlines = (line: string) => docInlinesOf(line, opts)
   const out: DocBlock[] = []
   let para: string[] = []
   let table: string[] = []
@@ -347,7 +367,7 @@ export function parseDoc(src: string): DocBlock[] {
   const flushTable = () => {
     if (table.length) {
       const sep = table.findIndex((l) => /^\|?[\s:|-]+\|?$/.test(l) && l.includes('-'))
-      const rows = table.filter((_, i) => i !== sep).map(cellsOf)
+      const rows = table.filter((_, i) => i !== sep).map((l) => cellsOf(l, opts))
       if (sep === 1) out.push({ kind: 'table', head: rows[0], rows: rows.slice(1) })
       else out.push({ kind: 'table', rows })
     }
@@ -359,8 +379,28 @@ export function parseDoc(src: string): DocBlock[] {
     quote = []
   }
   const flush = () => { flushTable(); flushItem(); flushPara(); flushQuote() }
+  // A reply's block indented four spaces (`    go test ./...`), as code. Only
+  // after a blank line or a block that is not a list item: under an item it
+  // is the item's own text, as CommonMark reads it.
+  let indented: string[] | null = null
+  const INDENT = /^( {4}|\t)/
+  const flushIndented = () => {
+    if (!indented) return
+    while (indented.length && indented[indented.length - 1] === '') indented.pop()
+    out.push({ kind: 'code', lang: '', text: indented.join('\n') })
+    indented = null
+  }
 
   for (const raw of src.replace(/\r\n?/g, '\n').split('\n')) {
+    if (indented) {
+      if (raw.trim() === '') { indented.push(''); continue }
+      if (INDENT.test(raw)) { indented.push(raw.replace(INDENT, '')); continue }
+      flushIndented()
+    } else if (opts.reply && !fence && INDENT.test(raw) && raw.trim() !== '' && !item && para.length === 0 && table.length === 0 && quote.length === 0
+      && out[out.length - 1]?.kind !== 'item' && !/^(`{3,}|~{3,})/.test(raw.trim()) && !/^([-*+]|\d+[.)])\s+/.test(raw.trim())) {
+      indented = [raw.replace(INDENT, '')]
+      continue
+    }
     if (fence) {
       if (raw.trim().startsWith(fence.mark) && raw.trim().replace(/[`~]/g, '') === '') {
         out.push({ kind: 'code', lang: fence.lang, text: fence.lines.join('\n') })
@@ -420,6 +460,7 @@ export function parseDoc(src: string): DocBlock[] {
     para.push(trimmed)
   }
   if (fence) out.push({ kind: 'code', lang: fence.lang, text: fence.lines.join('\n') })
+  flushIndented()
   flush()
   return out
 }
@@ -461,14 +502,103 @@ const HEADING_CLASS = [
   'text-[13px] font-semibold uppercase tracking-[0.06em] text-fg-muted mt-4 first:mt-0',
 ]
 
-/** A fenced block, with a copy button that shows on hover or focus. */
-function CodeBlock({ lang, text }: { lang: string; text: string }) {
+/**
+ * How a document is drawn: `doc`, a project's file at a reading measure; or
+ * `chat`, an agent's reply in the phone's conversation (.ai/04-ui.md § From a
+ * phone, *Replies as Markdown*) — headings a step above the text rather than
+ * a page's, a code block's Copy always on view (a finger has no hover), and a
+ * table or a code block that scrolls sideways showing that it does with a
+ * fade at the edge it scrolls to.
+ */
+export type DocSize = 'doc' | 'chat'
+
+// The chat's scale: a heading is the text's size or a little more, bold, with
+// a little room above; anything bigger shouts in a 390px column.
+const CHAT_HEADING_CLASS = [
+  '',
+  'text-[1.2em] leading-[1.3] font-semibold text-fg mt-2 first:mt-0',
+  'text-[1.12em] leading-[1.35] font-semibold text-fg mt-2 first:mt-0',
+  'text-[1.05em] leading-[1.4] font-semibold text-fg mt-1.5 first:mt-0',
+  'text-[1em] font-semibold text-fg mt-1 first:mt-0',
+  'text-[1em] font-semibold text-fg mt-1 first:mt-0',
+  'text-[0.92em] font-semibold text-fg-muted mt-1 first:mt-0',
+]
+
+/**
+ * A box that scrolls sideways and says so: a soft fade on each edge with more
+ * beyond it, gone at the end. The fade is a mask, so it works on any ground
+ * in either theme. Re-measured on scroll and when the box or its content
+ * changes size.
+ */
+export function ScrollX({ className = '', children, ...rest }: { className?: string; children: ReactNode } & { [k: `data-${string}`]: string | undefined }) {
+  const ref = useRef<HTMLDivElement | null>(null)
+  const [edge, setEdge] = useState<{ left: boolean; right: boolean }>({ left: false, right: false })
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const measure = () => {
+      const left = el.scrollLeft > 1
+      const right = el.scrollLeft + el.clientWidth < el.scrollWidth - 1
+      setEdge((e) => (e.left === left && e.right === right ? e : { left, right }))
+    }
+    measure()
+    el.addEventListener('scroll', measure, { passive: true })
+    const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(measure) : null
+    ro?.observe(el)
+    if (el.firstElementChild) ro?.observe(el.firstElementChild)
+    return () => { el.removeEventListener('scroll', measure); ro?.disconnect() }
+  }, [])
+  const mask = edge.left || edge.right
+    ? `linear-gradient(to right, ${edge.left ? `transparent, #000 ${FADE_PX}px` : '#000'}, ${edge.right ? `#000 calc(100% - ${FADE_PX}px), transparent` : '#000'})`
+    : undefined
+  return (
+    <div
+      ref={ref}
+      {...rest}
+      data-scroll-more={edge.right ? 'right' : edge.left ? 'left' : undefined}
+      className={`app-scroll min-w-0 max-w-full overflow-x-auto ${className}`}
+      style={mask ? { maskImage: mask, WebkitMaskImage: mask } : undefined}
+    >
+      {children}
+    </div>
+  )
+}
+
+/** How wide ScrollX's fade is at an edge with more beyond it. */
+const FADE_PX = 28
+
+/** A fenced block, with a copy button that shows on hover or focus — in a
+ *  chat, a header line with its language and Copy, always shown. */
+function CodeBlock({ lang, text, size = 'doc' }: { lang: string; text: string; size?: DocSize }) {
   const [copied, setCopied] = useState(false)
   const copy = () => {
-    void navigator.clipboard?.writeText(text).then(() => {
+    void copyText(text).then((ok) => {
+      if (!ok) return
       setCopied(true)
       window.setTimeout(() => setCopied(false), 1500)
-    }, () => {})
+    })
+  }
+  if (size === 'chat') {
+    return (
+      <div data-code-block className={`min-w-0 overflow-hidden rounded-[10px] border ${HAIR} bg-[var(--app-row-hover,var(--color-panel-2))]`}>
+        <div className={`flex h-9 items-center border-b ${HAIR} pl-3 pr-1`}>
+          <span className="mono min-w-0 flex-1 truncate text-[11.5px] text-fg-faint">{lang || 'code'}</span>
+          <button
+            type="button"
+            onClick={copy}
+            aria-label={copied ? 'Copied' : 'Copy the code'}
+            className="-my-1 h-11 shrink-0 rounded-[7px] px-3 text-[13px] font-medium text-fg-muted hover:text-fg active:bg-panel"
+          >
+            {copied ? 'Copied' : 'Copy'}
+          </button>
+        </div>
+        <ScrollX>
+          <pre data-lang={lang || undefined} className="mono m-0 w-max min-w-full px-3 py-2.5 text-[0.86em] leading-[1.55] text-fg">
+            {text}
+          </pre>
+        </ScrollX>
+      </div>
+    )
   }
   return (
     <div className="group/code relative min-w-0">
@@ -497,34 +627,56 @@ function CodeBlock({ lang, text }: { lang: string; text: string }) {
  * that also lists the headings parses once. Each heading carries its anchor
  * in `data-anchor`, scoped to this document rather than the page's ids, as
  * several file tabs live in the page at once.
+ *
+ * In a chat (`size="chat"`) the text takes its size from the caller's
+ * `className`, `.md` paths in it open the file when `onPath` is given, as the
+ * chat's old renderer did, and nothing is anchored.
  */
-export function ProseDoc({ text, blocks: given, link, image }: { text: string; blocks?: DocBlock[]; link?: DocLink; image?: DocImage }) {
-  const blocks = given ?? parseDoc(text)
-  const anchors = docHeadings(blocks)
+export function ProseDoc({ text, blocks: given, link, image, size = 'doc', onPath, className }: {
+  text: string
+  blocks?: DocBlock[]
+  link?: DocLink
+  image?: DocImage
+  size?: DocSize
+  /** A `.md` path in the text, opened (the chat's file links). */
+  onPath?: (path: string) => void
+  /** Replaces the text size and line height. */
+  className?: string
+}) {
+  const chat = size === 'chat'
+  const blocks = given ?? parseDoc(text, chat ? { reply: true } : {})
+  const anchors = chat ? [] : docHeadings(blocks)
   let h = 0
-  const inl = (parts: DocInline[]) => renderDocInline(parts, link, image)
+  const inl = (parts: DocInline[]) => renderDocInline(parts, link, image, onPath)
+  const headings = chat ? CHAT_HEADING_CLASS : HEADING_CLASS
+  // A list item sits close under the line before it: the gap less a step.
+  const itemPull = chat ? '-mt-1.5' : '-mt-3'
+  const cell = chat ? 'px-2.5 py-1.5' : 'px-3 py-2'
   return (
     // minmax(0,1fr), not the implicit auto track: a grid item's min-content
     // is its longest word under break-word, and one long link or path set
     // the whole document's width — a chat's file viewer scrolled sideways
     // at 1,512px on a 360px phone (2026-10-21).
-    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4 text-[15px] leading-[1.72] text-fg [overflow-wrap:break-word]">
+    <div
+      data-prose-doc={size}
+      className={`grid min-w-0 grid-cols-[minmax(0,1fr)] text-fg ${chat ? `gap-2.5 [overflow-wrap:anywhere] ${className ?? 'text-[14px] leading-[1.6]'}` : `gap-4 [overflow-wrap:break-word] ${className ?? 'text-[15px] leading-[1.72]'}`}`}
+    >
       {blocks.map((b, i) => {
         switch (b.kind) {
           case 'heading': {
             const H = `h${b.level}` as 'h1'
-            const a = anchors[h++]
-            return <H key={i} data-anchor={a?.slug} className={`scroll-mt-4 ${HEADING_CLASS[b.level]}`}>{inl(b.parts)}</H>
+            const a = chat ? undefined : anchors[h++]
+            return <H key={i} data-anchor={a?.slug} className={`scroll-mt-4 ${headings[b.level]}`}>{inl(b.parts)}</H>
           }
           case 'code':
-            return <CodeBlock key={i} lang={b.lang} text={b.text} />
+            return <CodeBlock key={i} lang={b.lang} text={b.text} size={size} />
           case 'rule':
             return <hr key={i} className={`my-2 border-0 border-t ${HAIR}`} />
           case 'quote':
-            return <p key={i} className="m-0 border-l-[3px] border-[var(--app-hairline-strong,var(--color-border))] pl-4 text-fg-muted">{inl(b.parts)}</p>
+            return <p key={i} className={`m-0 border-l-[3px] border-[var(--app-hairline-strong,var(--color-border))] ${chat ? 'pl-3' : 'pl-4'} text-fg-muted`}>{inl(b.parts)}</p>
           case 'item':
             return (
-              <div key={i} className="-mt-3 grid grid-cols-[1.5em_minmax(0,1fr)] first:mt-0" style={{ marginLeft: `${b.depth * 1.5}em` }} data-task={b.task}>
+              <div key={i} className={`${itemPull} grid grid-cols-[1.5em_minmax(0,1fr)] first:mt-0`} style={{ marginLeft: `${b.depth * (chat ? 1.25 : 1.5)}em` }} data-task={b.task}>
                 {b.task ? (
                   <input type="checkbox" checked={b.task === 'done'} readOnly disabled aria-label={b.task === 'done' ? 'Done' : 'Not done'} className="mt-[0.42em] h-[14px] w-[14px] accent-[var(--color-accent)]" />
                 ) : (
@@ -533,27 +685,29 @@ export function ProseDoc({ text, blocks: given, link, image }: { text: string; b
                 <p className={`m-0 ${b.task === 'done' ? 'text-fg-muted' : ''}`}>{inl(b.parts)}</p>
               </div>
             )
-          case 'table':
-            return (
-              <div key={i} data-doc-table className={`app-scroll min-w-0 max-w-full overflow-x-auto rounded-[8px] border ${HAIR}`}>
-                <table className="w-max min-w-full border-collapse text-[13.5px] leading-[1.5] [overflow-wrap:normal]">
-                  {b.head && (
-                    <thead className="bg-[var(--app-row-hover,var(--color-panel-2))]">
-                      <tr className="border-b border-[var(--app-hairline-strong,var(--color-border))]">
-                        {b.head.map((c, n) => <th key={n} className="max-w-[44ch] px-3 py-2 text-left align-bottom font-semibold">{inl(c)}</th>)}
-                      </tr>
-                    </thead>
-                  )}
-                  <tbody>
-                    {b.rows.map((cells, r) => (
-                      <tr key={r} className={`border-b ${HAIR} last:border-0`}>
-                        {cells.map((c, n) => <td key={n} className="max-w-[44ch] px-3 py-2 align-top">{inl(c)}</td>)}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+          case 'table': {
+            const table = (
+              <table className={`w-max min-w-full border-collapse ${chat ? 'text-[0.9em]' : 'text-[13.5px]'} leading-[1.5] [overflow-wrap:normal]`}>
+                {b.head && (
+                  <thead className="bg-[var(--app-row-hover,var(--color-panel-2))]">
+                    <tr className="border-b border-[var(--app-hairline-strong,var(--color-border))]">
+                      {b.head.map((c, n) => <th key={n} className={`max-w-[44ch] ${cell} text-left align-bottom font-semibold`}>{inl(c)}</th>)}
+                    </tr>
+                  </thead>
+                )}
+                <tbody>
+                  {b.rows.map((cells, r) => (
+                    <tr key={r} className={`border-b ${HAIR} last:border-0`}>
+                      {cells.map((c, n) => <td key={n} className={`max-w-[44ch] ${cell} align-top`}>{inl(c)}</td>)}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             )
+            return chat
+              ? <ScrollX key={i} data-doc-table="" className={`rounded-[10px] border ${HAIR}`}>{table}</ScrollX>
+              : <div key={i} data-doc-table className={`app-scroll min-w-0 max-w-full overflow-x-auto rounded-[8px] border ${HAIR}`}>{table}</div>
+          }
           default:
             return <p key={i} className="m-0">{inl(b.parts)}</p>
         }
@@ -562,7 +716,12 @@ export function ProseDoc({ text, blocks: given, link, image }: { text: string; b
   )
 }
 
-function renderDocInline(parts: DocInline[], link?: DocLink, image?: DocImage) {
+/** The fenced and indented code blocks of a reply, in order: what *Copy code* offers. */
+export function codeBlocksOf(text: string): { lang: string; text: string }[] {
+  return parseDoc(text, { reply: true }).flatMap((b) => (b.kind === 'code' ? [{ lang: b.lang, text: b.text }] : []))
+}
+
+function renderDocInline(parts: DocInline[], link?: DocLink, image?: DocImage, onPath?: (path: string) => void) {
   const cls = 'text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent'
   // With no `link` from the caller, a web address still opens: an http(s)
   // one, in a new tab; anything else stays text.
@@ -576,7 +735,8 @@ function renderDocInline(parts: DocInline[], link?: DocLink, image?: DocImage) {
   // A bare address in text, bold or italic is a link too; in `code` it is not.
   const linked = (text: string) => {
     const runs = splitLinks(text)
-    return runs.length === 1 && !runs[0]!.href ? text : runs.map((r, n) => (r.href ? anchor(n, r.href, r.text) : <Fragment key={n}>{r.text}</Fragment>))
+    const words = (t: string) => (onPath ? withPaths(t, onPath) : t)
+    return runs.length === 1 && !runs[0]!.href ? words(text) : runs.map((r, n) => (r.href ? anchor(n, r.href, r.text) : <Fragment key={n}>{words(r.text)}</Fragment>))
   }
   return parts.map((p, i) => {
     if (p.image) {
@@ -584,9 +744,10 @@ function renderDocInline(parts: DocInline[], link?: DocLink, image?: DocImage) {
       if (drawn) return <Fragment key={i}>{drawn}</Fragment>
       return <span key={i} className="italic text-fg-muted" title="An image">[{p.text}]</span>
     }
-    if (p.code) return <code key={i} className="mono rounded-[4px] bg-[var(--app-row-hover,var(--color-panel-2))] px-1 py-px text-[0.86em]">{p.text}</code>
+    if (p.code) return <code key={i} className="mono rounded-[4px] bg-[var(--app-row-hover,var(--color-panel-2))] px-1 py-px text-[0.86em]">{onPath ? withPaths(p.text, onPath) : p.text}</code>
     if (p.bold) return <strong key={i} className="font-semibold">{linked(p.text)}</strong>
     if (p.italic) return <em key={i}>{linked(p.text)}</em>
+    if (p.strike) return <s key={i} className="text-fg-muted">{linked(p.text)}</s>
     if (p.href !== undefined) return anchor(i, p.href, p.text)
     return <span key={i}>{linked(p.text)}</span>
   })
