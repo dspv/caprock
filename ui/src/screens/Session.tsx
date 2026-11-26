@@ -40,6 +40,7 @@ import { MoreMenu } from '@/components/MoreMenu'
 import { SubscriptionTag } from '@/components/SubscriptionPicker'
 import { ConnectionState, readLink } from '@/components/ConnectionState'
 import { narrowScreen, useFillViewport, useHideOnScroll, useNarrowScreen } from '@/lib/phone'
+import { isNativeApp } from '@/native/platform'
 import { PHONE_BAR_PX, PhoneSessionBar } from '@/components/PhoneSessionBar'
 import { endState } from '@/components/PhoneEnd'
 import { PlanShare } from '@/components/PlanShare'
@@ -106,7 +107,7 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
   // On a phone the chat is the screen, its field at the bottom as in a
   // messenger, above the keyboard when that is up (lib/phone).
   const phone = useNarrowScreen()
-  const fillChat = useFillViewport<HTMLDivElement>(phone && active === 'chat')
+  const fillChat = useFillViewport<HTMLDivElement>(phone && active === 'chat', 8, isNativeApp())
   // Over the chat the phone's bar is drawn on top of the conversation and
   // slides away while the reader scrolls down (components/PhoneSessionBar).
   const overlay = phone && active === 'chat'

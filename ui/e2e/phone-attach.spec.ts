@@ -47,6 +47,24 @@ async function pick(page: Page, button: ReturnType<Page['getByRole']>, which: 'P
   return accept
 }
 
+/** The phone chat's +: Photos and Files beside Keys and the dictation language. */
+async function plusPick(page: Page, which: 'Photos' | 'Files', file: { name: string; mimeType: string; buffer: Buffer }, name: string): Promise<string> {
+  await page.getByTestId('composer-plus').click()
+  const menu = page.getByRole('menu', { name: 'More' })
+  await expect(menu.getByRole('menuitem', { name: /Photos/ })).toBeVisible()
+  await expect(menu.getByRole('menuitem', { name: /Files/ })).toBeVisible()
+  await expect(menu.getByRole('menuitem', { name: /^Keys/ })).toBeVisible()
+  if (which === 'Photos') await shot(page, name)
+  const chooser = page.waitForEvent('filechooser')
+  await menu.getByRole('menuitem', { name: new RegExp(which) }).click()
+  const fc = await chooser
+  expect(fc.isMultiple()).toBe(true)
+  const accept = (await fc.element().getAttribute('accept')) ?? ''
+  await fc.setFiles(file)
+  await expect(menu).toBeHidden()
+  return accept
+}
+
 const photo = { name: 'IMG_0001.png', mimeType: 'image/png', buffer: PNG }
 const notes = { name: 'meeting-notes.md', mimeType: 'text/markdown', buffer: Buffer.from('# Notes\n') }
 
@@ -76,14 +94,14 @@ test('on a phone, Attach offers Photos and Files, and both reach the daemon', as
     await expect(page.locator('[data-file-chip]', { hasText: 'meeting-notes.md' })).toBeVisible()
 
     // A chat on the phone, then a session's chat on the Full dashboard: the
-    // pick is saved by the daemon and shows as a chip over the field.
+    // pick, from the field's +, is saved by the daemon and shows as a chip
+    // over the field.
     for (const [where, hash] of [['chat', `#/chats/${chat.session_id}`], ['full-dashboard', `#/session/${s.id}?tab=chat`]] as const) {
       await page.goto(`${stand.pageURL}/${hash}`)
-      const attach = page.getByRole('button', { name: 'Attach a photo or file' }).last()
-      await expect(attach).toBeVisible({ timeout: 15_000 })
-      await pick(page, attach, 'Photos', photo, `${where}-menu`)
+      await expect(page.getByTestId('composer-plus')).toBeVisible({ timeout: 15_000 })
+      expect(await plusPick(page, 'Photos', photo, `${where}-menu`)).toBe('image/*')
       await expect(page.getByText('Image 1').filter({ visible: true }).first()).toBeVisible()
-      await pick(page, attach, 'Files', notes, `${where}-files`)
+      await plusPick(page, 'Files', notes, `${where}-files`)
       await expect(page.getByText('meeting-notes.md').filter({ visible: true }).first()).toBeVisible()
       await shot(page, `${where}-attached`)
     }

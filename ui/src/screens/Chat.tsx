@@ -18,7 +18,8 @@ import { useAgentCatalog } from '@/components/AgentPicker'
 import { href, navigate } from '@/lib/router'
 import { useApi } from '@/lib/useApi'
 import { useCanControl } from '@/lib/useCanControl'
-import { useFillViewport, useNarrowScreen } from '@/lib/phone'
+import { useComposerFocus, useFillViewport, useNarrowScreen } from '@/lib/phone'
+import { isNativeApp } from '@/native/platform'
 import { useNow } from '@/lib/useNow'
 import { ChatView } from '@/components/ChatView'
 import { ChatFileViewer, ChatFilesSheet, useChatFiles } from '@/components/ChatFiles'
@@ -49,7 +50,10 @@ export function ChatScreen({ id }: { id: string }) {
   const [busy, setBusy] = useState(false)
   const [confirm, setConfirm] = useState(false)
   const [endSheet, setEndSheet] = useState(false)
-  const fill = useFillViewport<HTMLDivElement>(true, phone ? 0 : 12)
+  // In the iOS app the chat rides with the keyboard rather than jumping (lib/phone).
+  const fill = useFillViewport<HTMLDivElement>(true, phone ? 0 : 12, phone && isNativeApp())
+  // While typing on a phone the context line gives its row to the conversation.
+  const typing = useComposerFocus(phone)
   const { home } = useAgentCatalog()
   // A file the reply names (`report.md`) opens in the viewer when it is one
   // of the chat's own files (ChatView's links, lib/mdreader).
@@ -148,7 +152,7 @@ export function ChatScreen({ id }: { id: string }) {
           )}
         </header>
         {/* What the agent sees, and who gets what it reads (ADR-091, rule 4). */}
-        {s && !source && s.cwd && (
+        {s && !source && s.cwd && !typing && (
           <p data-chat-context title={s.cwd} className="shrink-0 truncate border-b border-border px-3 py-1 text-[12px] text-fg-faint">{contextLine(s, home)}</p>
         )}
         {error && <p role="alert" className="shrink-0 px-3 py-1.5 text-[13px] text-danger">{error}</p>}

@@ -31,11 +31,10 @@ export function AttachPicker({ onFiles, disabled, className, label = 'Attach a p
   up?: boolean
   children: ReactNode
 }) {
-  const files = useRef<HTMLInputElement>(null)
-  const photos = useRef<HTMLInputElement>(null)
   const [menu, setMenu] = useState(false)
   // Read at the tap, not at render: a tablet with a keyboard case can switch.
   const [touch, setTouch] = useState(touchScreen)
+  const pick = useAttachInputs(onFiles, testId, touch)
 
   useEffect(() => {
     if (!menu) return
@@ -44,22 +43,15 @@ export function AttachPicker({ onFiles, disabled, className, label = 'Attach a p
     return () => window.removeEventListener('keydown', onKey)
   }, [menu])
 
-  const picked = (el: HTMLInputElement) => {
-    const list = [...(el.files ?? [])]
-    el.value = ''
-    if (list.length > 0) onFiles(list)
-  }
-  // The input's click stays inside the tap that chose it, which is what
-  // lets iOS open its picker at all.
   const open = (which: 'photos' | 'files') => {
     setMenu(false)
-    ;(which === 'photos' ? photos : files).current?.click()
+    pick.open(which)
   }
   const tap = () => {
     const t = touchScreen()
     setTouch(t)
     if (t) setMenu((m) => !m)
-    else files.current?.click()
+    else pick.open('files')
   }
 
   return (
@@ -76,29 +68,7 @@ export function AttachPicker({ onFiles, disabled, className, label = 'Attach a p
       >
         {children}
       </button>
-      <input
-        ref={photos}
-        type="file"
-        accept={PHOTOS_ACCEPT}
-        multiple
-        hidden
-        aria-hidden="true"
-        tabIndex={-1}
-        data-testid={`${testId}-photos`}
-        onChange={(e) => picked(e.currentTarget)}
-      />
-      {/* No `capture` on either: with it iOS opens the camera and nothing else. */}
-      <input
-        ref={files}
-        type="file"
-        accept={touch ? FILES_ACCEPT : ATTACH_ACCEPT}
-        multiple
-        hidden
-        aria-hidden="true"
-        tabIndex={-1}
-        data-testid={testId}
-        onChange={(e) => picked(e.currentTarget)}
-      />
+      {pick.inputs}
       {menu && (
         <>
           <div className="fixed inset-0 z-40" aria-hidden onClick={() => setMenu(false)} />
@@ -107,8 +77,7 @@ export function AttachPicker({ onFiles, disabled, className, label = 'Attach a p
             aria-label="Attach from"
             className={`absolute left-0 z-50 w-56 rounded-md border border-border-strong bg-panel py-1 shadow-lg ${up ? 'bottom-full mb-2' : 'top-full mt-2'}`}
           >
-            <MenuItem onClick={() => open('photos')} icon={<PhotoIcon />} title="Photos" note="Photo library or camera" />
-            <MenuItem onClick={() => open('files')} icon={<DocIcon />} title="Files" note="PDF, text, office, code" />
+            <AttachMenuItems onPick={open} />
           </div>
         </>
       )}
@@ -116,7 +85,65 @@ export function AttachPicker({ onFiles, disabled, className, label = 'Attach a p
   )
 }
 
-function MenuItem({ onClick, icon, title, note }: { onClick: () => void; icon: ReactNode; title: string; note: string }) {
+/**
+ * The two pickers as hidden inputs, for a menu of one's own (the phone
+ * chat's **+**, components/TerminalKeys): `open('photos')` takes `image/*`,
+ * which iOS answers with Photo Library and Take Photo; `open('files')` the
+ * documents (everything the daemon keeps, with a mouse). The click on the
+ * input stays inside the tap that chose it, which is what lets iOS open its
+ * picker at all. `inputs` goes into the tree.
+ */
+export function useAttachInputs(onFiles: (files: File[]) => void, testId: string, touch: boolean = touchScreen()): { open: (which: 'photos' | 'files') => void; inputs: ReactNode } {
+  const files = useRef<HTMLInputElement>(null)
+  const photos = useRef<HTMLInputElement>(null)
+  const picked = (el: HTMLInputElement) => {
+    const list = [...(el.files ?? [])]
+    el.value = ''
+    if (list.length > 0) onFiles(list)
+  }
+  return {
+    open: (which) => (which === 'photos' ? photos : files).current?.click(),
+    inputs: (
+      <>
+        <input
+          ref={photos}
+          type="file"
+          accept={PHOTOS_ACCEPT}
+          multiple
+          hidden
+          aria-hidden="true"
+          tabIndex={-1}
+          data-testid={`${testId}-photos`}
+          onChange={(e) => picked(e.currentTarget)}
+        />
+        {/* No `capture` on either: with it iOS opens the camera and nothing else. */}
+        <input
+          ref={files}
+          type="file"
+          accept={touch ? FILES_ACCEPT : ATTACH_ACCEPT}
+          multiple
+          hidden
+          aria-hidden="true"
+          tabIndex={-1}
+          data-testid={testId}
+          onChange={(e) => picked(e.currentTarget)}
+        />
+      </>
+    ),
+  }
+}
+
+/** *Photos* and *Files*, as menu items. */
+export function AttachMenuItems({ onPick }: { onPick: (which: 'photos' | 'files') => void }) {
+  return (
+    <>
+      <MenuItem onClick={() => onPick('photos')} icon={<PhotoIcon />} title="Photos" note="Photo library or camera" />
+      <MenuItem onClick={() => onPick('files')} icon={<DocIcon />} title="Files" note="PDF, text, office, code" />
+    </>
+  )
+}
+
+export function MenuItem({ onClick, icon, title, note }: { onClick: () => void; icon: ReactNode; title: string; note: string }) {
   return (
     <button type="button" role="menuitem" onClick={onClick} className="flex min-h-[48px] w-full items-center gap-3 px-3 py-2 text-left hover:bg-panel-2">
       {icon}

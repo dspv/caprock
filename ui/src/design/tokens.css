@@ -733,6 +733,22 @@ html[data-page-hidden] *, html[data-page-hidden] *::before, html[data-page-hidde
 @media (prefers-reduced-motion: reduce) {
   .input.composer-field { transition: none; }
 }
+/* The phone chat's field as a messenger's pill (components/TerminalKeys,
+ * `messenger`): the text's own face, not the terminal's mono, and round
+ * ends at one line's height. */
+.input.composer-field.composer-pill {
+  font-family: var(--font-sans);
+  border-radius: 22px;
+}
+/* Send arrives as the first word is typed; a sent message rises into place
+ * (components/ChatView OutgoingBubble). Short, and none under reduced motion. */
+.composer-send-in { animation: composerSendIn 140ms ease-out; }
+@keyframes composerSendIn { from { opacity: 0; transform: scale(0.85); } to { opacity: 1; transform: none; } }
+.chat-sent-in { animation: chatSentIn 180ms ease-out; }
+@keyframes chatSentIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .composer-send-in, .chat-sent-in { animation: none; }
+}
 
 /* Loading placeholders: a slow, low-contrast pulse. Deliberately subtle — it
  * should read as "not ready yet", never compete with real data for attention. */

@@ -104,6 +104,23 @@ export default function NativeRoot() {
     return () => { live = false; stop?.() }
   }, [])
 
+  // Done over the keyboard, which the keyboard plugin hides when it loads
+  // (native/keyboard): the one way every field has to put the keyboard away.
+  useEffect(() => {
+    void import('./keyboard').then((k) => k.showAccessoryBar()).catch(() => { /* no plugin */ })
+  }, [])
+
+  // Back with a swipe from the left edge, as Safari has it (native/edgeSwipe).
+  useEffect(() => {
+    if (phase !== 'remote' && phase !== 'demo') return
+    let stop: (() => void) | undefined
+    let live = true
+    void import('./edgeSwipe').then(({ edgeSwipeBack }) => {
+      if (live) stop = edgeSwipeBack()
+    })
+    return () => { live = false; stop?.() }
+  }, [phase])
+
   // The app's Settings, laid over the page.
   useEffect(() => {
     const onHash = () => setSettings(window.location.hash === SETTINGS_HASH)
