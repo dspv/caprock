@@ -7,6 +7,9 @@ import (
 )
 
 func TestListedNameIsWhatSystemSettingsShows(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("macOS paths: Windows' filepath joins with backslashes")
+	}
 	for in, want := range map[string]string{
 		"/Users/a/Library/Application Support/caprock/bin/Caprock Terminal.app/Contents/MacOS/caprock-pty-host": "Caprock Terminal",
 		"/Users/a/.local/share/claude/versions/2.1.332":                                                         "2.1.332",

@@ -197,6 +197,18 @@ func TestASignalledSessionEndedUnexpectedly(t *testing.T) {
 	if stored, ok, err := store.GetExit(context.Background(), st.DB(), a.SessionID); err != nil || !ok || !stored.Unexpected {
 		t.Fatalf("stored %+v %v %v", stored, ok, err)
 	}
+	// Done closes before the manager lets go of the agent; while it still
+	// holds it, Exit takes it for a session running again and reads no
+	// stored row (a flake on ubuntu CI, 2026-11-26).
+	for deadline := time.Now().Add(5 * time.Second); ; {
+		if _, running := m.Get(a.SessionID); !running {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the manager still holds the ended session")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 	m.mu.Lock()
 	m.exits = nil
 	m.mu.Unlock()
