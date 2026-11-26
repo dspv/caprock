@@ -130,16 +130,34 @@ func (s *Server) handlePatchMachine(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Name string `json:"name"`
+		Name *string `json:"name"`
+		// SetupDone: the steps that need its own screen, marked done there
+		// by hand (issue #1088).
+		SetupDone *[]string `json:"setup_done"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&req); err != nil {
-		s.failCode(w, http.StatusBadRequest, errors.New(`send {"name": "…"}`))
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&req); err != nil || (req.Name == nil && req.SetupDone == nil) {
+		s.failCode(w, http.StatusBadRequest, errors.New(`send {"name": "…"} or {"setup_done": [...]}`))
 		return
 	}
 	id := r.PathValue("id")
-	if err := s.d.Machines.Rename(id, req.Name); err != nil {
-		writeJSON(w, machineErrStatus(err), map[string]string{"error": err.Error()})
-		return
+	if req.Name != nil {
+		if err := s.d.Machines.Rename(id, *req.Name); err != nil {
+			writeJSON(w, machineErrStatus(err), map[string]string{"error": err.Error()})
+			return
+		}
+	}
+	if req.SetupDone != nil {
+		sm, ok := s.d.Machines.(interface {
+			SetSetupDone(id string, done []string) error
+		})
+		if !ok {
+			s.failCode(w, http.StatusNotImplemented, errors.New("this daemon cannot keep setup marks"))
+			return
+		}
+		if err := sm.SetSetupDone(id, *req.SetupDone); err != nil {
+			writeJSON(w, machineErrStatus(err), map[string]string{"error": err.Error()})
+			return
+		}
 	}
 	st, err := s.d.Machines.Get(id)
 	if err != nil {

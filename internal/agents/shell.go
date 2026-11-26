@@ -77,6 +77,18 @@ func (m *Manager) Shells() []*Agent {
 	return out
 }
 
+// ShellScreen is what shell id's terminal shows now, a row a line, read from
+// its output ring (termbuf.Screen): the setup checklist's runs read the last
+// line and the GitHub CLI's one-time code from it (issue #1088). false when id
+// is no shell Caprock started.
+func (m *Manager) ShellScreen(id string) ([]string, bool) {
+	a, ok := m.Get(id)
+	if !ok || a.Kind != KindShell {
+		return nil, false
+	}
+	return m.screen(a), true
+}
+
 // IsShell reports whether id is a running shell.
 func (m *Manager) IsShell(id string) bool {
 	a, ok := m.Get(id)

@@ -28,7 +28,7 @@ var computerMayAlso = map[string]bool{
 	"POST /v1/shells": true, "GET /v1/shells": true,
 	"GET /v1/hive/starter": true, "POST /v1/hive": true, "POST /v1/tasks": true, "POST /v1/tasks/{id}/verify": true,
 	"POST /v1/orchestrator/start": true, "POST /v1/orchestrator/stop": true,
-	"GET /v1/setup": true, "GET /v1/agents/custom": true, "POST /v1/claude/bypass-consent": true, "GET /v1/activity": true, "GET /v1/overlap": true, "GET /v1/update/busy": true,
+	"GET /v1/setup": true, "POST /v1/setup/run": true, "GET /v1/setup/runs": true, "GET /v1/agents/custom": true, "POST /v1/claude/bypass-consent": true, "GET /v1/activity": true, "GET /v1/overlap": true, "GET /v1/update/busy": true,
 	"GET /v1/github/actions-usage": true, "GET /v1/github/statuspage": true,
 	"GET /v1/sessions/{id}/prs": true, "POST /v1/sessions/{id}/prs/{number}/rerun": true,
 	"POST /v1/sessions/{id}/prs/{number}/update-branch": true, "GET /v1/sessions/{id}/ci": true,

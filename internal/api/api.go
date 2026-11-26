@@ -616,6 +616,10 @@ type Server struct {
 	// shell (POST /v1/shells with replaces).
 	replMu   sync.Mutex
 	replaced map[string]string
+	// setupRuns are the setup steps a linked laptop started here, by step
+	// (setuprun.go, issue #1088).
+	setupMu   sync.Mutex
+	setupRuns map[string]*setupRun
 	// shellsSent is the shell list last sent as a "shells" frame (PublishShells).
 	shellsMu   sync.Mutex
 	shellsSent []byte
@@ -942,6 +946,8 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/agents/catalog", s.handleAgentCatalog)
 	m.HandleFunc("GET /v1/setup", s.handleSetup)
 	m.HandleFunc("PUT /v1/setup/agents/{id}", s.handleSetupAgent)
+	m.HandleFunc("POST /v1/setup/run", s.handleSetupRun)
+	m.HandleFunc("GET /v1/setup/runs", s.handleSetupRuns)
 	m.HandleFunc("GET /v1/agents/custom", s.handleCustomAgents)
 	m.HandleFunc("PUT /v1/agents/custom", s.handlePutCustomAgents)
 	m.HandleFunc("GET /v1/subscriptions", s.handleSubscriptions)

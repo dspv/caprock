@@ -26,6 +26,7 @@ import { useState } from 'react'
 import { errText } from '@/lib/api'
 import { machineLook, machinesApi, useMachineSessions, useMachines, type Machine, type MachineSessions } from '@/lib/machines'
 import { machineLine, machineState, stateStatus, useMachineSpec } from '@/lib/machinespec'
+import { remoteSteps, stepCounts } from '@/lib/remotesetup'
 import { useNow } from '@/lib/useNow'
 import { useRoute, type SettingsSection } from '@/lib/router'
 import { needLabel, needsYou, oldestFirst } from '@/lib/needs'
@@ -101,6 +102,9 @@ function MachineRow({ m, read, onOpen, activeMachine, activeSession }: { m: Mach
   const waiting = oldestFirst(live.filter((s) => needsYou(s)))
   const running = [...waiting, ...live.filter((s) => !needsYou(s))]
   const line = machineLine({ offline: st.offline, state, lastSeen: m.last_seen, spec: spec.data, running: running.length, now })
+  // Steps its page's *Set up this computer* still lists (#1088), from the
+  // same read: said in amber when nothing else is.
+  const toSetUp = st.online ? stepCounts(remoteSteps(spec.data?.setup, m.setup_done)).left : 0
   const [menu, setMenu] = useState<MenuAt | null>(null)
   const [renaming, setRenaming] = useState(false)
   const [name, setName] = useState(m.name)
@@ -153,7 +157,8 @@ function MachineRow({ m, read, onOpen, activeMachine, activeSession }: { m: Mach
         <span className={`min-w-0 truncate text-[13px] ${st.offline ? 'text-fg-faint' : 'text-fg'}`}>{m.name}</span>
         {waiting.length > 0 ? <span className="shrink-0 text-[11px] text-warn" data-machine-row-waiting>{waiting.length} need{waiting.length === 1 ? 's' : ''} you</span>
           : running.length > 0 && !st.down ? <span className="num shrink-0 rounded-[9px] bg-accent px-1.5 text-[11px] font-medium leading-[17px] text-panel" data-machine-row-count>{running.length}</span>
-            : <span />}
+            : toSetUp > 0 ? <span className="shrink-0 text-[11px] text-warn" data-machine-row-setup>{toSetUp} to set up</span>
+              : <span />}
         <span className={`tabular-nums col-start-2 col-end-4 min-w-0 truncate text-[11.5px] ${state ? 'text-fg-muted' : 'text-fg-faint'}`} data-machine-row-line {...(state || st.offline ? { 'data-machine-row-state': '' } : {})}>{line}</span>
       </button>
       )}

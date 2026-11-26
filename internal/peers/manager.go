@@ -100,6 +100,8 @@ type Status struct {
 	LastSeen int64 `json:"last_seen,omitempty"`
 	// Streams is how many requests and sockets are open to it.
 	Streams int `json:"streams"`
+	// SetupDone are the steps marked done there by hand (Machine.SetupDone).
+	SetupDone []string `json:"setup_done,omitempty"`
 	// Traffic is what this machine's channel to it has cost the relay since
 	// this daemon started or paired it (OQ-14): the relay messages and their
 	// bytes each way, the relay's own pings included.
@@ -215,7 +217,7 @@ func (m *Manager) findLocked(id string) (Machine, bool) {
 }
 
 func (m *Manager) statusLocked(mach Machine) Status {
-	s := Status{ID: mach.ID, Name: mach.Name, Relay: mach.Relay, AddedAt: mach.AddedAt}
+	s := Status{ID: mach.ID, Name: mach.Name, Relay: mach.Relay, AddedAt: mach.AddedAt, SetupDone: mach.SetupDone}
 	p := m.peers[mach.ID]
 	if p == nil {
 		s.Status = "offline"
@@ -341,6 +343,38 @@ func (m *Manager) Rename(id, name string) error {
 	for i := range list {
 		if list[i].ID == id {
 			list[i].Name, found = name, true
+		}
+	}
+	if !found {
+		return ErrUnknown
+	}
+	if err := Write(m.opt.Dir, list); err != nil {
+		return err
+	}
+	m.list = list
+	return nil
+}
+
+// SetSetupDone keeps which of the steps that need the computer's own screen
+// the user marked done there (issue #1088). Only the known steps are kept,
+// each once, in a fixed order.
+func (m *Manager) SetSetupDone(id string, done []string) error {
+	var keep []string
+	for _, k := range []string{SetupChromeExtension, SetupSiteSignIns} {
+		for _, d := range done {
+			if d == k {
+				keep = append(keep, k)
+				break
+			}
+		}
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	list := append([]Machine(nil), m.list...)
+	found := false
+	for i := range list {
+		if list[i].ID == id {
+			list[i].SetupDone, found = keep, true
 		}
 	}
 	if !found {

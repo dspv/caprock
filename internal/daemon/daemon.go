@@ -2443,6 +2443,18 @@ func (a *shellAdapter) StartShell(ctx context.Context, cwd string, cols, rows in
 func (a *shellAdapter) TypeAtPrompt(id, text string) { a.m.TypeAtPrompt(id, text) }
 func (a *shellAdapter) RunAtPrompt(id, text string)  { a.m.RunAtPrompt(id, text) }
 
+// ShellScreen is what a shell's terminal shows now (setup runs, #1088).
+func (a *shellAdapter) ShellScreen(id string) ([]string, bool) { return a.m.ShellScreen(id) }
+
+// ShellKeys types into a shell Caprock started: a setup run answering the
+// GitHub CLI's two questions (#1088). Rule 7: only a shell of ours.
+func (a *shellAdapter) ShellKeys(id, text string) error {
+	if !a.m.IsShell(id) {
+		return errors.New("no such shell")
+	}
+	return a.m.Input(id, []byte(text))
+}
+
 func (a *shellAdapter) Shells() []api.ShellInfo {
 	var out []api.ShellInfo
 	var live []store.LivePID

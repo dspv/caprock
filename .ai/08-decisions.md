@@ -7864,6 +7864,69 @@ the first real run found, and two design changes he picked from the mockup
   on the laptop too (an older laptop treats `not_needed` as done). New agent on the laptop clones onto that computer
   too (*Clone a repository* there, the same day).
 
+**Amendment, 2026-11-26 (issue #1088; the owner's pick, variant A of the
+mockup, *checklist on the computer page*): the laptop sets the other
+computer up, each step run there on a click.** That day the owner walked to
+his Windows PC five times: to accept Claude Code's one-time bypass warning
+(#1086), to install Node.js and the GitHub CLI, to sign the CLI in through a
+browser there, and to turn on Claude in Chrome by default, install its
+extension and sign in to sites in that Chrome. He asked to set a linked
+computer up entirely from the main one.
+
+- **What changed from the decision above.** *Rejected: installing from the
+  laptop* (variant B of 2026-11-20) is reversed for what a command can do
+  unattended: the laptop's page now runs each step there, on its click. The
+  reasons it was rejected still bound it: an administrator prompt (winget's
+  machine-wide installers) still appears on that computer's own screen, so
+  the row says *Windows may ask for an administrator on that PC's own
+  screen*, and **Show output** opens the run's shell as a tab here so
+  nothing runs unseen. *Install and Sign in stay typed commands* still holds
+  on the computer itself: its own checklist is unchanged.
+- **The command is never the laptop's.** `POST /v1/setup/run {step, agent?}`
+  names a row of that computer's own checklist, and the daemon runs that
+  row's command (`setupStepCommand`), in a shell tab it starts in the home
+  folder, typed and run (`RunAtPrompt`). A linked computer could already
+  open shell tabs and type into them (`computerRoutes`, ADR-067), so this
+  widens nothing it could not do; it narrows what the button does to the
+  checklist's own commands. Rule 7 holds: it types only into a shell it
+  started.
+- **New rows, never items** (`tools` in `GET /v1/setup`): Node.js, the
+  GitHub CLI, its sign-in, the bypass warning and Claude in Chrome on by
+  default. A computer is ready without them, so `Ready` never counts them
+  and every reader from before sees what it saw. Node.js and the CLI are
+  found as Git is, never run; the CLI's sign-in is read by presence, a
+  `github.com:` line in its `hosts.yml` or a token variable, never the
+  token.
+- **The GitHub sign-in is the device flow, the code shown here.** `gh auth
+  login --web` there; the daemon reads the one-time code off that shell's
+  screen (`GET /v1/setup/runs`) and answers the CLI's two questions with
+  their defaults — Git uses the sign-in, and Enter, after which it polls
+  GitHub. The laptop shows the code in a dashed box with **Copy and open**,
+  which opens github.com/login/device here, on that click only. The row
+  says before the click that Git there uses the same sign-in.
+- **Claude in Chrome on by default** is the one setting written rather than
+  run: `claudeInChromeDefaultEnabled: true` in Claude Code's global config,
+  what its `/chrome` dialog writes for *Enabled by default* — read from the
+  Claude Code 2.1.332 bundle on 2026-11-26, whose own dialog schema says
+  `The "Enabled by default" setting (claudeInChromeDefaultEnabled in the
+  global config)`. Written through the ordered codec, every other key kept,
+  a file that does not parse never written. Claude Code ignores it for a
+  session it counts as remote or Cowork (its log line says so); that a
+  session Caprock starts there is not one of those is not verified yet.
+- **What only its screen can do** — installing the Chrome extension, signing
+  in to sites in that Chrome — is said plainly under *Needs <name>'s own
+  screen*, each with **Done there**, a mark kept on the laptop
+  (`machines.json` `setup_done`), never checked. Passwords never pass
+  through Caprock.
+- **Every step runs only on its click, per step**; nothing runs when the page
+  opens, and a second click while a step runs answers the same run.
+
+*Not verified on a real Windows PC yet:* whether winget's Node.js LTS and
+GitHub CLI installers ask for an administrator there (both are machine-wide
+MSIs, so likely), what `gh auth login` prints in a ConPTY shell, and whether
+the foreground program read of a shell (`fgproc`, its child process on
+Windows) follows winget to its end.
+
 ## ADR-100 — An agent session that ends and nobody asked it to says so in its tab, with Resume, and goes on Recently closed
 
 **Date:** 2026-11-20 · **Status:** accepted (owner, 2026-11-20: "do it right

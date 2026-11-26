@@ -77,6 +77,9 @@ type Report struct {
 	// Agents are the agent item's rows: every agent Caprock can start that
 	// has a way to be installed here, or is installed, each with its switch.
 	Agents []AgentRow `json:"agents,omitempty"`
+	// Tools are the steps past ready that a linked laptop runs here
+	// (tools.go, issue #1088): never counted by Ready.
+	Tools []Tool `json:"tools,omitempty"`
 }
 
 // The steps an agent's row can be at.
@@ -168,6 +171,8 @@ type Inputs struct {
 	// CloneDir is where the Add project sheet clones by default — the folder
 	// set as default, else ~/dev — in full, so the project item says where.
 	CloneDir string
+	// Tools are the facts for the tools; nil leaves them out.
+	Tools *ToolFacts
 }
 
 // Build words the checklist.
@@ -179,6 +184,9 @@ func Build(in Inputs) Report {
 	// The project is last and optional: agents run in any folder picked in
 	// New agent, so a computer is ready without one (owner, 2026-11-20).
 	r.Items = append(r.Items, gitItem(in.GOOS, in.Git), agentItem(in.Agents, r.Agents), linkItem(in.Link), projectItem(in.Projects, in.CloneDir))
+	if in.Tools != nil {
+		r.Tools = BuildTools(in.GOOS, *in.Tools)
+	}
 	return r
 }
 

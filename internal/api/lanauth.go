@@ -639,14 +639,19 @@ var computerRoutes = map[string]bool{
 	"POST /v1/shells": true,
 	"GET /v1/shells":  true,
 	// The task board, the hive and the orchestrator.
-	"GET /v1/hive/starter":         true,
-	"POST /v1/hive":                true,
-	"POST /v1/tasks":               true,
-	"POST /v1/tasks/{id}/verify":   true,
-	"POST /v1/orchestrator/start":  true,
-	"POST /v1/orchestrator/stop":   true,
-	"GET /v1/agents/custom":        true, // the start form lists them; setting them is the machine's
-	"GET /v1/setup":                true, // the readiness a linked laptop shows (ADR-099); read only
+	"GET /v1/hive/starter":        true,
+	"POST /v1/hive":               true,
+	"POST /v1/tasks":              true,
+	"POST /v1/tasks/{id}/verify":  true,
+	"POST /v1/orchestrator/start": true,
+	"POST /v1/orchestrator/stop":  true,
+	"GET /v1/agents/custom":       true, // the start form lists them; setting them is the machine's
+	"GET /v1/setup":               true, // the readiness a linked laptop shows (ADR-099); read only
+	// Setting this computer up from the owner's other one (issue #1088): a
+	// step of this computer's own checklist, run here on that click — the
+	// command is the checklist's, never the caller's — and the runs' state.
+	"POST /v1/setup/run":           true,
+	"GET /v1/setup/runs":           true,
 	"GET /v1/activity":             true,
 	"GET /v1/overlap":              true,
 	"GET /v1/update/busy":          true,
