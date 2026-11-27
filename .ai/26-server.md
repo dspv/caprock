@@ -1,0 +1,139 @@
+# A server in one click
+
+**Status: proposed, not built.** The decision is
+[ADR-109](08-decisions.md#adr-109--a-server-in-one-click-on-the-users-own-provider-account);
+this file is its build plan. The server is the user's own, rented on their
+own provider account; Caprock writes its setup script, optionally calls the
+provider on the user's token, and links it as any other computer
+([ADR-067](08-decisions.md), [ADR-108](08-decisions.md)). User docs land in
+[docs/machines.md](../docs/machines.md) with P1.
+
+## What already exists
+
+- **Linking** (ADR-067, ADR-108): `caprock join <key>` on the server, the
+  rendezvous at the laptop's relay, the key's pre-approved Allow
+  (`internal/peers/join.go`, `internal/remote`).
+- **Running in the background** with nobody logged in: `caprock service
+  install` writes a systemd user unit (`internal/service/linux.go`); it
+  needs lingering, which today a person turns on by hand.
+- **The checklist** (ADR-099): `GET /v1/setup`, its steps run from the
+  laptop on a click (`POST /v1/setup/run`), a terminal tab on the other
+  computer shown on the laptop.
+- **Sign-in commands**: `claude auth login` and `codex login`
+  (`internal/subs`), each in a configuration directory of its own for a
+  second subscription (ADR-048).
+- **Linux builds**: `.goreleaser.yaml` ships `caprock_<version>_linux_amd64`
+  and `_arm64` archives (the daemon, the hook shim, the PTY host) with
+  `checksums.txt`. The checksums file is not signed (OQ-32).
+
+## Phases
+
+Each phase is one small PR, green on the three-OS matrix, with its docs in
+the same commit (rule 9) and a changelog fragment.
+
+### P1 — the setup script and *Copy script*
+
+- `internal/cloudinit` (name to taste): a pure function from {Caprock
+  version, archive SHA-256 per arch, join key, whether an SSH key is
+  expected} to a POSIX shell script that cloud-init runs as user data and a
+  person can run as root over SSH. Ubuntu LTS and Debian stable first; any
+  other distribution stops at the top with a line naming the two.
+- The steps of ADR-109's *What the script does*, each idempotent and
+  printed before it runs; a failed step stops the script with the step's
+  name, which is what the provider's console log shows.
+- The laptop fills in the archive's SHA-256 from that release's
+  `checksums.txt` when the script is made — the release check already talks
+  to GitHub (`internal/update`), so no new destination.
+- `POST /v1/machines/server-script` (loopback only, never on a device
+  allowlist): makes a join key with the 60-minute server lifetime (ADR-108
+  amended by ADR-109) and returns the script. The key is in that one answer
+  and nowhere else, as ADR-108 requires.
+- UI: Settings → Computers → *Add a computer* → **New server** → *I'll
+  create it myself*: the script in full, **Copy**, the per-provider line on
+  where to paste it, a countdown while the key is open, and the server's
+  page once it joins. Contract in `03-contracts.md` in the same commit.
+- `caprock machines server-script` prints the same, for a laptop over SSH.
+- Tests: golden scripts per input; `shellcheck` on the output in CI; a run
+  of the script in a Debian container on the Linux job with the downloads
+  pointed at a local file server and a fake `claude`, ending in a join
+  against a local relay (the smoke test's two-daemon setup); the key never
+  in a log or file (walk the data directory, as ADR-108's smoke test does).
+
+### P2 — the Hetzner Cloud path
+
+- `internal/provider` with one interface — prices and server types,
+  create (type, location, image, user data, firewall), status, delete — and
+  a Hetzner Cloud adapter. The API's request and answer shapes are read from
+  its documentation when this is built, with the date, not from memory.
+- The token: pasted in New server → *Create it with my Hetzner account*,
+  checked with one read call, kept in `internal/secret`, removable. Never in
+  `config.json`, an answer, a log, an event, Send secrets or the phone's
+  routes; every provider route is loopback-only.
+- The picker: types and locations as the API returns them, each with the
+  provider's price, labelled *Hetzner's price, read <time>*, in its currency
+  with its VAT treatment; nothing Caprock computes. Types the API marks
+  unavailable in a location are shown as such, not hidden.
+- Create: the P1 script as user data, a provider firewall with no inbound
+  rule, a name the user can change; then the server's status until it joins.
+- **Delete server**: the typed-name dialog of ADR-109, Forget, then the
+  provider's delete; a failure says what is left on the provider and links
+  its console.
+- The CLAUDE.md rule 4 sentence below, and the same in `00-index.md`'s copy
+  of the rule, in this PR.
+- Tests: a fake provider API (`httptest`) that records each request and
+  answers create, status, delete and prices, including rate limits, an
+  unavailable type, a bad token and a create that never boots; a test that
+  the token appears in no answer, log or file but the secret store; a test
+  that no request goes to the provider before a token is saved.
+
+### P3 — signing in from the laptop, and readiness
+
+- The server's page opens on its checklist right after the join. *Sign in
+  to Claude Code* runs `claude auth login` in a terminal tab there (the
+  ADR-099 #1088 path); the URL it prints is a link in that tab that opens
+  the laptop's browser on a click; the user pastes the code back. Codex with
+  its device-code sign-in, the same way. What a headless `claude auth login`
+  prints and asks is read from the installed version when this is built.
+- Readiness for a server adds: the systemd unit active, lingering on, the
+  firewall on, SSH password login off, unattended upgrades on — each read,
+  never changed, by the server's own daemon.
+- *Then close your laptop*: one line once an agent runs there, saying the
+  session goes on and the laptop reconnects when it wakes.
+- Tests: the readiness reads on fixtures of each file and command output;
+  the sign-in path with a fake `claude` that prints a URL and waits for a
+  code; nothing of the credential in any answer.
+
+### P4 — a browser for agents
+
+- A checklist row on the server, off by default: install a headless
+  Chromium (the distribution's package or Playwright's build, whichever
+  carries a checksum or a signed repository) and the libraries it needs, as
+  root through the setup script's own installer step — the one step that
+  needs root after boot, so it is offered in the script from the start, as
+  a switch on the New server screen, rather than run later.
+- Making it the agent's browser (an MCP server or the agent's own browser
+  setting) is a separate switch per agent, written as ADR-099's Claude in
+  Chrome row writes its setting: every other key kept.
+- Tests: the script with and without the switch (golden); the setting
+  written through the ordered codec.
+
+## Rule 4
+
+The draft sentence for `CLAUDE.md` rule 4, to land with P2 (not before: P1
+adds no destination), after the voice-model sentence:
+
+> And one provider, on the user's own token: with a Hetzner Cloud API token
+> pasted in Settings → Computers → New server, Caprock calls that provider's
+> API to list its prices, create a server with the setup script the screen
+> shows, read its status and delete it, and sends it nothing else
+> (ADR-109).
+
+In `CLAUDE.md`, *ADR-109* links to `.ai/08-decisions.md` as the rule's other
+ADRs do.
+
+## Not in this plan
+
+- A managed server Caprock runs (ADR-109 keeps it as a later paid option).
+- Providers other than Hetzner Cloud on path B, until someone asks.
+- A desktop or remote browser for the person on the server.
+- The server's Caprock updating itself (OQ-34).

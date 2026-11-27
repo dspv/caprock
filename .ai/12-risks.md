@@ -98,6 +98,25 @@ it is an estimate. **Outcome for 1.0:** approved on 2026-11-05 and released
 to the App Store; the risk stays open for every later version, 1.1's push
 first.
 
+**`RISK-12` — A provider's API or Anthropic's terms change under the server
+path.** A server in one click ([ADR-109](08-decisions.md), proposed) rests
+on two things Caprock does not control. A provider can change or retire the
+API calls path B makes (create with user data, prices, delete) or the user
+data field path A pastes into; a script that boots and silently fails to
+join leaves the user paying for a server that does nothing. Anthropic's terms
+(code.claude.com/docs/en/legal-and-compliance, read 2026-11-27) allow a user
+to sign in to the unmodified Claude Code binary with their own subscription
+where a platform hosts it, and forbid a third party to collect, store or
+intermediate claude.ai tokens; a narrower wording would close the path.
+Mitigation: the script path needs no provider API at all; each adapter is
+one small file behind one interface, tested against a fake API and checked
+against the provider's documentation in a release checklist step; a script
+failure stops with the step's name in the provider's console log and the
+laptop shows *not joined yet* while the key is open; Caprock never touches
+the token, so a terms change removes the feature without leaving anything
+of ours holding credentials. Residual: a provider change between a release
+and the next shows only when a user meets it.
+
 ## Open questions
 
 Anything the spec did not answer. Do not resolve these by inventing an answer. "Decided by" is a person, an event, or a task — never "later".
@@ -426,6 +445,39 @@ Anything the spec did not answer. Do not resolve these by inventing an answer. "
   by: five to ten phrases dictated into the app on a real Windows and a
   real Linux machine, scored with the research's script, and the notes in
   Settings corrected to what they show.
+- `OQ-31` — **What server size New server suggests** ([ADR-109](08-decisions.md),
+  proposed). The owner's ask rests on "each session loads the computer
+  heavily"; how much memory and CPU one agent session takes on a server is
+  not measured (OQ-19 measures what moving work frees on the laptop, not
+  what it needs there). Until it is, the picker pre-selects nothing by size
+  and shows each type's memory and the provider's price. Decided by: OQ-19's
+  measurement plus one run of three to five agent sessions on a 16 GB
+  server, peak memory recorded, before any suggested size or any public
+  "enough for N sessions".
+- `OQ-32` — **A checksum Caprock signs.** The setup script checks the
+  Caprock archive against the SHA-256 the laptop read from the same
+  release's `checksums.txt`, which catches a broken download, not a
+  tampered release. Signing the checksums (a key whose public half is built
+  into Caprock) would close that. The CLI archives and `checksums.txt`
+  carry no signature today; the desktop app's update bundle is
+  minisign-signed ([ADR-042](08-decisions.md)), so a signing key and a
+  verifier exist. Decided by: the owner, when P1 lands — sign in the release
+  workflow, or accept the GitHub release as the trust root and say so.
+- `OQ-33` — **The phone and Telegram with the laptop closed.** Links are
+  one-way and not transitive (ADR-067): a phone paired with the laptop does
+  not reach the server, and the Telegram bot answers from the one computer
+  that polls it. With the laptop asleep, nothing the user carries reaches
+  the server. Pairing a phone is the target's own action, which a linked
+  computer may not take for it. Decided by: the owner — pair the phone with
+  the server too (a QR the server's daemon shows through the laptop's page,
+  which needs a decision on ADR-067's "pairing stays the machine's own"), or
+  move the Telegram poller to the server.
+- `OQ-34` — **Keeping the server's Caprock in step.** The server starts on
+  the laptop's version and never updates itself (`internal/update` names
+  the upgrade command for an install and never runs it); the laptop updates and the two drift. Whether the checklist
+  offers *Update Caprock there* as a step run on a click (ADR-099 #1088),
+  and how far apart two versions may be before a link refuses, is not
+  decided. Decided by: the owner, with P3.
 
 ## What would falsify the whole plan
 
