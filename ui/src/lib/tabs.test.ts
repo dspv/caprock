@@ -505,3 +505,19 @@ describe('page tabs', () => {
     })
   })
 })
+
+// Owner, 2026-11-27: a closed session reopens in one click, in the same place.
+describe('a tab reopened where it was', () => {
+  const ids = (ws: Workspace) => ws.tabs.map((t) => t.title)
+  it('goes back to its index, clamped, and never after the pages', () => {
+    let ws = run(open('a'), open('b'), open('c'))
+    ws = workspaceReducer(ws, { type: 'open', target: { kind: 'session', sessionId: 'x' }, projectId: 'p1', title: 'x', at: 1 })
+    expect(ids(ws)).toEqual(['a', 'x', 'b', 'c'])
+    ws = workspaceReducer(ws, { type: 'open', target: { kind: 'session', sessionId: 'y' }, projectId: 'p1', title: 'y', at: 99 })
+    expect(ids(ws)).toEqual(['a', 'x', 'b', 'c', 'y'])
+    ws = workspaceReducer(ws, { type: 'open', target: { kind: 'page', sessionId: 'page:1', url: 'https://example.com' }, projectId: 'p1', title: 'page' })
+    ws = workspaceReducer(ws, { type: 'open', target: { kind: 'session', sessionId: 'z' }, projectId: 'p1', title: 'z', at: 99 })
+    expect(ids(ws)).toEqual(['a', 'x', 'b', 'c', 'y', 'z', 'page'])
+    expect(activeTab(ws)?.title).toBe('z')
+  })
+})
