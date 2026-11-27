@@ -119,7 +119,10 @@ func TestTheSetupScriptOnALinuxServer(t *testing.T) {
 		b, err := exec.CommandContext(ctx, docker, args...).CombinedOutput() //nolint:gosec // the test's own argv
 		return string(b), err
 	}
-	boot := "apt-get update && apt-get install -y --no-install-recommends systemd systemd-sysv dbus socat ca-certificates && exec /sbin/init"
+	// A cloud image has what logind needs to run a user manager on linger:
+	// libpam-systemd (systemd only recommends it) and the user bus. A bare
+	// container image has neither, so they are installed here, not by the script.
+	boot := "apt-get update && apt-get install -y --no-install-recommends systemd systemd-sysv dbus dbus-user-session libpam-systemd socat ca-certificates && exec /sbin/init"
 	if out, err := run(10*time.Minute, "run", "-d", "--name", name, "--privileged", "--cgroupns=host",
 		"-v", "/sys/fs/cgroup:/sys/fs/cgroup:rw", "--tmpfs", "/run", "--tmpfs", "/run/lock",
 		"--add-host=host.docker.internal:host-gateway", image, "sh", "-c", boot); err != nil {

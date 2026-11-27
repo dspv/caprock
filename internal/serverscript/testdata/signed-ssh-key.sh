@@ -124,10 +124,17 @@ fi
 loginctl enable-linger caprock
 cuid=$(id -u caprock)
 chome=$(getent passwd caprock | cut -d: -f6)
+# Lingering asks logind to start the user manager; starting it here too makes
+# the wait deterministic, and its status is what a failure prints.
+systemctl start "user@$cuid.service" || true
 i=0
 while [ ! -S "/run/user/$cuid/systemd/private" ]; do
 	i=$((i + 1))
-	[ "$i" -le 60 ] || stop "the user services of caprock did not start: no /run/user/$cuid/systemd/private after a minute"
+	if [ "$i" -gt 60 ]; then
+		systemctl status "user@$cuid.service" --no-pager -l >&2 || true
+		journalctl -b -u "user@$cuid.service" -u systemd-logind.service -n 40 --no-pager >&2 || true
+		stop "the user services of caprock did not start: no /run/user/$cuid/systemd/private after a minute"
+	fi
 	sleep 1
 done
 
