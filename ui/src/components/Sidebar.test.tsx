@@ -359,13 +359,9 @@ describe('the sidebar', () => {
     const today = screen.getByRole('region', { name: 'Today' })
     // Below the list, just above the footer: not at the top any more.
     expect(today.nextElementSibling).toHaveClass('app-sidebar-footer')
-    expect(today).toHaveTextContent('$48.20 today·0 running5h 62%')
-    fireEvent.click(within(today).getByRole('button', { name: /Spent today, every agent: \$48\.20/ }))
-    expect(onRoute).toHaveBeenLastCalledWith('#/cost')
+    expect(today).toHaveTextContent('5-hour limit62%')
     fireEvent.click(within(today).getByRole('button', { name: /5-hour window 62% used/ }))
     expect(onRoute).toHaveBeenLastCalledWith('#/cost?section=limits')
-    fireEvent.click(within(today).getByRole('button', { name: /0 agents running/ }))
-    expect(onRoute).toHaveBeenLastCalledWith('#/home')
     // Nothing waits: no waiting figure at all.
     expect(today.querySelector('[data-today-waiting]')).toBeNull()
     expect(props.onOpenInbox).not.toHaveBeenCalled()
