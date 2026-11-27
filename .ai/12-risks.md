@@ -98,6 +98,25 @@ it is an estimate. **Outcome for 1.0:** approved on 2026-11-05 and released
 to the App Store; the risk stays open for every later version, 1.1's push
 first.
 
+**`RISK-12` — A provider's API or Anthropic's terms change under the server
+path.** A server in one click ([ADR-109](08-decisions.md)) rests
+on two things Caprock does not control. A provider can change or retire the
+API calls path B makes (create with user data, prices, delete) or the user
+data field path A pastes into; a script that boots and silently fails to
+join leaves the user paying for a server that does nothing. Anthropic's terms
+(code.claude.com/docs/en/legal-and-compliance, read 2026-11-27) allow a user
+to sign in to the unmodified Claude Code binary with their own subscription
+where a platform hosts it, and forbid a third party to collect, store or
+intermediate claude.ai tokens; a narrower wording would close the path.
+Mitigation: the script path needs no provider API at all; each adapter is
+one small file behind one interface, tested against a fake API and checked
+against the provider's documentation in a release checklist step; a script
+failure stops with the step's name in the provider's console log and the
+laptop shows *not joined yet* while the key is open; Caprock never touches
+the token, so a terms change removes the feature without leaving anything
+of ours holding credentials. Residual: a provider change between a release
+and the next shows only when a user meets it.
+
 ## Open questions
 
 Anything the spec did not answer. Do not resolve these by inventing an answer. "Decided by" is a person, an event, or a task — never "later".
@@ -426,6 +445,36 @@ Anything the spec did not answer. Do not resolve these by inventing an answer. "
   by: five to ten phrases dictated into the app on a real Windows and a
   real Linux machine, scored with the research's script, and the notes in
   Settings corrected to what they show.
+- ~~`OQ-31` — What server size New server suggests.~~ Decided 2026-11-28
+  ([ADR-109](08-decisions.md)): path B's picker pre-selects the smallest
+  type with at least 16 GB of memory, labelled *suggested, not measured*,
+  and the user can pick any. It is a default, not a claim: how much memory
+  and CPU one agent session takes on a server is still not measured (OQ-19
+  measures what moving work frees on the laptop), and no screen or page says
+  how many sessions a type holds until a run of three to five agent sessions
+  on a 16 GB server, peak memory recorded, says so.
+- ~~`OQ-32` — A checksum Caprock signs.~~ Decided 2026-11-28
+  ([ADR-109](08-decisions.md)): the Linux archives are signed in the
+  release pipeline with the minisign key the desktop app's updater already
+  uses ([ADR-042](08-decisions.md)), landing in P1, and the setup script
+  verifies that signature as well as the SHA-256 from `checksums.txt`. If
+  the key cannot be made available to goreleaser in CI, P1 ships
+  checksum-only, says so in the script's header and in `docs/machines.md`,
+  and signing becomes P1b.
+- ~~`OQ-33` — The phone and Telegram with the laptop closed.~~ Decided
+  2026-11-28 ([ADR-109](08-decisions.md)): during setup the server's
+  checklist offers *Pair your phone with this server too* (a phone code the
+  server's daemon makes, its QR shown on the laptop) and *Move the Telegram
+  bot here* (the server holds the bot and the laptop sends through it, as
+  ADR-047's 2026-11-27 amendment, #1100, allows). Both are optional and off
+  by default.
+- ~~`OQ-34` — Keeping the server's Caprock in step.~~ Decided 2026-11-28
+  ([ADR-109](08-decisions.md)): when the versions differ, the server's
+  checklist shows *Update Caprock there*, which types that install's
+  upgrade command into a terminal tab on the server, shown on the laptop;
+  the user presses Enter, and nothing runs by itself. A link tolerates
+  whatever gap links tolerate today: no minimum version is enforced between
+  computers, and a route the older side lacks answers 404.
 
 ## What would falsify the whole plan
 

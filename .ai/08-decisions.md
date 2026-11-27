@@ -9007,3 +9007,259 @@ issuer, so nothing runs that the user did not press.
 
 **Revisit if** the owner wants steps run as part of the join, or a key that
 links several computers.
+
+*Amended 2026-11-28 — a key made for a server lives 60 minutes
+([ADR-109](#adr-109--a-server-in-one-click-on-the-users-own-provider-account)).*
+A key made by **New server** goes into a setup script the user pastes into
+a provider's create form, and the server runs `caprock join` only after the
+user has signed up, picked a type and the machine has booted and installed
+its tools; an expired key inside a server's user data cannot be replaced
+without SSH. Such a key lives 60 minutes; a key made by *Add with a key*
+keeps 15. Everything else holds: one use, one open at a time (a server key
+and an ordinary key withdraw each other), five wrong secrets burn it, kept
+only as a hash in memory, and the laptop's Caprock must be running and
+online while it is open.
+
+## ADR-109 — A server in one click, on the user's own provider account
+
+**Date:** 2026-11-28 · **Status:** accepted 2026-11-28 (decided without the
+owner from his ask of 2026-11-27, under his standing rule that the work is
+decided and done without his OK; its open questions decided the same day,
+below; nothing is built). Builds on
+[ADR-067](#adr-067--your-computers-reach-each-other-through-the-same-relay-the-local-daemon-speaks-for-the-others)
+(other computers),
+[ADR-099](#adr-099--adding-a-computer-is-a-checklist-on-the-computer-that-runs-agents-and-the-laptop-reads-its-readiness)
+(the checklist, run from the laptop since #1088),
+[ADR-107](#adr-107--secrets-travel-from-the-laptop-to-a-linked-computer-through-the-link-on-a-click-store-to-store)
+(Send secrets) and
+[ADR-108](#adr-108--a-new-computer-joins-with-one-key-made-on-the-computer-you-work-on-running-the-key-there-is-its-allow)
+(the join key); the channel is
+[ADR-058](#adr-058--a-phone-reaches-the-machine-from-anywhere-through-a-relay-that-carries-only-ciphertext)'s,
+unchanged. Revisits the line in ADR-067 that parked a hosted or resold
+machine. Build plan: [26-server.md](26-server.md).
+
+**Context.** The owner (2026-11-27, translated): "quickly, in a few clicks,
+bring up a remote machine with your Claude subscription set up, all needed
+packages, maybe even a browser, to do everything there. Agent sessions keep
+running so you can't close the laptop or drop the connection; each session
+loads the computer heavily and people buy expensive high-RAM Macs; a VM with
+enough RAM can be about $50 a month against a few thousand for a Mac mini."
+ADR-067 parked a VPS *we* run for two reasons: it would put the user's code
+on a server of ours (rule 4), and its one selling point would be speed
+nobody had measured (OQ-20). This ADR keeps both reasons and changes the
+goal: not speed, but the laptop's memory and battery freed and its lid
+closed while agents work. Linking a computer already exists (ADR-067,
+ADR-108); what is missing is *getting* one — renting it, installing what
+agents need, linking it and signing in — without SSH and an afternoon.
+
+**What was found, 2026-11-27** (the providers' own pages that day; prices
+change, and no Caprock screen repeats them — rule 6):
+
+- Hetzner dedicated AX41 (6 cores, 64 GB): €59 a month, no setup fee
+  (hetzner.com/dedicated-rootserver/matrix-ax).
+- Hetzner Cloud CX53 (16 vCPU, 32 GB): €29.99 a month, often *currently
+  unavailable* (hetzner.com/cloud/cost-optimized); CPX42 (8 vCPU, 16 GB):
+  €59.49 (/cloud/regular-performance); CCX23 (4 dedicated vCPU, 16 GB):
+  €73.49 (/cloud/general-purpose).
+- DigitalOcean, 8 vCPU and 16 GB: $96 a month
+  (digitalocean.com/pricing/droplets).
+- Scaleway Mac mini M4, 16 GB: €149 a month
+  (scaleway.com/en/pricing/apple-silicon).
+- Anthropic's terms (code.claude.com/docs/en/legal-and-compliance) allow
+  "an end user from signing in to the unmodified Claude Code binary with
+  their own Claude subscription, including where a platform hosts Claude
+  Code", and forbid a third party to collect, store or intermediate claude.ai
+  tokens. Codex documents a device-code sign-in for remote and headless
+  machines (developers.openai.com/codex/auth).
+- Nobody ships a one-click box on the user's own VPS signed in to the user's
+  own subscription. Orca has a bring-your-own remote server (`orca serve`
+  over Tailscale) with no provisioning.
+
+**The decision: bring your own account.** The server is the user's, rented
+from a provider of their choice on their own account and card; Caprock writes
+the script that sets it up, optionally calls the provider on the user's
+token, and then treats the server as any other linked computer.
+
+- **Where.** Settings → Computers → *Add a computer* → **New server**
+  (beside *Add with a key*). Two paths, the same script under both.
+- **Path A, no token (the default).** Caprock makes a join key (ADR-108)
+  and shows a setup script with it inside, in full, with **Copy**, and a
+  line per provider naming where its create form takes it (Hetzner Cloud:
+  *Cloud config*; DigitalOcean: *User data*; any provider that runs
+  cloud-init). For a machine without cloud-init (a Hetzner dedicated server,
+  a box at home) the same script runs as root over SSH, once. Caprock holds
+  no credential of any provider, makes no outbound call beyond the join
+  key's rendezvous, and shows no price: the line links to the provider's
+  own price page.
+- **Path B, a provider token (optional, Hetzner Cloud first).** The user
+  pastes a Hetzner Cloud API token (read and write, one project). It goes
+  into the secret store (`internal/secret`), never into `config.json`, an
+  answer, a log, or Send secrets, and never leaves the laptop except to the
+  provider's API. Caprock then lists server types and locations with **the
+  provider's own price as its API returns it** — labelled *Hetzner's price,
+  read <time>*, with the currency and the VAT treatment the API gives — and
+  creates the server with the script as its user data and a provider
+  firewall that admits nothing. It shows the server's progress, and later
+  **Delete server**. Other providers join only when someone asks; each is a
+  small adapter behind one interface (prices, create, status, delete).
+- **What the script does**, top to bottom, as root on the new server, every
+  step printed to the provider's console log and nothing from the internet
+  run unchecked:
+  - creates a user `caprock` with no password and no sudo, and enables
+    lingering for it (`loginctl enable-linger caprock`), so its systemd user
+    unit runs with nobody logged in — the step `docs/machines.md` asks of a
+    person today;
+  - turns on the distribution's unattended security upgrades and a host
+    firewall that denies everything inbound;
+  - SSH: password login off always; with an SSH key the user gave the
+    provider, key-only; with none, sshd is stopped and disabled (the
+    provider's web console stays as the way in);
+  - installs Git and Node.js from the distribution or the vendor's archive
+    with its published checksum; Claude Code with Anthropic's own installer;
+    Codex from its vendor's release; no agent is modified (Anthropic's
+    *unmodified binary*);
+  - installs Caprock **the same version as the laptop's** (a development
+    build names the latest release) from the GitHub release archive
+    `caprock_<version>_linux_<arch>.tar.gz`, its **minisign signature**
+    checked against the public key the script carries — the key the
+    desktop app's updater already verifies with ([ADR-042](#adr-042--the-app-updates-itself-in-one-click-a-minisign-signed-bundle-one-channel-checked-only-when-the-release-check-is-on-or-the-user-asks)) —
+    and its SHA-256 against the value the laptop wrote into the script from
+    that release's `checksums.txt`; either failing stops the script (OQ-32,
+    decided below);
+  - as `caprock`: `caprock hooks install --yes`, `caprock service install`,
+    then `caprock join <key>` — whose output says, as on any computer, that
+    access from anywhere is on and which computer is allowed.
+- **The join is ADR-108's, with a longer key.** A key made for a server
+  lives 60 minutes, not 15 (ADR-108, amended 2026-11-28): signing
+  up at a provider and booting the server can outlast 15, and an expired key
+  inside a server's user data cannot be replaced without SSH. It is still one
+  use, still one open at a time, still five wrong secrets to burn it. The
+  laptop's Caprock must be running and online until the server joins; the
+  screen says so and counts down.
+- **Signing in stays the agent's own, on the server.** After the join, the
+  server's page opens with ADR-099's checklist. *Sign in to Claude Code*
+  opens a terminal tab on the server, shown on the laptop, with `claude auth
+  login` run there; the URL it prints opens in the laptop's browser on a
+  click, and the code the browser shows is pasted back into that tab by the
+  user. Codex the same with its device-code sign-in. The credential is
+  written by the agent, on the server, in the server's files; Caprock never
+  reads, stores, sends or relays it, and Send secrets (ADR-107) will never
+  list a claude.ai or ChatGPT sign-in. A second subscription on the server
+  is Settings → Subscriptions there (ADR-048), the same flow.
+- **Then the laptop closes.** Agents are started on the server from New agent
+  → Machine (ADR-067 Phase 2); they run under the server's daemon and its
+  systemd unit; the laptop reconnects to them when it wakes. A browser for
+  agents (headless Chromium driven by the agent's own browser tool) is a
+  checklist row on the server, off until switched on
+  ([26-server.md](26-server.md), P4).
+- **Deleting.** With a token: **Delete server** names the server, shows the
+  sessions still running there, and asks for its name typed; it then Forgets
+  the computer here and calls the provider's delete. The disk goes with it:
+  unpushed work and the agent's sign-in on it are gone, and the dialog says
+  so. Without a token: Forget here, and the provider's console link to
+  delete it there. Removing the token from Settings deletes nothing on the
+  provider.
+- **Free.** Everything for one person is free (owner, 2026-11-27). A
+  managed server that Caprock runs for the user could be a later paid
+  product — an option only, not decided, and not said on any public page
+  (rule 11).
+
+**Security, in one place.**
+
+- *No open port.* The server's daemon listens on loopback, as every
+  Caprock does; it is reached only through the relay it dials out to, Noise
+  end to end (ADR-058). The host firewall and, on path B, the provider
+  firewall admit nothing inbound.
+- *The join key in user data.* A provider keeps user data, and any process
+  on the server can read it from the metadata service. The key is one use
+  and spent within minutes of boot; an unspent key read there lets the
+  reader link *their* computer as one the user reaches and gives them
+  nothing on the user's computers (ADR-108's threat model, unchanged).
+- *The provider token* can create and delete servers on the user's bill.
+  It is kept in the secret store, never shown again after it is pasted,
+  removable in one click, and asked for with the narrowest scope the
+  provider offers (one project).
+- *The agents' credentials* stay on the server, in the agents' own files,
+  as on any computer. Whoever controls the server — the user, and the
+  provider as any host can — can read them; that is the trust any VPS
+  asks, said on the New server screen.
+- *Bypass mode.* A server is where an agent with permissions skipped does
+  least harm to the user's own machine; the `caprock` user has no sudo, so
+  such an agent cannot change the system. Installing a package an agent
+  needs is a checklist step or the user's own command.
+
+**What this is not.** Caprock does not host, rent, resell or pay for a
+server; it does not hold, collect or relay a subscription's token; it does
+not route the user's code or sessions through anything of ours but the
+relay's ciphertext; and the server's Caprock does not update itself (the
+laptop shows the upgrade command, as for any computer).
+
+**Alternatives rejected.**
+
+- *A server we run and resell* (ADR-067's parked idea): code and sessions
+  on our machine (rule 4), a card relationship, and claude.ai sessions on
+  hardware we control, a step from intermediating the token. Kept only as
+  the later paid option above.
+- *Provider API only, no script path*: it forces every user to hand over a
+  token that can bill them, and leaves out every provider without an
+  adapter and every dedicated or home box.
+- *SSH from the laptop to set the server up* (Caprock as an SSH client):
+  needs an open port, a key on the laptop and Caprock holding a root shell
+  on the user's server; the relay already reaches the server once it joins.
+- *Tailscale as the link* (Orca's shape): a second account and app the user
+  must have, and the relay already works behind any NAT.
+- *Copying the laptop's Claude sign-in to the server*: Anthropic's terms
+  forbid a third party to intermediate the token, and Caprock would become
+  the thing carrying it.
+- *A desktop on the server* (VNC or a remote browser for the person): an
+  open port or a new streaming protocol, for a need the laptop's own
+  browser and the agent's headless one already cover.
+
+**Rule 4.** Path A adds nothing: the only call is the join key's rendezvous
+at the laptop's own relay, already in ADR-108. Path B adds one outbound
+destination the user turns on by pasting a token — the provider's API — and
+CLAUDE.md rule 4 needs a sentence naming it, landed with P2 (draft in
+[26-server.md § Rule 4](26-server.md#rule-4)).
+
+**Open questions, decided 2026-11-28** (recorded as closed in
+[12-risks.md](12-risks.md#open-questions); provider and terms churn stays
+open as `RISK-12`):
+
+- **`OQ-31`, the suggested size.** Path B's picker pre-selects the smallest
+  type with at least 16 GB of memory available in the chosen location,
+  labelled *suggested, not measured*; the user can pick any type. No
+  screen or page says how many sessions it holds or how fast it is (rule
+  6); OQ-19's measurement is still owed before any such claim.
+- **`OQ-32`, a signed archive.** The Linux archives are signed with the
+  minisign key the app updater already uses (ADR-042), in the release
+  pipeline, landing in P1, and the script verifies the signature, not only
+  `checksums.txt`. If that key cannot be made available to goreleaser in
+  CI, P1 ships checksum-only with the gap said in the script's header and
+  in `docs/machines.md`, and signing becomes P1b.
+- **`OQ-33`, the phone and Telegram with the laptop closed.** During setup
+  the server's checklist offers two optional rows, both off by default:
+  - *Pair your phone with this server too*: the server's own daemon makes an
+    ordinary phone pairing code, and the laptop shows its QR. This narrows
+    ADR-067's *pairing stays the machine's own* for this one case: the
+    laptop asks, the server mints, and only a phone code (never a computer
+    code, never a role above the phone's) is offered, during setup only.
+    The phone appears in the server's device list, which the laptop shows,
+    and is removed there like any other device.
+  - *Move the Telegram bot here*: the bot moves to the server and the laptop
+    sends through it (ADR-047 amended 2026-11-27, #1100: one computer holds
+    the bot, the others send through it). The bot token crosses the link as
+    Send secrets carries a value (ADR-107), and the laptop stops polling in
+    the same step: ADR-107 left the token off its list because two pollers
+    take each other's messages, and a move leaves one.
+- **`OQ-34`, versions in step.** When the laptop's and the server's Caprock
+  versions differ, the server's checklist shows *Update Caprock there*;
+  pressing it types that install's upgrade command (the one `GET
+  /v1/update` names for it) into a terminal tab on the server, shown on the
+  laptop, and the user presses Enter — shown, never run by itself, as every
+  Caprock update. A link tolerates whatever gap links tolerate today: no
+  minimum version is enforced between computers, and a route the older side
+  lacks answers 404, which the newer side shows as nothing new (ADR-099).
+
+**Revisit if** Anthropic's terms stop allowing a user's own sign-in on a
+hosted machine, a provider's API stops taking user data, or the owner wants
+the managed, paid server.
