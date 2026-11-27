@@ -456,9 +456,10 @@ only. What changes:
   for private modules (ADR-076) is set with `caprock license set` and only
   its state is shown. `Paywall.test.tsx` now fails if any of it comes back.
 - **The licence code is kept for teams.** `internal/license`, `caprock
-  license` and `GET /v1/premium` (with `internal/premium` and
-  `TestPricingMatchesTheSite`) stay, unused by the dashboard, so a team
-  licence can reuse the same offline key. A key already issued keeps
+  license` and `GET /v1/premium` (the licence state alone) stay, unused by
+  the dashboard, so a team licence can reuse the same offline key. The old
+  personal prices, `internal/premium` and `TestPricingMatchesTheSite` were
+  removed on 2026-11-28, when the site dropped them. A key already issued keeps
   working; it unlocks nothing that is not already free.
 
 The rules above about the key itself — offline, no cryptography, seven days
