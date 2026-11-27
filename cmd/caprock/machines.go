@@ -187,7 +187,7 @@ func machinesCmd() *cobra.Command {
 		func(rt config.Runtime, d pairing.Public) error {
 			return daemonJSON(rt, http.MethodDelete, "/v1/pair/devices/"+url.PathEscape(d.ID), nil, nil)
 		}, "removed %s: it reaches nothing here any more")
-	c.AddCommand(ls, add, machinesKeyCmd(), forget, pending, allow, deny, revoke)
+	c.AddCommand(ls, add, machinesKeyCmd(), machinesServerScriptCmd(), forget, pending, allow, deny, revoke)
 	return c
 }
 

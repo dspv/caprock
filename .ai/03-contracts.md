@@ -565,13 +565,14 @@ the target runs its ordinary Host and gate, and pairs it as a computer
     relay_status, key}` with `Cache-Control: no-store` — the only answer
     that ever holds the key; `409` when this machine has no relay key to
     pre-approve. From then until it is spent, withdrawn, burned or
-    `expires_at` (15 minutes, this machine's clock), this machine waits at
+    `expires_at` (15 minutes, this machine's clock; 60 for a server key,
+    below), this machine waits at
     its own relay (`remote.relay`, the hosted one unless the owner chose
     another) under the rendezvous id, running an ordinary `remote.Host`
     whose requests are served in process by the two join routes alone.
     Only `sha256(secret)` is kept, in memory.
   - **`GET /v1/machines/join-key`** answers `{state, expires_at?, relay?,
-    relay_status?, joiner?, machine?, error?}`: `state` is `none`,
+    relay_status?, joiner?, machine?, error?, server?}`: `state` is `none`,
     `waiting`, `joining` (a computer proved the secret; `joiner` its name),
     `joined` (`machine` the entry `GET /v1/machines` lists), `expired` or
     `failed` (`error` says why). Never the key. **`DELETE
@@ -598,6 +599,48 @@ the target runs its ordinary Host and gate, and pairs it as a computer
     there (expired, used, withdrawn, that computer off); `403` refused
     (wrong secret, spent); `504` out of time; `502` anything else, with
     its `error`. The join's code is withdrawn when the link step fails.
+  - **`POST /v1/machines/server-script {ssh_key?}`** (ADR-109 P1,
+    `internal/serverscript`, `internal/api/serverscript.go`; loopback only,
+    `501` without the feature, on no device's allowlist) is New server's
+    setup script. It first resolves the release to install — this
+    machine's version, or for a development build the latest release
+    (`update.Checker.Check`, forced, on this click) — and reads that
+    release's `checksums.txt` and asks (`HEAD`) for `caprock_<v>_linux_
+    {amd64,arm64}.tar.gz.minisig` at
+    `https://github.com/dspv/caprock/releases/download/v<v>/` (the release
+    check's destination; `CAPROCK_TEST_RELEASE_BASE` replaces that base, for
+    tests); a failure there opens no key and answers `502`. Then it makes a
+    join key as `POST /v1/machines/join-key` does but open for **60
+    minutes** (`peers.ServerJoinTTL`; ADR-108 amended by ADR-109) — it
+    withdraws an open key of either kind, and either kind withdraws it —
+    and answers `{state, expires_at, relay, relay_status, server: true,
+    script, version, signed}` with `Cache-Control: no-store`; `409` when
+    this machine has no relay key. The key is inside `script` and nowhere
+    else. `GET /v1/machines/join-key` follows it like any key, with
+    `server: true`. `serverscript.Render` is a pure function of {version,
+    each archive's SHA-256, signed, key, ssh_key}: a POSIX sh script for
+    Ubuntu 24.04 LTS or newer and Debian 12 or newer (anything else stops
+    at the top, naming both), run as root, each step printed as `==>
+    caprock setup: <step>` and the failing one named on exit: packages from
+    the distribution (`ca-certificates curl git tar gzip nodejs npm ufw
+    unattended-upgrades`, `minisign` when signed; Node.js 18 or newer
+    required); user `caprock` (`useradd`, password locked, out of `sudo`),
+    `loginctl enable-linger caprock`, waiting for its user manager; APT's
+    periodic unattended upgrades on; with `ssh_key`
+    `/etc/ssh/sshd_config.d/01-caprock.conf` (no password or
+    keyboard-interactive login, root by key only, checked with `sshd -T`)
+    and the firewall admitting sshd's ports, without it sshd disabled and
+    stopped (and the script refuses to run over SSH); `ufw` denying all
+    other inbound; Claude Code with `https://claude.ai/install.sh` run as
+    `caprock`, Codex with `npm install --global @openai/codex` (both skipped
+    when `CAPROCK_SETUP_SKIP_AGENTS=1`, for tests); Caprock's archive for
+    the machine's arch, its `.minisig` checked against
+    `serverscript.MinisignPublicKey` (the app updater's key, ADR-042) when
+    signed, then its SHA-256, the three binaries installed to
+    `/usr/local/bin` and `caprock version` checked; then as `caprock`
+    `caprock hooks install`, `caprock service install`, a wait for the
+    daemon, and `caprock join` with the key on standard input (three tries,
+    20 s apart). `release.yml`'s `linux-sign` job signs the Linux archives.
 - **The CLI** (`cmd/caprock/machines.go`), against the local daemon:
   `caprock machines` / `ls` (the computers this one reaches, checked, and
   the computers that reach this one from `GET /v1/pair/state`), `add
@@ -617,7 +660,10 @@ the target runs its ordinary Host and gate, and pairs it as a computer
   <user>`; neither runs it. `caprock machines key` (`POST
   /v1/machines/join-key`) prints the key once, `caprock join <key>` to run
   on the new computer, and the install commands from
-  `docs/install-agent.md`. `caprock join [key]` (`cmd/caprock/join.go`,
+  `docs/install-agent.md`. `caprock machines server-script [--ssh-key]`
+  (`POST /v1/machines/server-script`) prints the script alone to stdout
+  and, to stderr, the version it installs, how its archive is checked and
+  how long its key works. `caprock join [key]` (`cmd/caprock/join.go`,
   `POST /v1/join`, 150 s at most) reads the key from stdin when none is
   given, and prints what it did (access from anywhere on and through which
   relay, which computer is allowed, that nothing was installed and no

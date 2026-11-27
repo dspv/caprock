@@ -1,12 +1,12 @@
 # A server in one click
 
-**Status: accepted 2026-11-28, not built.** The decision is
+**Status: accepted 2026-11-28; P1 built (2026-11-28), P2–P4 not.** The decision is
 [ADR-109](08-decisions.md#adr-109--a-server-in-one-click-on-the-users-own-provider-account);
 this file is its build plan. The server is the user's own, rented on their
 own provider account; Caprock writes its setup script, optionally calls the
 provider on the user's token, and links it as any other computer
-([ADR-067](08-decisions.md), [ADR-108](08-decisions.md)). User docs land in
-[docs/machines.md](../docs/machines.md) with P1.
+([ADR-067](08-decisions.md), [ADR-108](08-decisions.md)). User docs are in
+[docs/machines.md](../docs/machines.md) (*A new server, with a script*).
 
 ## What already exists
 
@@ -67,6 +67,54 @@ the same commit (rule 9) and a changelog fragment.
   pointed at a local file server and a fake `claude`, ending in a join
   against a local relay (the smoke test's two-daemon setup); the key never
   in a log or file (walk the data directory, as ADR-108's smoke test does).
+
+**As built (2026-11-28).** Where it differs from the plan above, or settles
+what it left open:
+
+- The package is `internal/serverscript` (`Render`, `FetchRelease`); the
+  route's adapter is `internal/daemon/join.go`, the desk's
+  `peers.JoinDesk.NewServer`. Contract: `03-contracts.md` § Join keys.
+- **Signing landed in P1, not P1b.** The minisign key is reachable from
+  `release.yml` (the app jobs already receive `TAURI_SIGNING_PRIVATE_KEY`),
+  so a `linux-sign` job signs each Linux archive with `tauri signer sign`,
+  checks the decoded `.minisig` with `minisign` against the public key in
+  `tauri.conf.json`, and attaches it. The laptop asks for both `.minisig`
+  files when it makes a script: present, the script checks the signature
+  and then the SHA-256; absent (every release before the first one this
+  job runs on, or a run without the secret), it checks the SHA-256 alone
+  and its header says so. Not yet seen working: the first tagged release
+  after this lands is its first run. Open: once a signed release exists,
+  the laptop should require signatures for that version and later, so a
+  missing `.minisig` cannot quietly downgrade a script to checksum-only.
+- Supported systems: Ubuntu 24.04 LTS or newer and Debian 12 or newer,
+  because the agents need Node.js 18 or newer and those are the releases
+  whose own `nodejs` package has it (Ubuntu 22.04's is 12). Node.js comes
+  from the distribution, not the vendor's archive.
+- Codex is `npm install --global @openai/codex` (its documented install),
+  not a GitHub release archive. Claude Code is `https://claude.ai/install.sh`,
+  run as `caprock`.
+- `caprock hooks install` takes no `--yes` (it never asks); the key reaches
+  `caprock join` on standard input, so it is in no process's arguments.
+- The firewall is `ufw`; with an SSH key it admits the ports `sshd -T`
+  names, so a box on another SSH port is not locked out. Without an SSH
+  key the script refuses to run over SSH (`$SSH_CONNECTION` set).
+- **Tests.** Golden scripts (`internal/serverscript/testdata`, `-update`
+  rewrites them); `shellcheck --severity=style` and `sh -n` on both shapes
+  in `go test` wherever they are installed (the ubuntu runners have
+  shellcheck); the public key held to `tauri.conf.json`'s. The join is the
+  smoke test `TestTwoDaemonsJoinWithAServerScript` on all three OS: a
+  script made with `caprock machines server-script` against a stand-in for
+  GitHub, its key open for an hour, the join with that key on stdin as the
+  script does it, and the key in no log or file. **The script run in a
+  container is behind build tags** (`smoke servercontainer`, `make
+  server-container-test`, Linux with Docker): a Debian 12 with systemd as
+  PID 1 in a privileged container, the release served locally, the relay
+  and file server reached through socat on the container's loopback, the
+  agents skipped (`CAPROCK_SETUP_SKIP_AGENTS=1`), ending in the join and
+  reads of lingering, the firewall, unattended upgrades and the user unit.
+  It is not in CI (minutes, a privileged container, package mirrors) and
+  was not run when it was written: the machine it was written on had no
+  Docker daemon.
 
 ### P2 — the Hetzner Cloud path
 

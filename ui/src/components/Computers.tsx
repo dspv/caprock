@@ -53,6 +53,7 @@ import { MachineReadiness } from './MachineReadiness'
 import { Section } from './SettingsParts'
 import { Copyable } from './ui'
 import { AddWithKey, JoinWithKey } from './JoinKey'
+import { NewServer } from './NewServer'
 
 /** What a failed add means, for a person. */
 export function addError(e: unknown): string {
@@ -288,6 +289,7 @@ function MainSteps({ machines, onAdded }: { machines: Machine[]; onAdded: () => 
   return (
     <div className="grid min-w-0 gap-3">
     <AddWithKey />
+    <NewServer />
     <span className="text-[12.5px] text-fg-muted" data-steps-or>Or with a link the other computer shows:</span>
     <ol className="grid min-w-0 gap-3" data-steps="main">
       <Step n={1} done={done[0]}>

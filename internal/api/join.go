@@ -16,7 +16,8 @@ import (
 // works on.
 //
 //   - On the computer where the user works: POST /v1/machines/join-key makes
-//     a key, single use, good for 15 minutes, and answers it once; GET says
+//     a key, single use, good for 15 minutes (60 for one made by POST
+//     /v1/machines/server-script, ADR-109), and answers it once; GET says
 //     how it stands (waiting, joining, joined with which computer, expired)
 //     and never repeats it; DELETE withdraws it.
 //   - On the new computer: POST /v1/join {key} is `caprock join <key>` and

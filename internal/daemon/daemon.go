@@ -861,7 +861,7 @@ func (d *Daemon) run(ctx context.Context) error {
 		Browsers: &browser.Opener{
 			Env: func() []string { return userenv.Environ(d.log) },
 		},
-		Pairing: d.pairing, LANURL: d.lanURL, Started: d.start, LAN: d, Remote: d, Machines: d.machines, Join: d.join, TelegramVia: d, DevShare: d.devShare, Secrets: &secretShare{d: d},
+		Pairing: d.pairing, LANURL: d.lanURL, Started: d.start, LAN: d, Remote: d, Machines: d.machines, Join: d.join, Servers: d.join, TelegramVia: d, DevShare: d.devShare, Secrets: &secretShare{d: d},
 		Projects: d.projs, Templates: tpls, Shells: &shellAdapter{m: d.mgr, live: d.livePIDs}, GitHub: d.gh,
 		Obsidian: vaults, Mail: d.mail.Handler(), BrainAuto: &brainAdapter{d: d, eng: d.brain},
 		TLDR:              d.newTLDRRunner(),

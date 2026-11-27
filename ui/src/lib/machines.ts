@@ -156,11 +156,38 @@ export interface JoinKeyState {
   /** The computer that joined, as `GET /v1/machines` lists it. */
   machine?: Machine
   error?: string
+  /** The key was made by New server (60 minutes, ADR-109), not Add with a key. */
+  server?: boolean
 }
 
 export interface NewJoinKey extends JoinKeyState {
   key: string
 }
+
+/**
+ * `POST /v1/machines/server-script`'s answer (ADR-109): the setup script for a
+ * new server, a server key (60 minutes) inside it. The script is the only
+ * place the key is; it lives in the screen's state alone.
+ */
+export interface ServerScript extends JoinKeyState {
+  script: string
+  /** The Caprock release the script installs. */
+  version: string
+  /** The script checks the archive's minisign signature, not its SHA-256 alone. */
+  signed: boolean
+}
+
+export const serverApi = {
+  /** Makes a server key here (withdrawing any open key) and the script with it. */
+  make: (sshKey: boolean) =>
+    call<ServerScript>('/v1/machines/server-script', { method: 'POST', body: JSON.stringify({ ssh_key: sshKey }) }),
+}
+
+/** Where each provider's create form takes the script, and its own price page (ADR-109: no price here). */
+export const SERVER_PROVIDERS: readonly { name: string; field: string; prices: string }[] = [
+  { name: 'Hetzner Cloud', field: 'Cloud config', prices: 'https://www.hetzner.com/cloud' },
+  { name: 'DigitalOcean', field: 'User data', prices: 'https://www.digitalocean.com/pricing/droplets' },
+]
 
 /** `POST /v1/join`'s answer, on the new computer. */
 export interface JoinResult {

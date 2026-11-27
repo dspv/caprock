@@ -206,7 +206,13 @@ install command that is missing.
    - a Homebrew formula pushed to `dspv/homebrew-tap` and a Scoop manifest pushed
      to `dspv/scoop-bucket` — both **automatically**, because the release is no
      longer a draft (`release.draft: false`); a prerelease skips both,
-   - `checksums.txt`, and a **published** GitHub release.
+   - `checksums.txt`, and a **published** GitHub release,
+   - a `.minisig` beside each `caprock_<v>_linux_<arch>.tar.gz`, from the
+     `linux-sign` job (after goreleaser, `continue-on-error`): signed with
+     the app updater's key (`TAURI_SIGNING_PRIVATE_KEY`, ADR-042) and checked
+     with `minisign` before it is attached. A new server's setup script
+     verifies it (ADR-109); a release without them gets checksum-only
+     scripts, so a failure there leaves the release usable.
 4. Verify the published binaries and the formula end to end:
    `brew untap dspv/tap 2>/dev/null; brew install dspv/tap/caprock; caprock --version`,
    then `caprock up` and confirm `caprock status` reads every hook as installed (`hooks: 9/9` today; the denominator is `len(hooks.Events)` and grows when an event is added) — this catches

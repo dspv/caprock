@@ -57,6 +57,8 @@ var neverAComputer = []string{
 	"GET /v1/machines/secrets", "POST /v1/machines/{id}/secrets", "GET /v1/secrets/received",
 	// Join keys (ADR-108): a computer that could mint one could add controllers here.
 	"POST /v1/machines/join-key", "GET /v1/machines/join-key", "DELETE /v1/machines/join-key", "POST /v1/join",
+	// A server's setup script holds a join key (ADR-109).
+	"POST /v1/machines/server-script",
 }
 
 // pairedComputer adds to ps a computer that redeemed a code for one and,

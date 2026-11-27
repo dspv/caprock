@@ -200,6 +200,9 @@ type Deps struct {
 	// Join is join keys (ADR-108, join.go): making one here, and using one
 	// from another computer. Nil answers 501.
 	Join JoinControl
+	// Servers makes a new server's setup script with a server join key in it
+	// (ADR-109, serverscript.go). Nil answers 501.
+	Servers ServerScripts
 	// Secrets is Send secrets (ADR-107, secretshare.go): what this machine
 	// can send, and where what arrives is kept. Nil answers 501.
 	Secrets SecretShare
@@ -877,6 +880,9 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/machines/join-key", s.handleJoinKeyState)
 	m.HandleFunc("DELETE /v1/machines/join-key", s.handleWithdrawJoinKey)
 	m.HandleFunc("POST /v1/join", s.handleJoin)
+	// A new server's setup script (ADR-109, serverscript.go): loopback only,
+	// in the handler, and on no device's allowlist.
+	m.HandleFunc("POST /v1/machines/server-script", s.handleServerScript)
 	// Send secrets (ADR-107, secretshare.go): the two sending routes are
 	// loopback only, like the rest; the receiving one is for a computer
 	// allowed here alone (computerRoutes, and the handler checks the kind).

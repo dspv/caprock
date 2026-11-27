@@ -5,12 +5,16 @@ import (
 	"crypto/ed25519"
 	"errors"
 	"fmt"
+	"net/http"
+	"os"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/dspv/caprock/internal/api"
 	"github.com/dspv/caprock/internal/peers"
 	"github.com/dspv/caprock/internal/remote"
+	"github.com/dspv/caprock/internal/serverscript"
 )
 
 // Join keys (ADR-108): api.JoinControl over a peers.JoinDesk opened on first
@@ -18,10 +22,11 @@ import (
 //
 // Making a key is the one thing that dials a relay from this side before a
 // computer is linked: on the click, to this machine's own relay (the one
-// access from anywhere uses), for at most 15 minutes, carrying only Noise
-// ciphertext (rule 4, ADR-047, ADR-058). Using one is `caprock join` run on
-// the new computer, which is that computer's owner switching access from
-// anywhere on and allowing the one computer that made the key.
+// access from anywhere uses), for at most 15 minutes (60 for a server key,
+// ADR-109), carrying only Noise ciphertext (rule 4, ADR-047, ADR-058). Using
+// one is `caprock join` run on the new computer, which is that computer's
+// owner switching access from anywhere on and allowing the one computer that
+// made the key.
 type joinAdapter struct {
 	d *Daemon
 
@@ -67,6 +72,52 @@ func (a *joinAdapter) NewJoinKey() (peers.NewJoinKey, error) { return a.mgr().Ne
 func (a *joinAdapter) JoinKeyState() peers.JoinState { return a.mgr().State() }
 
 func (a *joinAdapter) WithdrawJoinKey() { a.mgr().Withdraw() }
+
+// releaseBaseEnv points the setup script's downloads, and the checksums read
+// for it, at another address: for the container test, which serves the
+// archive from a local file server. Unset, they are GitHub's.
+const releaseBaseEnv = "CAPROCK_TEST_RELEASE_BASE"
+
+// NewServerScript is New server (ADR-109): the release to install read
+// first — the laptop's own version, or the latest release for a development
+// build — so a GitHub that does not answer opens no key; then a server key
+// (60 minutes), and the script with both inside. The checksums come from
+// GitHub, which the release check already talks to (rule 4: no new
+// destination), on this click.
+func (a *joinAdapter) NewServerScript(ctx context.Context, req api.ServerScriptRequest) (api.ServerScript, error) {
+	ver := a.d.opt.Version
+	if !serverscript.IsRelease(ver) {
+		if err := a.d.upd.Check(ctx, true); err != nil {
+			return api.ServerScript{}, fmt.Errorf("%w: this is a development build, and the latest release could not be read: %w", api.ErrNoRelease, err)
+		}
+		ver = a.d.upd.Status(true, ver).Latest
+	}
+	ver = strings.TrimPrefix(ver, "v")
+	base := os.Getenv(releaseBaseEnv)
+	hc := &http.Client{Timeout: 20 * time.Second}
+	rel, err := serverscript.FetchRelease(ctx, hc, base, ver)
+	if err != nil {
+		return api.ServerScript{}, fmt.Errorf("%w: %w", api.ErrNoRelease, err)
+	}
+	k, err := a.mgr().NewServer()
+	if err != nil {
+		return api.ServerScript{}, err
+	}
+	script, err := serverscript.Render(serverscript.Input{
+		Version: rel.Version,
+		SHA256:  rel.SHA256,
+		Signed:  rel.Signed,
+		JoinKey: k.Key,
+		SSHKey:  req.SSHKey,
+		Base:    base,
+	})
+	if err != nil {
+		a.mgr().Withdraw()
+		return api.ServerScript{}, err
+	}
+	a.d.log.Info("a server's setup script was made", "component", "peers", "version", rel.Version, "signed", rel.Signed, "ssh_key", req.SSHKey)
+	return api.ServerScript{JoinState: k.JoinState, Script: script, Version: rel.Version, Signed: rel.Signed}, nil
+}
 
 // joinOnline bounds the wait for this computer's own relay connection
 // before the other computer is asked to pair back through it.

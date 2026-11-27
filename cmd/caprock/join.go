@@ -122,6 +122,46 @@ func machinesKeyCmd() *cobra.Command {
 	}
 }
 
+// machinesServerScriptCmd is `caprock machines server-script`: New server's
+// setup script, for a laptop reached over SSH (ADR-109).
+func machinesServerScriptCmd() *cobra.Command {
+	var sshKey bool
+	c := &cobra.Command{
+		Use:   "server-script",
+		Short: "Print the setup script for a new server: paste it as the server's user data, or run it there as root",
+		Long: "Makes a join key for a server (it works once, for 60 minutes) and prints the setup script with it\n" +
+			"inside, to standard output, so `caprock machines server-script > caprock-setup.sh` saves it. Paste it\n" +
+			"whole as the new server's user data (Hetzner Cloud: Cloud config; DigitalOcean: User data; any\n" +
+			"provider that runs cloud-init), or run it once as root over SSH. It installs Caprock at this\n" +
+			"computer's version, checked against that release's checksums read from GitHub now, and joins this\n" +
+			"computer. Keep Caprock running and online here until the server joins.",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			rt, err := runningDaemon()
+			if err != nil {
+				return err
+			}
+			var s api.ServerScript
+			if err := daemonJSONWait(rt, http.MethodPost, "/v1/machines/server-script", api.ServerScriptRequest{SSHKey: sshKey}, &s, 45*time.Second); err != nil {
+				return err
+			}
+			fmt.Fprint(cmd.OutOrStdout(), s.Script)
+			check := "signature and SHA-256"
+			if !s.Signed {
+				check = "SHA-256 only (this release's Linux archives are not signed)"
+			}
+			left := time.Until(time.UnixMilli(s.ExpiresAt)).Round(time.Minute)
+			e := cmd.ErrOrStderr()
+			fmt.Fprintf(e, "\nThe script installs Caprock %s, checked by %s.\n", s.Version, check)
+			fmt.Fprintf(e, "The key in it works once, for %s. Keep Caprock running and online here until the server joins;\n", left)
+			fmt.Fprintln(e, "`caprock machines` lists it once it has.")
+			return nil
+		},
+	}
+	c.Flags().BoolVar(&sshKey, "ssh-key", false, "you gave the provider an SSH key, or will run the script over SSH: SSH stays on, keys only (without it, SSH is stopped on the server)")
+	return c
+}
+
 // installLines are the install commands the site's button and
 // docs/install-agent.md show, per system.
 var installLines = [][2]string{

@@ -9026,7 +9026,7 @@ online while it is open.
 **Date:** 2026-11-28 · **Status:** accepted 2026-11-28 (decided without the
 owner from his ask of 2026-11-27, under his standing rule that the work is
 decided and done without his OK; its open questions decided the same day,
-below; nothing is built). Builds on
+below; P1, the setup script, built 2026-11-28). Builds on
 [ADR-067](#adr-067--your-computers-reach-each-other-through-the-same-relay-the-local-daemon-speaks-for-the-others)
 (other computers),
 [ADR-099](#adr-099--adding-a-computer-is-a-checklist-on-the-computer-that-runs-agents-and-the-laptop-reads-its-readiness)

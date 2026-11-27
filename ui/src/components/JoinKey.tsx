@@ -58,7 +58,8 @@ export function AddWithKey() {
     if (!open) return
     let gone = false
     const t = window.setInterval(() => {
-      joinApi.state().then((s) => { if (!gone) setSt(s) }, () => { /* the next read says */ })
+      // A server key (New server) withdrew this one: it reads as gone.
+      joinApi.state().then((s) => { if (!gone) setSt(s.server ? { state: 'none' } : s) }, () => { /* the next read says */ })
     }, JOIN_POLL_MS)
     return () => { gone = true; window.clearInterval(t) }
   }, [open])
