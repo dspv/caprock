@@ -178,7 +178,7 @@ function LocalAgentSheet({
   const checking = !catalog.loaded
   const [agent, setAgent, agentDefault] = useAgentChoice(agents)
   const entry = catalog.entries.find((e) => e.id === agent)
-  const canStart = entry ? entry.installed && !entry.locked : agents.includes(agent)
+  const canStart = entry ? entry.installed : agents.includes(agent)
   const custom = isCustomAgent(agent)
   const [pid, setPid] = useState(projectId ?? projects[0]?.id ?? '')
   // Projects added from the search while the sheet is open, until the
@@ -524,9 +524,6 @@ function LocalAgentSheet({
           )}
           {canStart && !addingSub && <SubscriptionNote list={subList} value={subId} onUse={pickSubOnce} />}
           {entry?.setup && <AgentSetupNote entry={entry} onSetup={onSetup && ((cmd) => { onSetup(cmd, catalog.home); onClose() })} />}
-          {entry?.locked && (
-            <p role="note" className="text-[12.5px] text-fg-muted">Custom agents are a Premium feature; add a licence key in Settings → Plan &amp; licence to start {entry.label}.</p>
-          )}
           {canStart && <AgentObservedNote entry={entry} />}
           {canStart && !custom && (
             <PermissionPicker value={mode} onChange={setMode} agent={agent} opencodeVersion={status.data?.opencode_version} hint="kept for the next agent" />

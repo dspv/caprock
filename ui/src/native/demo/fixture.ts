@@ -202,7 +202,6 @@ export function buildFixture(now: number): Fixture {
     tabs: { known: true, at: now, sessions: sessions.filter((x) => x.status !== 'ended').map((x) => x.session_id), items: sessions.filter((x) => x.status !== 'ended') },
     catalog: {
       agents: [{ id: 'claude', label: 'Claude Code', installed: true, ready: true, models: [], observed: true, prompt: true }],
-      licensed: true,
     },
   }
 }

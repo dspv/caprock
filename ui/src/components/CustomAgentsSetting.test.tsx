@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 const m = vi.hoisted(() => ({ save: vi.fn() }))
 vi.mock('@/lib/api', async (orig) => {
   const actual = await orig<typeof import('@/lib/api')>()
-  return { ...actual, api: { ...actual.api, customAgents: async () => ({ agents: [], licensed: true }), saveCustomAgents: m.save } }
+  return { ...actual, api: { ...actual.api, customAgents: async () => ({ agents: [] }), saveCustomAgents: m.save } }
 })
 
 import { CustomAgentsEditor, parseArgs, parseModels } from './CustomAgentsSetting'
@@ -17,7 +17,7 @@ describe('custom agents', () => {
   })
 
   it('saves a new agent and lists it, and says what the daemon refused', async () => {
-    m.save.mockResolvedValueOnce({ agents: [{ id: 'aider', name: 'Aider', command: 'aider', args: ['--message', '{prompt}'], models: ['gpt-5.5'] }], licensed: true })
+    m.save.mockResolvedValueOnce({ agents: [{ id: 'aider', name: 'Aider', command: 'aider', args: ['--message', '{prompt}'], models: ['gpt-5.5'] }] })
     render(<CustomAgentsEditor />)
     fireEvent.change(screen.getByPlaceholderText('Aider'), { target: { value: 'Aider' } })
     fireEvent.change(screen.getByPlaceholderText('aider'), { target: { value: 'aider' } })

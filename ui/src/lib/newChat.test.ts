@@ -16,7 +16,7 @@ function subs(claude: Subscription[], codex = true): SubscriptionsResponse {
       { agent: 'claude', label: 'Claude Code', installed: true, subscriptions: claude },
       { agent: 'codex', label: 'Codex', installed: codex, subscriptions: [sub({ agent: 'codex', dir: '/h/.codex', signed_in: codex })] },
     ],
-    licensed: false, free_per_agent: 3, home: '/h',
+    home: '/h',
   }
 }
 

@@ -58,8 +58,11 @@ Percentages are deliberately coarse — they answer "is this track started, half
   hermes`. See [16-opencode.md](16-opencode.md), [19-codex.md](19-codex.md),
   [20-deepseek.md](20-deepseek.md) and [24-hermes.md](24-hermes.md).
 - **The paid tier is live.** The daily spend cap (`internal/cap`) pauses the
-  sessions Caprock started when the day crosses a limit; the weekly report and
-  Gemini on the user's own key are paid surfaces too. Payment is a licence key
+  sessions Caprock started when the day crosses a limit; the plan-window
+  pause, the weekly report, Ask Gemini on the user's own key and the tool
+  drill-down are paid surfaces too. Any number of subscriptions, custom
+  agents, talking to agents from Telegram and Second Brain are free with no
+  cap (owner, 2026-11-27: parity with Orca). Payment is a licence key
   checked locally ([ADR-022](08-decisions.md)); one repository, one binary,
   everything Apache-2.0.
 - **Context cost is visible rather than implied.** The session card states what
@@ -76,6 +79,23 @@ Percentages are deliberately coarse — they answer "is this track started, half
 - Toolchain versions in [10-infrastructure.md](10-infrastructure.md) were checked on 2026-08-18 and are now exercised in CI.
 
 ## Log
+
+### 2026-11-27 — unreleased: subscriptions, custom agents, Telegram and Second Brain are free (Orca parity)
+
+Owner decision (translated): "we must be no worse than Orca: if Orca has no
+limits, we have none; whatever Orca gives free, we give free." Three
+Premium features lose their gate in the daemon and the dashboard: the
+three-per-agent subscription limit (`subs.FreePerAgent`, the `402` on
+`POST /v1/subscriptions`, `licensed` and `free_per_agent` in its list), the
+licence on custom agents (`PUT /v1/agents/custom`'s `402`, the spawn
+refusal, the catalog's `licensed` and `locked`), and the licence on two-way
+Telegram (`Host.Licensed()`; the *Let my paired chat talk to sessions*
+switch alone decides). Second Brain was already free with no cap since
+2026-10-14 and is confirmed so. `PaidFeature` is now the daily cap, the
+plan-window pause, the weekly report, Ask Gemini and the tool drill-down;
+`Paywall.test.tsx` fails if one of the four is sold again. ADR-046, ADR-047
+and ADR-048 amended, ADR-063 reaffirmed. The site still sells them until
+caprock-web changes.
 
 ### 2026-11-27 — 0.200.0: one Telegram bot for every computer, secrets sent without SSH
 

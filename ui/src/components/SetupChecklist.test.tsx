@@ -57,7 +57,7 @@ function answer(by: (url: string) => unknown) {
 
 describe('the setup checklist (ADR-099)', () => {
   beforeEach(() => {
-    vi.spyOn(api, 'agentCatalog').mockResolvedValue({ agents: [], licensed: false, home: 'C:\\Users\\me' })
+    vi.spyOn(api, 'agentCatalog').mockResolvedValue({ agents: [], home: 'C:\\Users\\me' })
   })
   afterEach(() => {
     cleanup()

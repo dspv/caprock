@@ -264,22 +264,21 @@ describe('PremiumModal: the whole plan', () => {
 
   it('tags as New only what shipped in the last 30 days', () => {
     const day = 86_400_000
-    // 2026-10-16: drill (10-04), window (10-09), agents, telegram and
-    // subscriptions (10-10) are new; cap, report (08-26) and gemini (09-01)
-    // are not.
+    // 2026-10-16: drill (10-04) and window (10-09) are new; cap, report
+    // (08-26) and gemini (09-01) are not.
     const now = Date.parse('2026-10-16T12:00:00Z')
     render(<PremiumModal feature="drill" onClose={() => {}} now={now} />)
     const tagged = chips().filter((c) => /New$/.test(c.textContent ?? '')).map((c) => c.textContent!.replace(/New$/, ''))
-    expect(tagged.sort()).toEqual(['Own agents', 'Plan limit', 'Sign-ins', 'Telegram'])
+    expect(tagged.sort()).toEqual(['Plan limit'])
     expect(isNew('drill', now)).toBe(true)
     expect(isNew('cap', now)).toBe(false)
     expect(isNew('gemini', now)).toBe(false)
     // The edge: 30 days after a feature shipped it is no longer new.
-    const shipped = Date.parse('2026-10-10T00:00:00Z')
-    expect(isNew('telegram', shipped + 30 * day - 1)).toBe(true)
-    expect(isNew('telegram', shipped + 30 * day)).toBe(false)
+    const shipped = Date.parse('2026-10-09T00:00:00Z')
+    expect(isNew('window', shipped + 30 * day - 1)).toBe(true)
+    expect(isNew('window', shipped + 30 * day)).toBe(false)
     // Nothing is tagged before it shipped, and nothing is promised.
-    expect(isNew('telegram', shipped - day)).toBe(false)
+    expect(isNew('window', shipped - day)).toBe(false)
     for (const hedge of [/soon/i, /not built/i, /planned/i]) expect(document.body.textContent).not.toMatch(hedge)
   })
 })

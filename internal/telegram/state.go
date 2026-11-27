@@ -78,9 +78,10 @@ type State struct {
 	// Muted sessions send nothing to Telegram; MuteAll silences every one.
 	Muted   map[string]int64 `json:"muted,omitempty"`
 	MuteAll bool             `json:"mute_all,omitempty"`
-	// PremiumNoteAt is when a reply or command last got the one line that
-	// says it is a Premium feature, so it is said at most once a day.
-	PremiumNoteAt int64 `json:"premium_note_at,omitempty"`
+	// OffNoteAt is when a reply or command last got the one line that says
+	// two-way chat is off, so it is said at most once a day. The JSON name is
+	// from when the line said it was a Premium feature (until 2026-11-27).
+	OffNoteAt int64 `json:"premium_note_at,omitempty"`
 	// ModulePins is the one message each private module has pinned in the
 	// chat, by module id (ADR-076, amended 2026-10-22).
 	ModulePins map[string]int64 `json:"module_pins,omitempty"`

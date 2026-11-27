@@ -289,14 +289,10 @@ function WindowStopSection() {
   )
 }
 
-/** Talking to the agents from Telegram (Premium, ADR-047): live with a
- *  licence, behind glass without one, under the free alerts it builds on. */
+/** Talking to the agents from Telegram (ADR-047): free, under the alerts it
+ *  builds on (owner decision, 2026-11-27: parity with Orca). */
 function TelegramChatSection() {
-  return (
-    <Locked feature="telegram" title="Talk to your agents from Telegram">
-      <TelegramChat />
-    </Locked>
-  )
+  return <TelegramChat />
 }
 
 /** Second Brain built automatically (ADR-063): free for everyone, off
@@ -305,14 +301,10 @@ function BrainSection() {
   return <BrainAutoSetting />
 }
 
-/** Custom agents (Premium, ADR-046): live with a licence, behind glass
- *  without one, in the place they will be. */
+/** Custom agents (ADR-046): free (owner decision, 2026-11-27: parity with
+ *  Orca). */
 function CustomAgentsSection() {
-  return (
-    <Locked feature="agents" title="Add your own coding agents">
-      <CustomAgentsSetting />
-    </Locked>
-  )
+  return <CustomAgentsSetting />
 }
 
 function AppearanceSection() {

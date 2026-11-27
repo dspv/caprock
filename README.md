@@ -728,8 +728,9 @@ grouped by what they were about — Bash by command, Read and Edit by file,
 WebFetch by domain — and that much is free. Output, failure rate and a trend
 per group are Premium; without a licence the daemon leaves those figures out.
 
-**More subscriptions.** Three Claude Code and three Codex sign-ins are free,
-your own included; Premium adds as many more as you use.
+Free, with no cap: as many Claude Code and Codex sign-ins as you use, your own
+coding agents added by command, talking to your agents from Telegram, and
+Second Brain.
 
 $30/year or $100 once — [caprock.dev/premium](https://caprock.dev/premium/).
 
@@ -980,13 +981,13 @@ finished run, how long it worked since your last prompt, what it cost, its tool
 calls, the files it changed and the first line of its reply. Under it: *Mute
 this session*, and *Open on phone* when phone access is on.
 
-**With Premium, talk back.** Reply to a session's message and Caprock types it
+**Talk back.** Reply to a session's message and Caprock types it
 in and presses Enter; the answer comes back in the chat as soon as the turn
 ends. *Approve* and *Deny* answer a question the way the app's card does.
 `/sessions` lists what is running, `/new caprock fix the flaky test` starts
 Claude Code in a project (Bypass asks first), `/stop 2` stops one. Only
 sessions Caprock started are typed into; one in your own terminal is watched.
-Off until you switch it on, licence or not.
+Off until you switch it on. Free, like the alerts.
 
 It goes from your machine straight to Telegram, which can read it; nothing
 passes a server of ours, and nothing on your computer listens for Telegram — it

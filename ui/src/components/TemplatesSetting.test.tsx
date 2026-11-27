@@ -13,7 +13,7 @@ vi.mock('@/lib/api', async (orig) => {
       templates: () => m.templates(),
       updateTemplate: (id: string, t: unknown) => m.update(id, t),
       removeTemplate: (id: string) => m.remove(id),
-      agentCatalog: async () => ({ agents: [{ id: 'claude', label: 'Claude Code', installed: true, ready: true, models: [], observed: true, prompt: true }, { id: 'codex', label: 'Codex', installed: true, ready: true, models: [], observed: true, prompt: true }], licensed: true, home: '/Users/me' }),
+      agentCatalog: async () => ({ agents: [{ id: 'claude', label: 'Claude Code', installed: true, ready: true, models: [], observed: true, prompt: true }, { id: 'codex', label: 'Codex', installed: true, ready: true, models: [], observed: true, prompt: true }], home: '/Users/me' }),
     },
   }
 })

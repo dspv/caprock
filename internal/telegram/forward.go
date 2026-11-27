@@ -63,7 +63,7 @@ type fwdItem struct {
 type burst struct {
 	items []fwdItem
 	words []string
-	// last is the newest message, which a Premium note answers; gen tells a
+	// last is the newest message, which a chat-off note answers; gen tells a
 	// timer that fired late from the one now armed.
 	last  *Message
 	gen   int
@@ -374,7 +374,7 @@ func (b *Bridge) take(msgID int64) *picker {
 // forwardPress answers a button under a picker: a session's number, n (a
 // new chat; nb and nd after the Bypass question), x (Cancel), r (Reply
 // here).
-func (b *Bridge) forwardPress(ctx context.Context, c *Client, chat string, msgID int64, arg string, toast func(string), premium func() bool) {
+func (b *Bridge) forwardPress(ctx context.Context, c *Client, chat string, msgID int64, arg string, toast func(string), chatOn func() bool) {
 	p := b.pickerAt(ctx, msgID)
 	if p == nil || b.now().Sub(p.at) > confirmFor {
 		b.take(msgID)
@@ -401,7 +401,7 @@ func (b *Bridge) forwardPress(ctx context.Context, c *Client, chat string, msgID
 		}
 		_ = c.EditMarkup(ctx, chat, msgID, pickerMarkup(p))
 	case "n", "nb", "nd":
-		if !premium() {
+		if !chatOn() {
 			return
 		}
 		mode := b.Host.SpawnMode()
@@ -427,7 +427,7 @@ func (b *Bridge) forwardPress(ctx context.Context, c *Client, chat string, msgID
 		edit("Starting a new chat…")
 		go b.startChat(context.WithoutCancel(ctx), c, chat, msgID, p, mode)
 	default:
-		if !premium() {
+		if !chatOn() {
 			return
 		}
 		n, err := strconv.Atoi(arg)

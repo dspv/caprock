@@ -2982,9 +2982,10 @@ existed; it keeps working.
   from 1 s to a minute; a refused token stops reading until a new one is
   saved. A message from any other chat is dropped unanswered; one dated more
   than two minutes before reading began is skipped.
-- **Free** (no licence): `/help`, `/start`, `/mute` (as a reply, `/mute <n>`,
-  `/mute all` or bare), `/unmute`, and the Mute button.
-- **Premium** — an active licence **and** `telegram_chat` on: a reply to one
+- **Always on** once a chat is paired: `/help`, `/start`, `/mute` (as a
+  reply, `/mute <n>`, `/mute all` or bare), `/unmute`, and the Mute button.
+- **Two-way** — `telegram_chat` on, no licence (free since 2026-11-27,
+  [ADR-047](08-decisions.md) amended): a reply to one
   of the bot's messages types its text into that session and presses Enter
   as the message queue does (§ Queued messages: a paste where the session
   takes one, the Enter on its own after a pause, once more if the prompt
@@ -3000,9 +3001,10 @@ existed; it keeps working.
   `/stop <n>` (or as a reply) asks, then kills a session Caprock started.
   Approve and Deny call the same answer path as the card (`AnswerPermission`:
   the key read off the screen, `422` cases toasted, nothing typed blind); the
-  buttons are replaced by the outcome. Without a licence or with the switch
-  off, the chat gets one line saying so at most once a day; a button gets a
-  toast.
+  buttons are replaced by the outcome. With the switch off, the chat gets
+  one line saying where it is at most once a day (kept as `premium_note_at`
+  in `telegram.json`, its name from when the line was about a licence); a
+  button gets a toast.
 - **Conversations.** A session typed into from Telegram, or started there,
   answers there for an hour after: its permission prompts are sent at once
   (with Approve and Deny), and its reply the moment its turn ends — the Stop
@@ -3010,7 +3012,7 @@ existed; it keeps working.
   `**bold**` kept, each fenced block replaced by `[<lang>, N lines]` unless
   `telegram_code` is on (then `<pre>`). The rules' own alerts skip it meanwhile.
   With two-way chat active, finished alerts carry the reply the same way.
-- **Forwards** (Premium, [ADR-081](08-decisions.md)). A forwarded message
+- **Forwards** (two-way, [ADR-081](08-decisions.md)). A forwarded message
   (`forward_origin`), or a photo, document, voice note, audio or video sent
   in the paired chat, is gathered until the chat has been quiet for 2 s
   (`media_group_id` albums arrive the same way); plain text typed during
@@ -3090,11 +3092,11 @@ POST /v1/telegram/hub/handover   → {token, chat_id, chat_name?, bot_id?, bot_u
   switches say.
 - **A press** toasts *Sent to <name>.* and waits for that computer, in
   memory, at most 100 per computer; each is handed over once (a press lost
-  on the way is lost, never acted on twice). The holder asks no licence:
-  the sender acts by its own — Approve and Deny need an active licence and
-  `telegram_chat` **there**, and go through `AnswerPermission` there; Mute
-  mutes the session there; a reply is typed there as § Telegram bridge's
-  Premium reply is, rule 7 included. The result replaces the buttons with
+  on the way is lost, never acted on twice). The holder asks nothing: the
+  sender acts by its own switch — Approve and Deny need `telegram_chat`
+  **there**, and go through `AnswerPermission` there; Mute mutes the session
+  there; a reply is typed there as § Telegram bridge's two-way reply is,
+  rule 7 included. The result replaces the buttons with
   `label` (*✅ Approved from Telegram*, *🔕 Muted*), threads `say` under
   the reply or the message, and puts 👍 on the reply when `react`.
 - **The sender's queue.** Every message the sender would send (alerts,
@@ -3347,11 +3349,11 @@ machine, never from a forge's API (rule 4):
 POST   /v1/agents                    {cwd?, chat?, create?, worktree?, worktree_base?, worktree_pull?, worktree_pr?, agent?, subscription?, model?, permission_mode?, effort?, subagent_model?, resume?, fork?, command?, args?, attempts?, prompt?, relay_from?, end_when_done?, automation?} → {session_id, cwd, session_ids?, attempt_group?, error?}
 GET    /v1/attempts/{group}          → {group, base?, attempts: [AttemptView]}; 404 for an unknown group
 GET    /v1/agents/models?agent=      {agent, default?, models:[{id,label}]}
-GET    /v1/agents/catalog            → {agents: [CatalogEntry], licensed, home?}
-GET    /v1/agents/custom             → {agents: [CustomAgent], licensed}
-PUT    /v1/agents/custom             {agents: [CustomAgent]} → {agents, licensed}; 402 without an active licence
-GET    /v1/subscriptions             → {agents: [{agent, label, installed, subscriptions: [Subscription]}], licensed, free_per_agent, home?}
-POST   /v1/subscriptions             {agent: claude|codex, label} → Subscription; 402 at the free number without a licence
+GET    /v1/agents/catalog            → {agents: [CatalogEntry], home?}
+GET    /v1/agents/custom             → {agents: [CustomAgent]}
+PUT    /v1/agents/custom             {agents: [CustomAgent]} → {agents}
+GET    /v1/subscriptions             → {agents: [{agent, label, installed, subscriptions: [Subscription]}], home?}
+POST   /v1/subscriptions             {agent: claude|codex, label} → Subscription; no cap, no licence
 PATCH  /v1/subscriptions/{id}        {label?, make_default?, plan?: {kind, label?, usd_per_month?} | null, agent?} → Subscription
 DELETE /v1/subscriptions/{id}        → 204; 409 while a session Caprock started runs on it
 POST   /v1/agents/{id}/input         {data?, paths?}   → 204   (owned PTYs only); paths are saved files (POST /v1/paste) typed in before data as the terminal types a dropped file: each image its own bracketed paste when the session turned paste on, 150 ms after it; anything else quoted with a space
@@ -4390,7 +4392,7 @@ and `typed_model: true`; when its `config.yaml` (under `$HERMES_HOME`, else
 command `hermes model` — only whether the key is set is read, never its
 value ([ADR-069](08-decisions.md)). A `CatalogEntry` is `{id, label,
 installed, ready, default?, models: [{id, label, refused?}], efforts?,
-effort_default?, model_efforts?, typed_model?, observed, custom?, locked?,
+effort_default?, model_efforts?, typed_model?, observed, custom?,
 prompt, setup?: {reason, text, command?, docs?}}` (the three effort fields:
 § Effort at start):
 `installed` is the binary found (the rule under `/v1/status` below); `ready`
@@ -4407,15 +4409,15 @@ checked lists the page keeps. `observed` is false for Grok and custom agents
 whose arguments have no `{prompt}`. `setup.reason` is `not_installed` (with
 the official install command and docs page), `no_provider` (OpenCode, `opencode
 auth login`) or `signin` (Grok without `auth.json` or `XAI_API_KEY`, `grok
-login`; a hint — the session still starts). `locked` marks a custom agent the
-licence no longer covers. `licensed` is the licence state; `home` the folder a
-setup shell opens in. Reads files and the login environment only: nothing is
+login`; a hint — the session still starts). `home` is the folder a setup
+shell opens in. (`locked` and `licensed` were dropped on 2026-11-27, when
+custom agents became free.) Reads files and the login environment only: nothing is
 run and nothing goes over the network. Open to a controller phone (read-only,
 like the model list).
 
-**Custom agents** (Premium, ADR-046). A `CustomAgent` is `{id, name,
-command, args?, models?}`, stored as `custom_agents` in `config.json`.
-`PUT /v1/agents/custom` replaces the list: `402` without an active licence,
+**Custom agents** (ADR-046; free, no licence, since 2026-11-27). A
+`CustomAgent` is `{id, name, command, args?, models?}`, stored as
+`custom_agents` in `config.json`. `PUT /v1/agents/custom` replaces the list:
 `403` from any paired device, `400` with the reason when a name or command is
 missing, the command holds a space but no path separator (arguments belong in
 `args`), a field holds a line break or control character or is over 512
@@ -4425,14 +4427,13 @@ letters, digits and dashes, at most 32; one that names a built-in agent gets
 `-custom`. `args` is a template: `{prompt}` is the first message and
 `{model}` the model; an argument whose placeholder has no value is left out,
 and so is the flag right before it when the argument was the placeholder
-alone. A spawn with `agent: "custom:<id>"` is refused without an active
-licence, for an id not in the config, for a command not found (resolved like
+alone. A spawn with `agent: "custom:<id>"` is refused for an id not in the
+config, for a command not found (resolved like
 an agent's binary), and from any paired device; otherwise the daemon starts
 the configured command with the filled arguments — the request never carries
 the command — and drops `model`, `permission_mode` and `fork`, which it cannot
 map. A custom session is recorded with `agent = "custom:<id>"`; resume is not
-offered. `GET /v1/agents/custom` lists the stored agents whatever the licence
-says, so a renewed licence restores them.
+offered. `GET /v1/agents/custom` lists the stored agents.
 
 **Subscriptions** ([ADR-048](08-decisions.md)). A subscription is a sign-in
 to Claude Code or Codex kept in `<data dir>/profiles/<id>/` (0700), stored as
@@ -4458,8 +4459,8 @@ while agents work; every other field is read on each request.
   It has `signed_in: true`, `account: "your DeepSeek API key"`, `plan:
   {kind: "metered", label: "DeepSeek API"}`, an empty `dir` and
   `login_command`, no `windows`, and its own `sessions_7d`, `cost_7d_usd`
-  and `running`. It is not in `config.json`'s `subscriptions`: it never
-  counts toward `free_per_agent`, and `PATCH` and `DELETE` on it are `404`
+  and `running`. It is not in `config.json`'s `subscriptions`, and `PATCH`
+  and `DELETE` on it are `404`
   (the key is removed in `PUT /v1/settings`). The id cannot collide with a
   real one, which is hex.
 - **`provider: "kimi"`** is the same entry for Claude Code on Kimi: `id:
@@ -4513,10 +4514,12 @@ while agents work; every other field is read on each request.
   same again at every start and before every spawn on it, so a moved shim
   follows. `400` for an agent other than `claude` or `codex`, an empty or
   over-40-character label, `Default`, or a label the agent already has;
-  `402` when the agent already has `free_per_agent` (3, the Default one
-  included) and the licence is not active; `403` from a paired device.
+  `403` from a paired device. There is no cap and no licence check (free
+  since 2026-11-27, [ADR-048](08-decisions.md) amended; until then the
+  fourth per agent was `402` without a licence, and the list carried
+  `licensed` and `free_per_agent`).
 - **`PATCH`** changes what its body names: `label` (the same rules as
-  `POST`, minus the free number; the own sign-in can be renamed too),
+  `POST`; the own sign-in can be renamed too),
   `make_default: true`, and `plan` — an object sets it, held to what `PUT
   /v1/settings` holds the main plan to (`400` for another `kind` or a
   negative or non-finite price; the label is cut at 64 bytes), `null` or

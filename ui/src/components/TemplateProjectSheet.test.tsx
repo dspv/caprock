@@ -41,7 +41,7 @@ vi.mock('@/lib/api', async (orig) => {
       agentCatalog: async () => ({ agents: [
         { id: 'claude', label: 'Claude Code', installed: true, ready: true, models: [], observed: true, prompt: true },
         { id: 'codex', label: 'Codex', installed: true, ready: true, models: [], observed: true, prompt: true },
-      ], licensed: true }),
+      ] }),
     },
   }
 })

@@ -147,9 +147,8 @@ type Config struct {
 	AlertDone *bool `json:"alert_done,omitempty"`
 	// TelegramChat lets the paired Telegram chat talk back (ADR-047): a reply
 	// types into a session Caprock started, /sessions, /new and /stop work,
-	// and Approve and Deny appear under a question. Premium, and off until
-	// switched on even with a licence: it is control from outside the
-	// machine. TelegramCode sends a reply's code blocks to that chat instead
+	// and Approve and Deny appear under a question. Free (2026-11-27), and
+	// off until switched on: it is control from outside the machine. TelegramCode sends a reply's code blocks to that chat instead
 	// of a one-line note; off unless switched on.
 	TelegramChat *bool `json:"telegram_chat,omitempty"`
 	TelegramCode *bool `json:"telegram_code,omitempty"`

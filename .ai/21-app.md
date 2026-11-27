@@ -370,8 +370,8 @@ One window, three regions:
 - **Every agent in New agent, with what it lacks** (owner, 2026-10-10:
   "OpenCode there is empty — either give buttons to connect it or remove
   it", translated; ADR-046). The Agent select lists the startable agents
-  (`GET /v1/agents/catalog`: installed, not locked), then the rest marked
-  *not installed* (or *Premium* for a custom agent whose licence lapsed);
+  (`GET /v1/agents/catalog`: installed), then the rest marked
+  *not installed*;
   the default is never one of those. Picking one hides Model and
   Permissions, disables Start, and shows the install command with *Install
   in a shell tab*, Copy and the docs link. An installed agent missing a
@@ -379,7 +379,7 @@ One window, three regions:
   custom agents carry a line that Caprock does not read their turns or cost;
   a custom agent has no Permissions field and, without `{prompt}` in its
   arguments, says the first message is not sent. Settings → Custom agents
-  (Premium, behind `Locked`) edits the list (`PUT /v1/agents/custom`).
+  (free since 2026-11-27, no lock) edits the list (`PUT /v1/agents/custom`).
 - **New agent's Project field is a search** (owner, 2026-10-10: "quickly
   search projects by repo in my folder", translated). A combobox, focused
   when the sheet opens, with its list open and the current project first:

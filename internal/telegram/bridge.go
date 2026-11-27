@@ -29,10 +29,11 @@ import (
 // Caprock started; for any other the answer is that it can only be watched.
 // The host's Type refuses the rest too, as the agent manager does.
 //
-// **Alerts are free; talking back is Premium.** Mute, the help and the
-// alerts themselves need no licence. A reply, /sessions, /new, /stop and an
-// Approve or Deny need an active licence and the two-way switch on; without
-// them the chat hears one short line saying so, at most once a day.
+// **All of it is free; talking back needs the switch.** Mute, the help and
+// the alerts work as soon as the bot is paired. A reply, /sessions, /new,
+// /stop and an Approve or Deny need the two-way switch on (no licence since
+// 2026-11-27, owner decision: parity with Orca); with it off the chat hears
+// one short line saying where it is, at most once a day.
 
 // Host is what the bridge needs from the daemon.
 type Host interface {
@@ -41,9 +42,8 @@ type Host interface {
 	// SaveBot stores a checked token; SaveChat the paired chat. Empty clears.
 	SaveBot(token string) error
 	SaveChat(chatID string) error
-	// Licensed reports an active licence; ChatOn the two-way switch;
-	// AlertsOn whether any alert kind is switched on.
-	Licensed() bool
+	// ChatOn reports the two-way switch; AlertsOn whether any alert kind is
+	// switched on.
 	ChatOn() bool
 	AlertsOn() bool
 
@@ -137,14 +137,11 @@ const (
 	// conversingFor is how long a session keeps answering in Telegram at
 	// once after the owner last typed into it from there.
 	conversingFor = time.Hour
-	// premiumNoteEvery spaces the Premium line out.
-	premiumNoteEvery = 24 * time.Hour
+	// offNoteEvery spaces the "two-way chat is off" line out.
+	offNoteEvery = 24 * time.Hour
 	// listMax bounds /sessions.
 	listMax = 20
 )
-
-// PremiumURL is where the Premium line points.
-const PremiumURL = "https://caprock.dev/premium/"
 
 // Bridge runs the bot. Construct with New, then Run.
 type Bridge struct {
@@ -555,11 +552,11 @@ func (b *Bridge) Conversing(id string) bool {
 // Muted reports whether a session sends nothing to Telegram.
 func (b *Bridge) Muted(id string) bool { return b.Store.IsMuted(id) }
 
-// Active reports whether two-way chat works right now: licensed, switched
-// on, and a chat paired.
+// Active reports whether two-way chat works right now: switched on and a
+// chat paired.
 func (b *Bridge) Active() bool {
 	_, chat := b.Host.Bot()
-	return (chat != "" || b.routing()) && b.Host.ChatOn() && b.Host.Licensed()
+	return (chat != "" || b.routing()) && b.Host.ChatOn()
 }
 
 // Deliver queues a message about a session and remembers it, so a reply or
@@ -717,7 +714,7 @@ func (b *Bridge) helpText() string {
 	var s strings.Builder
 	s.WriteString("<b>Alerts</b> come here when a session needs you or has finished (Settings → Telegram).\n")
 	s.WriteString("/mute — under a message, or <code>/mute 2</code>, <code>/mute all</code>; /unmute undoes it.\n\n")
-	s.WriteString("<b>Talking to your agents</b> (Premium):\n")
+	s.WriteString("<b>Talking to your agents</b> (turn on two-way chat in Caprock → Settings → Telegram):\n")
 	s.WriteString("• Reply to a session's message to type into it and press Enter.\n")
 	s.WriteString("• /sessions — the live ones, numbered.\n")
 	s.WriteString("• <code>/new caprock fix the flaky test</code> — start Claude Code in a project.\n")
@@ -731,18 +728,14 @@ func (b *Bridge) helpText() string {
 // gate says whether two-way chat is open; when it is not, the chat hears
 // why, at most once a day.
 func (b *Bridge) gate(m *Message) bool {
-	if b.Host.Licensed() && b.Host.ChatOn() {
+	if b.Host.ChatOn() {
 		return true
 	}
 	st := b.Store.Get()
-	if b.now().Sub(time.UnixMilli(st.PremiumNoteAt)) < premiumNoteEvery {
+	if b.now().Sub(time.UnixMilli(st.OffNoteAt)) < offNoteEvery {
 		return false
 	}
-	_ = b.Store.Update(func(st *State) { st.PremiumNoteAt = b.now().UnixMilli() })
-	if !b.Host.Licensed() {
-		b.say(m, "Talking to your agents from Telegram is part of Caprock Premium: "+PremiumURL+" — alerts and /mute stay free.")
-		return false
-	}
+	_ = b.Store.Update(func(st *State) { st.OffNoteAt = b.now().UnixMilli() })
 	b.say(m, "Two-way chat is off. Turn it on in Caprock → Settings → Telegram.")
 	return false
 }
@@ -1102,15 +1095,11 @@ func (b *Bridge) handleCallback(ctx context.Context, q *CallbackQuery) {
 	}
 	msgID := q.Message.MessageID
 	ref, _ := b.lookup(ctx, msgID)
-	premium := func() bool {
-		if b.Host.Licensed() && b.Host.ChatOn() {
+	chatOn := func() bool {
+		if b.Host.ChatOn() {
 			return true
 		}
-		if !b.Host.Licensed() {
-			toast("Answering from Telegram is part of Caprock Premium.")
-		} else {
-			toast("Two-way chat is off: Settings → Telegram.")
-		}
+		toast("Two-way chat is off: Settings → Telegram.")
 		return false
 	}
 	done := func(label string) {
@@ -1133,7 +1122,7 @@ func (b *Bridge) handleCallback(ctx context.Context, q *CallbackQuery) {
 			_ = c.EditMarkup(ctx, chat, msgID, &Markup{InlineKeyboard: [][]InlineButton{{{Text: "🔕 Mute this session", CallbackData: "m"}}}})
 		}
 	case data == "y" || data == "n":
-		if !premium() {
+		if !chatOn() {
 			return
 		}
 		if ref.SessionID == "" || ref.PromptID == "" {
@@ -1153,7 +1142,7 @@ func (b *Bridge) handleCallback(ctx context.Context, q *CallbackQuery) {
 			done("✖️ Denied from Telegram")
 		}
 	case data == "k":
-		if !premium() {
+		if !chatOn() {
 			return
 		}
 		if ref.Kind != "stop" || ref.SessionID == "" || b.now().Sub(time.UnixMilli(ref.At)) > confirmFor {
@@ -1174,7 +1163,7 @@ func (b *Bridge) handleCallback(ctx context.Context, q *CallbackQuery) {
 		toast("")
 		done("Cancelled")
 	case data == "b" || data == "d":
-		if !premium() {
+		if !chatOn() {
 			return
 		}
 		b.mu.Lock()
@@ -1195,7 +1184,7 @@ func (b *Bridge) handleCallback(ctx context.Context, q *CallbackQuery) {
 		done(label)
 		b.start(ctx, req, mode)
 	case strings.HasPrefix(data, "t:"):
-		if !premium() {
+		if !chatOn() {
 			return
 		}
 		n, _ := strconv.Atoi(strings.TrimPrefix(data, "t:"))
@@ -1221,10 +1210,10 @@ func (b *Bridge) handleCallback(ctx context.Context, q *CallbackQuery) {
 		b.modulePress(ctx, c, chat, msgID, ref, strings.TrimPrefix(data, moduleData), toast)
 	case strings.HasPrefix(data, "h:"):
 		// A button under another computer's message: that computer decides
-		// (hub.go), so no licence is asked here.
+		// (hub.go), so its switch is not asked here.
 		b.hubPress(ref, strings.TrimPrefix(data, "h:"), toast)
 	case strings.HasPrefix(data, "f:"):
-		b.forwardPress(ctx, c, chat, msgID, strings.TrimPrefix(data, "f:"), toast, premium)
+		b.forwardPress(ctx, c, chat, msgID, strings.TrimPrefix(data, "f:"), toast, chatOn)
 	default:
 		toast("")
 	}

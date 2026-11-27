@@ -13,7 +13,6 @@ import (
 	"github.com/dspv/caprock/internal/api"
 	"github.com/dspv/caprock/internal/config"
 	"github.com/dspv/caprock/internal/event"
-	"github.com/dspv/caprock/internal/license"
 	"github.com/dspv/caprock/internal/relay"
 	"github.com/dspv/caprock/internal/store"
 	"github.com/dspv/caprock/internal/telegram"
@@ -103,10 +102,6 @@ func (h *tgHost) SaveChat(chat string) error {
 		h.d.botChanged()
 	}
 	return nil
-}
-
-func (h *tgHost) Licensed() bool {
-	return license.Parse(h.d.config().LicenseKey, time.Now()).Active
 }
 
 func (h *tgHost) ChatOn() bool { return h.d.config().TelegramChatOn() }

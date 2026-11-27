@@ -5,17 +5,15 @@ import (
 	"encoding/json"
 	"net/http"
 	"testing"
-	"time"
 
 	"github.com/dspv/caprock/internal/agentcat"
 	"github.com/dspv/caprock/internal/config"
-	"github.com/dspv/caprock/internal/license"
 )
 
 type fakeCatalog struct{ list []config.CustomAgent }
 
 func (f *fakeCatalog) Catalog() CatalogResponse {
-	return CatalogResponse{Agents: agentcat.CustomEntries(f.list, func(string) string { return "/bin/x" }, true)}
+	return CatalogResponse{Agents: agentcat.CustomEntries(f.list, func(string) string { return "/bin/x" })}
 }
 func (f *fakeCatalog) Custom() []config.CustomAgent { return f.list }
 func (f *fakeCatalog) SetCustom(l []config.CustomAgent) error {
@@ -40,32 +38,20 @@ func (e *env) putCustom(t *testing.T, body string) (int, customAgentsBody) {
 	return resp.StatusCode, out
 }
 
-// Custom agents are paid, and the server is what refuses: a lock drawn only
-// in React is a lock a curl walks past.
-func TestCustomAgentsNeedALicenceOnTheServer(t *testing.T) {
+// Custom agents are free, with no licence (owner decision, 2026-11-27:
+// parity with Orca): the server stores one without a key.
+func TestCustomAgentsNeedNoLicence(t *testing.T) {
 	e := newEnv(t)
 	cat := &fakeCatalog{}
 	e.api.d.Catalog = cat
-	body := `{"agents": [{"name": "Aider", "command": "aider", "args": ["--yes", "{prompt}"]}]}`
-	if code, _ := e.putCustom(t, body); code != http.StatusPaymentRequired {
-		t.Fatalf("unlicensed: %d, want 402", code)
-	}
-	if len(cat.list) != 0 {
-		t.Fatal("an unlicensed request stored an agent")
-	}
 	var got customAgentsBody
-	if code := e.get(t, "/v1/agents/custom", &got); code != 200 || got.Licensed || len(got.Agents) != 0 {
-		t.Fatalf("GET unlicensed: %d %+v", code, got)
+	if code := e.get(t, "/v1/agents/custom", &got); code != 200 || len(got.Agents) != 0 {
+		t.Fatalf("GET empty: %d %+v", code, got)
 	}
-
-	cur := e.settings.Get()
-	cur.LicenseKey = license.Issue(time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC), license.RandomSuffix)
-	if err := e.settings.Set(cur); err != nil {
-		t.Fatal(err)
-	}
+	body := `{"agents": [{"name": "Aider", "command": "aider", "args": ["--yes", "{prompt}"]}]}`
 	code, saved := e.putCustom(t, body)
 	if code != 200 || len(saved.Agents) != 1 || saved.Agents[0].ID != "aider" {
-		t.Fatalf("licensed: %d %+v", code, saved)
+		t.Fatalf("without a licence: %d %+v", code, saved)
 	}
 	if code, _ := e.putCustom(t, `{"agents": [{"name": "x", "command": "aider --yes"}]}`); code != http.StatusBadRequest {
 		t.Errorf("a shell string as the command: %d, want 400", code)

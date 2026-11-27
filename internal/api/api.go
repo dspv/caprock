@@ -449,7 +449,7 @@ type Settings struct {
 	// AlertDone sends a turn that asked nothing (Done) as a finished alert;
 	// on unless turned off. The desktop app never notifies one.
 	AlertDone bool `json:"alert_done"`
-	// TelegramChat is the two-way Telegram switch (Premium, ADR-047);
+	// TelegramChat is the two-way Telegram switch (ADR-047, free);
 	// TelegramCode keeps code blocks in the replies sent there. Both off
 	// unless turned on.
 	TelegramChat bool `json:"telegram_chat"`

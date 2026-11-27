@@ -151,8 +151,12 @@ user's own call.
 paid plans existed, and the question it poses — what premium should contain —
 was answered by building it: a daily spend cap, the weekly report, and Gemini on
 the user's own key, unlocked by an offline licence key
-([ADR-022](08-decisions.md)). What follows describes the waitlist page that came
-before the purchase page.
+([ADR-022](08-decisions.md)); the plan-window pause and the tool drill-down
+joined later. Subscriptions past three, custom agents and talking back from
+Telegram were Premium for a while and are free with no cap since 2026-11-27
+(owner: parity with Orca, which gives them free); Second Brain was made free
+on 2026-10-14. What follows describes the waitlist page that came before the
+purchase page.
 
 **The instrument for finding that out is `/premium`.** An email field, one
 question — which of five things you would want first — and a free-text box. It

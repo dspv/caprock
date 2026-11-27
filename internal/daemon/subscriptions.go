@@ -19,7 +19,6 @@ import (
 	"github.com/dspv/caprock/internal/config"
 	"github.com/dspv/caprock/internal/hooks"
 	"github.com/dspv/caprock/internal/ingest"
-	"github.com/dspv/caprock/internal/license"
 	"github.com/dspv/caprock/internal/store"
 	"github.com/dspv/caprock/internal/subs"
 	"github.com/dspv/caprock/internal/userenv"
@@ -317,10 +316,6 @@ func agentName(agent string) string {
 // subsAdapter is api.SubscriptionManager.
 type subsAdapter struct{ d *Daemon }
 
-func (a *subsAdapter) licensed() bool {
-	return license.Parse(a.d.config().LicenseKey, time.Now()).Active
-}
-
 func (a *subsAdapter) List(ctx context.Context) (api.SubscriptionsResponse, error) {
 	d := a.d
 	cfg := d.config()
@@ -341,7 +336,7 @@ func (a *subsAdapter) List(ctx context.Context) (api.SubscriptionsResponse, erro
 		}
 	}
 	running := a.runningBySubscription(ctx)
-	out := api.SubscriptionsResponse{Licensed: a.licensed(), FreePerAgent: subs.FreePerAgent, Home: home}
+	out := api.SubscriptionsResponse{Home: home}
 	for _, agent := range []string{subs.AgentClaude, subs.AgentCodex} {
 		g := api.SubscriptionAgent{Agent: agent, Label: agentName(agent), Installed: d.mgr != nil && d.mgr.AgentAvailable(agent), Subscriptions: []api.Subscription{},
 			IgnoredEnv: subs.CredentialEnvSet(agent, env)}
@@ -516,10 +511,6 @@ func (a *subsAdapter) Add(ctx context.Context, agent, label string) (api.Subscri
 	sub := config.Subscription{ID: id, Label: label, Agent: agent, CreatedAt: time.Now().UnixMilli()}
 	d.cfgMu.Lock()
 	cfg := d.opt.Config
-	if subs.Count(cfg.Subscriptions, agent) >= subs.FreePerAgent && !license.Parse(cfg.LicenseKey, time.Now()).Active {
-		d.cfgMu.Unlock()
-		return api.Subscription{}, api.ErrSubscriptionPremium
-	}
 	for _, s := range cfg.Subscriptions {
 		if s.Agent == agent && strings.EqualFold(s.Label, label) {
 			d.cfgMu.Unlock()

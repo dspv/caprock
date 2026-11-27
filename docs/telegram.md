@@ -1,8 +1,8 @@
 # Your agents in Telegram
 
-Caprock can message you in Telegram when a session needs you, and — with
-Premium — let you answer from there: reply to a session's message and Caprock
-types it in. Every message says which agent, project and session it is from:
+Caprock can message you in Telegram when a session needs you, and let you
+answer from there: reply to a session's message and Caprock types it in. All
+of it is free. Every message says which agent, project and session it is from:
 
 ```
 🟠 Claude Code · caprock · Fix the cache test
@@ -20,15 +20,15 @@ your computer talks to Telegram directly, asks it for your replies (nothing on
 your computer accepts a connection), and it works wherever your phone has
 Telegram — Wi-Fi, mobile data, another country.
 
-| What                                   | Plan    |
-| -------------------------------------- | ------- |
-| Alerts: waiting for approval, finished | Free    |
-| Mute a session, `/mute`, `/unmute`     | Free    |
-| Open the session on your phone (link)  | Free    |
-| Reply to a session to type into it     | Premium |
-| Approve / Deny under a question        | Premium |
-| `/sessions`, `/new`, `/stop`           | Premium |
-| Forward messages to a session          | Premium |
+| What                                   | Needs            |
+| -------------------------------------- | ---------------- |
+| Alerts: waiting for approval, finished | the alert ticked |
+| Mute a session, `/mute`, `/unmute`     | nothing          |
+| Open the session on your phone (link)  | phone access on  |
+| Reply to a session to type into it     | two-way chat on  |
+| Approve / Deny under a question        | two-way chat on  |
+| `/sessions`, `/new`, `/stop`           | two-way chat on  |
+| Forward messages to a session          | two-way chat on  |
 
 ## Set it up
 
@@ -59,9 +59,8 @@ when it is done.
    when it asked nothing (Done)*. With neither ticked (and two-way chat off)
    the bot sends nothing and Caprock does not read its messages either; the
    section says so.
-5. **Talk back (Premium).** With a licence, tick *Let my paired chat talk to
-   sessions* in **Talk to your agents from Telegram**, just under. It is off
-   until you turn it on, licence or not.
+5. **Talk back.** Tick *Let my paired chat talk to sessions* in **Talk to
+   your agents from Telegram**, just under. It is off until you turn it on.
 
 Already used phone alerts with a chat id typed in by hand? It keeps working;
 Settings says *alerts to a chat id typed in by hand*. Press **Pair again** to
@@ -94,8 +93,8 @@ switch to a paired chat.
 ## Send a Telegram message to a session
 
 Forward a message to your bot — or several at once: text, a photo, a link,
-a file, a voice note — and it goes to an agent (Premium, with *Let my paired
-chat talk to sessions* on).
+a file, a voice note — and it goes to an agent (with *Let my paired chat
+talk to sessions* on).
 
 1. **Forward.** Select one or more messages anywhere in Telegram, forward
    them to your bot. A photo, file or voice note you send it yourself counts
@@ -144,8 +143,8 @@ other computers send through it:
 From then on its alerts and questions reach the same chat, each with a first
 line saying which computer it is from (*🖥 MacBook*). Approve, Deny, Mute and
 your replies go back to the computer that asked, which acts on them with its
-own settings: answering from Telegram needs Premium and *Let my paired chat
-talk to sessions* on **that** computer. `/sessions`, `/new` and `/stop` still
+own settings: answering from Telegram needs *Let my paired chat talk to
+sessions* on **that** computer. `/sessions`, `/new` and `/stop` still
 reach only the computer that has the bot.
 
 **When the computer with the bot is asleep or offline**, nothing is lost:
@@ -173,7 +172,7 @@ Telegram can read everything the bot sends. That is:
   how many tool calls, which files changed and the first line of the reply
   (a switch turns that line off); a link to the session when phone access is
   on.
-- **When you talk to a session (Premium):** its replies, up to 3,000
+- **When you talk to a session:** its replies, up to 3,000
   characters. Code blocks are replaced by a line like *[go, 12 lines]* unless
   you tick *Send code blocks in replies*. Tool output is never sent.
 - **`/sessions`:** each live session's header and state.
@@ -202,8 +201,8 @@ sent a message you can answer.
   only by you (`config.json`, mode `0600`). It is never shown again (Settings
   shows `••••••` and its last four characters), never written to the log, and
   sent nowhere but `api.telegram.org`.
-- **Two switches for control.** Typing into sessions needs a Premium licence
-  *and* the switch, which is off by default. **Disconnect** forgets the token,
+- **A switch for control.** Typing into sessions needs the switch, which is
+  off by default. **Disconnect** forgets the token,
   the chat and everything the bridge learned.
 - **Old messages are not replayed.** A message sent while Caprock was not
   running is skipped rather than typed into a session that has moved on.

@@ -71,8 +71,8 @@ func waitFor(t *testing.T, what string, cond func() bool) {
 	}
 }
 
-// A free alert goes through the bridge with a Mute button and no Approve:
-// answering from Telegram is Premium. Muting it silences the session.
+// An alert with two-way chat off goes through the bridge with a Mute button
+// and no Approve. Muting it silences the session.
 func TestAFreeAlertCanBeMutedButNotAnswered(t *testing.T) {
 	on := true
 	d, bot := bridgeDaemon(t, config.Config{AlertApproval: &on, AlertFinished: &on})

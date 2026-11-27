@@ -79,15 +79,24 @@ describe('the paywall', () => {
     // A feature can also be offered inline rather than behind a whole-panel
     // lock: the tool drill-down shows its free half and opens the modal from a
     // chip, because a lock around the panel would hide the free breakdown.
-    // Subscriptions are free up to three per agent, so the modal opens from
-    // the add form at the fourth (ADR-048). Second Brain keeps twenty
-    // memories free, so its drop and capture open it at the twenty-first
-    // (ADR-063).
-    for (const f of ['components/ToolDrill.tsx', 'components/SubscriptionsSetting.tsx', 'components/BrainDrop.tsx', 'components/BrainCapture.tsx']) {
+    for (const f of ['components/ToolDrill.tsx']) {
       for (const m of read(f).matchAll(/<PremiumModal\s+feature="([a-z]+)"/g)) all.push(m[1]!)
     }
     for (const f of declared) {
       expect(all, `"${f}" is sold but shown nowhere in the product`).toContain(f)
+    }
+  })
+
+  it('never sells what is free (owner decision, 2026-11-27: parity with Orca)', () => {
+    // Subscriptions, custom agents, Telegram and Second Brain are free with
+    // no cap: none of them is a paid feature, a lock, or a 402 path.
+    const modal = read('components/PremiumModal.tsx')
+    const declared = modal.match(/export type PaidFeature = ([^\n]+)/)?.[1] ?? ''
+    for (const free of ['subscriptions', 'agents', 'telegram', 'brain']) {
+      expect(declared, `"${free}" is free and must not be a PaidFeature`).not.toContain(`'${free}'`)
+    }
+    for (const f of [...SCREENS, 'components/SubscriptionsSetting.tsx', 'components/TelegramChat.tsx', 'components/CustomAgentsSetting.tsx', 'components/BrainDrop.tsx', 'components/BrainCapture.tsx']) {
+      expect(read(f), `${f} still opens the Premium modal or a lock for a free feature`).not.toMatch(/feature="(subscriptions|agents|telegram|brain)"/)
     }
   })
 })

@@ -1338,8 +1338,8 @@ export interface Settings {
   alert_reply?: boolean
   /** A turn that asked nothing (Done) still goes as "Finished"; on unless turned off. */
   alert_done?: boolean
-  /** Two-way Telegram chat (Premium, ADR-047): replies, /sessions, /new,
-   *  /stop, Approve and Deny. Off unless turned on, and inert without a licence. */
+  /** Two-way Telegram chat (ADR-047, free): replies, /sessions, /new, /stop,
+   *  Approve and Deny. Off unless turned on. */
   telegram_chat?: boolean
   /** Replies sent to Telegram keep their code blocks; off unless turned on. */
   telegram_code?: boolean
@@ -1856,16 +1856,14 @@ export interface CatalogEntry {
   /** Caprock reads its sessions' turns and cost. */
   observed: boolean
   custom?: boolean
-  /** A custom agent the licence no longer covers. */
-  locked?: boolean
   /** A first message reaches it (a custom agent's args may have no {prompt}). */
   prompt: boolean
   setup?: { reason: 'not_installed' | 'no_provider' | 'signin'; text: string; command?: string; docs?: string }
 }
 
-export interface AgentCatalog { agents: CatalogEntry[]; licensed: boolean; home?: string }
+export interface AgentCatalog { agents: CatalogEntry[]; home?: string }
 
-/** A coding agent the user added by command (Settings → Agents, Premium). */
+/** A coding agent the user added by command (Settings → Agents). */
 export interface CustomAgent { id?: string; name: string; command: string; args?: string[]; models?: string[] }
 
 /** A saved prompt or command (ADR-051); see lib/saved.ts. */
@@ -2315,8 +2313,6 @@ export interface SubscriptionsResponse {
      *  subscription runs without, so it runs on its own sign-in. Names only. */
     ignored_env?: string[]
   }[]
-  licensed: boolean
-  free_per_agent: number
   home?: string
 }
 
@@ -3146,9 +3142,9 @@ export const api = {
     post<ContinueOnResult>(`/v1/sessions/${encodeURIComponent(id)}/continue-on`, { target }),
   /** GET /v1/agents/catalog: every agent here, installed or not, with its models and what it is missing. */
   agentCatalog: () => get<AgentCatalog>('/v1/agents/catalog'),
-  customAgents: () => get<{ agents: CustomAgent[]; licensed: boolean }>('/v1/agents/custom'),
+  customAgents: () => get<{ agents: CustomAgent[] }>('/v1/agents/custom'),
   /** PUT /v1/agents/custom: replaces the list; 402 without an active licence. */
-  saveCustomAgents: (agents: CustomAgent[]) => post<{ agents: CustomAgent[]; licensed: boolean }>('/v1/agents/custom', { agents }, 'PUT'),
+  saveCustomAgents: (agents: CustomAgent[]) => post<{ agents: CustomAgent[] }>('/v1/agents/custom', { agents }, 'PUT'),
   /** Saved prompts and commands (ADR-051): all of them, or a session's — every project's and its own project's. */
   savedPrompts: (sessionId?: string) =>
     get<{ items: SavedPrompt[]; max: number }>(`/v1/saved-prompts${sessionId ? `?session=${encodeURIComponent(sessionId)}` : ''}`),

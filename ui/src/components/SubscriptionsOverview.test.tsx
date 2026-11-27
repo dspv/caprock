@@ -155,7 +155,6 @@ describe('the Plan limits panel', () => {
         { agent: 'claude', label: 'Claude Code', installed: true, subscriptions: [own, work, client, side] },
         { agent: 'codex', label: 'Codex', installed: true, subscriptions: [codex] },
       ],
-      licensed: false, free_per_agent: 3,
     }
     vi.mocked(api.subscriptions).mockResolvedValue(list)
     render(<PlanLimitsPanel now={NOW} limits={{ five_hour: { used_percentage: 88, resets_at: sec(74) } }} codex={undefined} />)

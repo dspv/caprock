@@ -34,7 +34,7 @@ const homeRoutes = (start: Reply | ((init?: RequestInit) => Reply)) => ({
   '/v1/machines': { body: { machines: [mini, box] } },
   [`${far}/v1/projects`]: { body: { projects: [{ id: 1, root: '/home/me/api', name: 'api', kind: 'repo' }] } },
   [`${far}/v1/recent-dirs`]: { body: [{ dir: '/home/me/site', name: 'site', sessions: 2, last_event_at: 1 }] },
-  [`${far}/v1/agents/catalog`]: { body: { licensed: false, agents: [{ id: 'claude', label: 'Claude Code', installed: true, ready: true, models: [], observed: true, prompt: true }, { id: 'codex', label: 'Codex', installed: true, ready: true, models: [], observed: true, prompt: true }] } },
+  [`${far}/v1/agents/catalog`]: { body: { agents: [{ id: 'claude', label: 'Claude Code', installed: true, ready: true, models: [], observed: true, prompt: true }, { id: 'codex', label: 'Codex', installed: true, ready: true, models: [], observed: true, prompt: true }] } },
   [`${far}/v1/browse/stat`]: { body: { path: '/home/me/api', exists: true, is_dir: true } },
   [`${far}/v1/agents`]: start,
 })
@@ -80,7 +80,7 @@ describe('New agent on another computer', () => {
   // A computer with Caprock and no agent yet: the field said "reading…" for
   // good, which reads as a link that hangs.
   it('says so when no agent is installed on that computer, and does not start', async () => {
-    stubFetch({ ...homeRoutes({ body: {} }), [`${far}/v1/agents/catalog`]: { body: { licensed: false, agents: [{ id: 'claude', label: 'Claude Code', installed: false, ready: false, models: [], observed: true, prompt: true }] } } })
+    stubFetch({ ...homeRoutes({ body: {} }), [`${far}/v1/agents/catalog`]: { body: { agents: [{ id: 'claude', label: 'Claude Code', installed: false, ready: false, models: [], observed: true, prompt: true }] } } })
     render(<NewAgentSheet projects={[]} onClose={vi.fn()} onStarted={vi.fn()} onStartedOn={vi.fn()} />)
     fireEvent.change(await screen.findByRole('combobox', { name: 'Machine' }), { target: { value: ID } })
     expect(await screen.findByText(/No agent is installed on Mac mini/)).toBeTruthy()
@@ -212,7 +212,7 @@ describe('New agent on a Windows PC: the folder is chosen, not typed', () => {
         const q = new URLSearchParams(query)
         if (route === '/v1/projects') return { body: { projects: opts.projects ?? [] } }
         if (route === '/v1/recent-dirs') return { body: opts.recent ?? [] }
-        if (route === '/v1/agents/catalog') return { body: { licensed: false, home: HOME, agents: [{ id: 'claude', label: 'Claude Code', installed: true, ready: true, models: [], observed: true, prompt: true }] } }
+        if (route === '/v1/agents/catalog') return { body: { home: HOME, agents: [{ id: 'claude', label: 'Claude Code', installed: true, ready: true, models: [], observed: true, prompt: true }] } }
         if (route === '/v1/browse/stat') return { body: { path: q.get('path'), exists: true, is_dir: true } }
         if (route === '/v1/browse') return listing(q.get('dir') ?? '')
         return { status: 404, body: { error: 'not here' } }
@@ -343,7 +343,7 @@ describe('New agent on another computer: model and effort', () => {
     let sent: Record<string, unknown> = {}
     stubFetch({
       ...homeRoutes((init) => { sent = JSON.parse(String(init?.body)); return { body: { session_id: 'far-1', cwd: '/home/me/api' } } }),
-      [`${far}/v1/agents/catalog`]: { body: { licensed: false, agents: [claude, codex, gemini] } },
+      [`${far}/v1/agents/catalog`]: { body: { agents: [claude, codex, gemini] } },
     })
     render(<NewAgentSheet projects={[]} onClose={vi.fn()} onStarted={vi.fn()} onStartedOn={vi.fn()} />)
     return { sent: () => sent }

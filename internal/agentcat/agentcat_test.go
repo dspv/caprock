@@ -138,17 +138,15 @@ func TestValidateCustom(t *testing.T) {
 	}
 }
 
-func TestCustomEntriesFollowTheLicence(t *testing.T) {
+func TestCustomEntries(t *testing.T) {
 	list := []config.CustomAgent{{ID: "aider", Name: "Aider", Command: "aider", Args: []string{"{prompt}"}, Models: []string{"m1"}}}
 	found := func(string) string { return "/bin/aider" }
-	e := CustomEntries(list, found, true)[0]
-	if e.ID != "custom:aider" || !e.Ready || e.Locked || !e.Prompt || len(e.Models) != 1 {
-		t.Errorf("licensed: %+v", e)
+	// Free, with no licence (2026-11-27): installed is ready.
+	e := CustomEntries(list, found)[0]
+	if e.ID != "custom:aider" || !e.Ready || !e.Prompt || len(e.Models) != 1 {
+		t.Errorf("installed: %+v", e)
 	}
-	if e := CustomEntries(list, found, false)[0]; e.Ready || !e.Locked {
-		t.Errorf("unlicensed: %+v", e)
-	}
-	if e := CustomEntries(list, func(string) string { return "" }, true)[0]; e.Ready || e.Setup == nil {
+	if e := CustomEntries(list, func(string) string { return "" })[0]; e.Ready || e.Setup == nil {
 		t.Errorf("missing command: %+v", e)
 	}
 	if a, ok := FindCustom(list, "custom:aider"); !ok || a.Name != "Aider" {

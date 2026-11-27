@@ -84,8 +84,10 @@ func TestSubscriptionsAddRenameRemove(t *testing.T) {
 	if _, err := a.Add(ctx, "claude", "Personal"); err != nil {
 		t.Fatal(err)
 	}
-	// Three per agent are free, the Default one included.
-	if _, err := a.Add(ctx, "claude", "Third"); !errors.Is(err, api.ErrSubscriptionPremium) {
+	// No cap and no licence (owner decision, 2026-11-27, ADR-048): a third
+	// added sign-in, the fourth with the Default one, is added like the rest.
+	third, err := a.Add(ctx, "claude", "Third")
+	if err != nil {
 		t.Fatalf("a fourth Claude Code sign-in without a licence: %v", err)
 	}
 	// Codex counts on its own.
@@ -97,11 +99,11 @@ func TestSubscriptionsAddRenameRemove(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(list.Agents) != 2 || len(list.Agents[0].Subscriptions) != 3 || !list.Agents[0].Subscriptions[0].Default || list.Agents[0].Subscriptions[0].ID != subs.DefaultID {
+	if len(list.Agents) != 2 || len(list.Agents[0].Subscriptions) != 4 || !list.Agents[0].Subscriptions[0].Default || list.Agents[0].Subscriptions[0].ID != subs.DefaultID {
 		t.Fatalf("list: %+v", list.Agents)
 	}
-	if list.FreePerAgent != 3 || list.Licensed {
-		t.Fatalf("list header: %+v", list)
+	if err := a.Remove(ctx, third.ID); err != nil {
+		t.Fatal(err)
 	}
 
 	name := func(s string) *string { return &s }

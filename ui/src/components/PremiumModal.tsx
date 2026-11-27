@@ -58,7 +58,7 @@ import { extTitle } from '@/lib/externalLinks'
 import { sellsHere } from '@/native/platform'
 import { NotSoldHere } from './NotSoldHere'
 
-export type PaidFeature = 'cap' | 'window' | 'report' | 'gemini' | 'drill' | 'agents' | 'telegram' | 'subscriptions'
+export type PaidFeature = 'cap' | 'window' | 'report' | 'gemini' | 'drill'
 
 /**
  * `body` says what the feature is in one sentence; `points` say why you would
@@ -133,47 +133,6 @@ const FEATURES: Record<PaidFeature, Feature> = {
       { icon: 'stack', text: 'Output per command, file or domain — what the model had to read back' },
       { icon: 'stop', text: 'Failure rate per group, against the tool’s own' },
       { icon: 'pie', text: 'A trend per group, and hints drawn only from those counts' },
-    ],
-  },
-  // ADR-046: any terminal coding agent, started like the built-in ones.
-  agents: {
-    short: 'Own agents',
-    icon: 'loop',
-    since: '2026-10-10',
-    title: 'Your own agents, started like the built-in ones',
-    body: 'Add any terminal coding agent by its command. It appears in New agent and Quick chat and opens in a Caprock tab.',
-    points: [
-      { icon: 'arrow', text: 'Where the first message and the model go, written once as arguments' },
-      { icon: 'stack', text: 'Its models in the same picker as Claude Code’s and Codex’s' },
-      { icon: 'shield', text: 'Each argument stays one argument — nothing passes through a shell' },
-    ],
-    setup: 'Caprock starts it and keeps the session in your list; it reads turns and cost only for the agents it already knows.',
-  },
-  // ADR-047: the alerts are free; talking back is the paid half.
-  telegram: {
-    short: 'Telegram',
-    icon: 'send',
-    since: '2026-10-10',
-    title: 'Talk to your agents from Telegram',
-    body: 'Reply to a session’s message and Caprock types it in. Every message says which agent, project and session it came from.',
-    points: [
-      { icon: 'chat', text: 'Reply, approve or deny, start and stop sessions — from any phone, on any network' },
-      { icon: 'send', text: 'Through your own bot: no server of ours, nothing to open on your router' },
-      { icon: 'shield', text: 'Only sessions Caprock started; the one in your terminal is watched, never typed into' },
-    ],
-    setup: 'Setup: one message to BotFather, then a code sent to your bot.',
-  },
-  // ADR-048: three sign-ins per agent are free; a fourth and more are Premium.
-  subscriptions: {
-    short: 'Sign-ins',
-    icon: 'user',
-    since: '2026-10-10',
-    title: 'More sign-ins, each a pick away',
-    body: 'Three Claude Code and three Codex subscriptions are free, your own sign-in included. Premium adds as many more as you use.',
-    points: [
-      { icon: 'user', text: 'Each sign-in in its own folder, picked per session in New agent and Quick chat' },
-      { icon: 'pie', text: 'Every sign-in’s plan windows and the last seven days of work beside it' },
-      { icon: 'key', text: 'Caprock types the agent’s own sign-in command; you run it, and Caprock never holds a token' },
     ],
   },
   report: {
@@ -285,58 +244,6 @@ function Picture({ feature }: { feature: PaidFeature }) {
           <span className="font-semibold"><code className="font-mono">git diff</code> returned 41% of all Bash output</span>
           <span className="text-fg-muted"> — every byte of it read back by the model.</span>
         </p>
-      </MiniCard>
-    )
-  }
-  if (feature === 'subscriptions') {
-    const rows: [string, string, number][] = [
-      ['Default', '35%', 0.35],
-      ['Work Max', '92%', 0.92],
-      ['Personal', '12%', 0.12],
-      ['Client', '4%', 0.04],
-    ]
-    return (
-      <MiniCard label="Example: four Claude Code subscriptions with their 5-hour windows; a new session is started on the one picked">
-        <p className="wk-eyebrow" style={{ fontSize: 11 }}>Claude Code · subscriptions</p>
-        <ul className="mt-2 space-y-1.5 font-mono text-[12px]">
-          {rows.map(([name, pct, used]) => (
-            <li key={name} className="grid grid-cols-[84px_1fr_36px] items-center gap-2">
-              <span className="truncate text-fg">{name}</span>
-              <span className="h-1.5 rounded-full bg-border-strong/60"><span className={`block h-full rounded-full ${used >= 0.9 ? 'bg-danger' : 'bg-accent'}`} style={{ width: `${used * 100}%` }} /></span>
-              <span className={`text-right ${used >= 0.9 ? 'text-danger' : 'text-fg-muted'}`}>{pct}</span>
-            </li>
-          ))}
-        </ul>
-        <p className="mt-2.5 text-[12.5px] leading-snug text-fg-muted">In New agent: <span className="text-fg">Subscription · Personal</span>, for the next session.</p>
-      </MiniCard>
-    )
-  }
-  if (feature === 'agents') {
-    return (
-      <MiniCard label="Example: a custom agent named Aider, started with its model and first message filled in">
-        <p className="wk-eyebrow" style={{ fontSize: 11 }}>Settings · custom agent</p>
-        <p className="mt-1.5 text-[15px] font-semibold leading-snug text-fg">Aider</p>
-        <p className="mt-1 font-mono text-[12px] text-fg-muted">aider --model <span className="text-accent">{'{model}'}</span> --message <span className="text-accent">{'{prompt}'}</span></p>
-        <p className="mt-2.5 text-[12.5px] leading-snug text-fg-muted">In New agent: <span className="text-fg">Agent · Aider</span>, its models listed, started in a tab.</p>
-      </MiniCard>
-    )
-  }
-  if (feature === 'telegram') {
-    return (
-      <MiniCard label="Example: a Claude Code session's reply in Telegram, headed with the agent, project and session, and the owner's reply under it">
-        <p className="flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-fg-muted">
-          <span className="text-accent">{Icon.send}</span> your bot
-        </p>
-        <div className="mt-2 max-w-[88%] rounded-[12px] rounded-bl-[4px] border border-border-strong px-3 py-1.5 text-[12.5px] leading-snug text-fg">
-          <p className="font-semibold">🟠 Claude Code · acme-api · Fix the cache test</p>
-          <p className="text-fg-muted">✅ Finished · 4m · 12 tool calls</p>
-          <p className="mt-1">The cache test was reading a stale fixture; fixed and green.</p>
-        </div>
-        <div className="mt-2 flex justify-end">
-          <p className="max-w-[80%] rounded-[12px] rounded-br-[4px] bg-panel-2 px-3 py-1.5 text-[12.5px] text-fg">
-            Good. Now open a PR for it.
-          </p>
-        </div>
       </MiniCard>
     )
   }

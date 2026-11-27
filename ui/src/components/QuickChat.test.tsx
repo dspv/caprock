@@ -12,7 +12,7 @@ vi.mock('@/lib/api', async (orig) => {
     ...actual,
     api: {
       ...actual.api,
-      agentCatalog: async () => ({ agents: catalog.agents, licensed: false, home: '/h' }),
+      agentCatalog: async () => ({ agents: catalog.agents, home: '/h' }),
       inbox: async () => ({ items: inbox.items, max: 500 }),
       removeInbox: async (id: number) => { inbox.removed.push(id) },
       subscriptions: async () => { if (!subs.value) throw new Error('not offered'); return subs.value },
@@ -32,7 +32,7 @@ describe('Add subscription in Quick chat', () => {
     id, agent: 'claude', label, default: id === 'default', dir: `/d/${id}`, signed_in: true, login_command: 'claude auth login',
     windows: [], sessions_7d: 0, cost_7d_usd: 0, running: 0, ...more,
   })
-  const state = (list: unknown[]) => ({ licensed: false, free_per_agent: 3, home: '/h', agents: [{ agent: 'claude', label: 'Claude Code', installed: true, subscriptions: list }] })
+  const state = (list: unknown[]) => ({ home: '/h', agents: [{ agent: 'claude', label: 'Claude Code', installed: true, subscriptions: list }] })
 
   it('is a quiet link with one sign-in, and adds one in place that the chat then starts on', async () => {
     subs.value = state([sub('default', 'Own sign-in')])

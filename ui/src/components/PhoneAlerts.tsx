@@ -7,8 +7,8 @@
  * well, outside the report's lock. Both switches are off until switched on,
  * so a bot saved for the weekly report never starts alerting on its own. The
  * test button exists for the same reason as the report's: the failure mode of
- * an alert is silence. Talking back from Telegram is Premium and lives in the
- * section under this one (TelegramChat).
+ * an alert is silence. Talking back from Telegram (free, like the alerts) lives
+ * in the section under this one (TelegramChat).
  */
 import { useState } from 'react'
 import { api, errText, type Settings } from '@/lib/api'
