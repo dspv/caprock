@@ -36,6 +36,7 @@ import { UndeliveredList } from './UndeliveredList'
 import { navigate } from '@/lib/router'
 import { NewPill } from './NewPill'
 import { LinkedText, Prose } from './Prose'
+import { FileText } from './FileChip'
 import { requestOpenPath } from '@/lib/mdreader'
 import { TerminalKeys, type AttachIn } from './TerminalKeys'
 import { ChevronIcon } from './AppIcons'
@@ -959,16 +960,17 @@ function PromptText({ text, eventId }: { text: string; eventId: number }) {
   )
 }
 
-/** The person's own words, each video path in them a tile (VideoTile). */
+/** The person's own words, each video path in them a tile (VideoTile) and
+ *  any other file a chip (FileChip, .ai/04-ui.md § File chips). */
 function PromptWords({ text, eventId }: { text: string; eventId: number }) {
   const parts = videoTiles() ? videoParts(text) : []
-  if (!parts.some((p) => p.kind === 'video')) return <span><LinkedText text={text} /></span>
+  if (!parts.some((p) => p.kind === 'video')) return <span><FileText text={text} /></span>
   return (
     <>
       {parts.map((p, i) => {
         if (p.kind === 'video') return <VideoTile key={i} eventId={eventId} path={p.path} raw={p.raw} />
         const t = p.text.trim()
-        return t ? <span key={i}><LinkedText text={t} /></span> : null
+        return t ? <span key={i}><FileText text={t} /></span> : null
       })}
     </>
   )
@@ -1014,7 +1016,7 @@ function OutgoingBubble({ o, onRetry, onDismiss, phone = false }: { o: Outgoing;
   return (
     <div data-outgoing={o.phase} className={`flex justify-end py-1.5 ${phone ? 'chat-sent-in' : ''}`}>
       <div className={`grid max-w-[85%] min-w-0 gap-1 rounded-[12px] rounded-br-[4px] bg-panel-2 px-3 py-2 ${phone ? 'text-[16px] leading-[1.5]' : 'text-[14px] leading-relaxed'} text-fg`}>
-        <div className="whitespace-pre-wrap [overflow-wrap:anywhere]">{o.text}</div>
+        <div className="whitespace-pre-wrap [overflow-wrap:anywhere]"><FileText text={o.text} /></div>
         <div className={`flex items-center justify-end gap-2 text-[11.5px] ${o.phase === 'failed' ? 'text-danger' : 'text-fg-faint'}`}>
           {o.phase === 'sending' ? 'Sending…' : o.phase === 'sent' ? 'Sent ✓' : (
             <>

@@ -10,6 +10,7 @@
 import type { Event } from './api'
 import { noticeLine, normalInput, toolCommand } from './chat'
 import { runVerb, toolKind } from './cockpit'
+import { pathsAsNames } from './filepaths'
 
 export interface TurnState {
   /** The prompt's timestamp: when the turn began. */
@@ -210,9 +211,10 @@ export function promptParts(text: string): PromptPart[] {
   return out
 }
 
-/** A prompt on one line: each paste as `[pasted · N lines]`, reminders gone. */
+/** A prompt on one line: each paste as `[pasted · N lines]`, reminders gone,
+ *  a dropped file's path cut to its name (lib/filepaths). */
 export function promptPlain(text: string): string {
   return promptParts(text)
-    .map((p) => (p.kind === 'text' ? p.text : `[pasted${p.lines ? ` · ${p.lines} line${p.lines === 1 ? '' : 's'}` : ''}]`))
+    .map((p) => (p.kind === 'text' ? pathsAsNames(p.text) :`[pasted${p.lines ? ` · ${p.lines} line${p.lines === 1 ? '' : 's'}` : ''}]`))
     .join(' ')
 }

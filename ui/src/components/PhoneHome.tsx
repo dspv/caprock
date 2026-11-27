@@ -47,7 +47,9 @@ import { sessionTitle } from '@/lib/sidebar'
 import { needsYou, reasonsSentence } from '@/lib/needs'
 import { STALLED_TIP, stalledAge, stalledWord } from '@/lib/stalled'
 import { agentLabel, isCustomAgent, startable, useAgentCatalog, type SpawnAgent } from './AgentPicker'
-import { CaprockMark, ChatIcon, ChatPlusIcon, ChevronIcon, CloseIcon, FileIcon, InboxIcon, PaperclipIcon } from './AppIcons'
+import { CaprockMark, ChatIcon, ChatPlusIcon, ChevronIcon, CloseIcon, InboxIcon, PaperclipIcon } from './AppIcons'
+import { FileKindIcon } from './FileChip'
+import { fileKind } from '@/lib/filepaths'
 import { PermissionPrompt } from './PermissionPrompt'
 import { EndableRow, useEndedHere, type EndedHere } from './PhoneEnd'
 import { BottomSheet, ChipSelect, FoldHeader } from './PhoneParts'
@@ -622,7 +624,7 @@ function usePhotos(initial: Picked[] = []) {
 function FileTile({ file, size }: { file: File; size: string }) {
   return (
     <span data-file-chip title={file.name} className={`flex ${size} max-w-[160px] items-center gap-1.5 rounded-[8px] border border-border-strong bg-bg pl-2 pr-3 text-[13px] text-fg`}>
-      <span className="text-fg-muted"><FileIcon size={18} /></span>
+      <span className="text-fg-muted"><FileKindIcon kind={fileKind(file.name)} size={18} /></span>
       <span className="min-w-0 truncate">{file.name}</span>
     </span>
   )
