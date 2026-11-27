@@ -7,13 +7,16 @@
  * spend, running, waiting and both plan windows as bars, foldable to one
  * line).
  *
- * Each figure is a way in, as the card's were: the spend opens Cost, the
- * running count opens Home, the window opens Cost's plan limits, and, while
- * anything waits on you, "N waiting" in amber opens the one that has waited
- * longest. The one window drawn is the fuller of the Claude plan's two (the
- * weekly one on a tie), so a 5-hour window near its end is never hidden
- * behind a calm week; both are in its tooltip. A figure the data does not
- * carry is left out (no window on API billing) or a dash until known.
+ * Since 2026-11-27 (owner, translated: "it doesn't fit; I'd show no figures
+ * for today, just a noticeable, clear subscription progress bar") a plan
+ * with a Claude window shows only that window: "<Weekly|5-hour> limit
+ * ▬▬▬▬ NN%", the bar taking the width, opening Cost's plan limits. The
+ * window drawn is the fuller of the two (the weekly one on a tie), so a
+ * 5-hour window near its end is never hidden behind a calm week; both are
+ * in its tooltip. Without a window (API billing, or before Claude Code
+ * reports one) the line stays "$X today · N running", with "N waiting" in
+ * amber while anything waits on you: spend opens Cost, running Home,
+ * waiting the session that has waited longest; a dash until known.
  *
  * Hidden by its × (the viewer's, lib/todayCard.ts), it comes back from
  * Settings → Appearance or the sidebar's ⋯ menu. What waits on you stays in
@@ -71,6 +74,49 @@ export function TodayLine({ today, loaded, now, onSpend, onWindows, onRunning, o
     : spend === undefined ? 'Spent today, every agent — not known yet' : `Spent today, every agent: ${fmtUSD(spend)}. Opens Cost.`
   const runningTitle = loaded ? `${agents} ${agents === 1 ? 'agent' : 'agents'} running${working > 0 ? `, ${working} working` : ''}. Opens Home.` : 'Running: not known yet'
   const waitingTitle = `${waiting} waiting on you. Opens the one that has waited longest.`
+  const hide = onHide && (
+    <button
+      type="button"
+      data-today-hide
+      aria-label="Hide the Today line"
+      title="Hide. Settings → Appearance or the ⋯ menu above shows it again."
+      onClick={onHide}
+      className="grid h-5 w-5 shrink-0 place-items-center rounded-[5px] text-fg-faint hover:bg-[var(--app-row-hover)] hover:text-fg"
+    >
+      <CloseIcon size={10} />
+    </button>
+  )
+  // With a plan window the line is that window alone, drawn wide (owner,
+  // 2026-11-27, translated: "it doesn't fit; I'd show no figures for today,
+  // just a noticeable, clear subscription progress bar"). Spend and running
+  // stay on Home and Cost; what waits stays on its row and ⌘J.
+  if (w) {
+    const label = `${w.name} limit`
+    return (
+      <section
+        aria-label="Today"
+        data-today-line
+        className="group/today flex h-[34px] shrink-0 items-center gap-1 border-t border-[var(--app-hairline)] pl-2 pr-1 text-[12px] text-fg-muted"
+      >
+        <button
+          type="button"
+          data-today-window={w.label}
+          onClick={onWindows}
+          title={`${windows.map((x) => windowTitle(x, now)).join('\n')}\nEvery Claude Code session. Opens plan limits.`}
+          aria-label={`${w.name} window ${w.pct}% used. Opens plan limits.`}
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-[5px] px-1 py-1 hover:bg-[var(--app-row-hover)]"
+        >
+          <span className="shrink-0 whitespace-nowrap">{label}</span>
+          <span className="cockpit-track h-[6px] min-w-[40px] flex-1 overflow-hidden rounded-full" role="meter" aria-label={`${w.name} window used`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={w.pct}>
+            <span className="cockpit-fill block h-full rounded-full" data-tone={w.tone} style={{ width: `${Math.max(2, Math.min(100, w.pct))}%` }} />
+          </span>
+          <span className={`num shrink-0 whitespace-nowrap font-semibold ${tone(w)}`}>{w.pct}%</span>
+        </button>
+        {hide}
+      </section>
+    )
+  }
+  // No plan window (an API key, or before Claude Code reports one): spend and running, as before.
   return (
     <section
       aria-label="Today"
@@ -96,33 +142,7 @@ export function TodayLine({ today, loaded, now, onSpend, onWindows, onRunning, o
           </>
         )}
       </span>
-      {w && (
-        <button
-          type="button"
-          data-today-window={w.label}
-          onClick={onWindows}
-          title={`${windows.map((x) => windowTitle(x, now)).join('\n')}\nEvery Claude Code session. Opens plan limits.`}
-          aria-label={`${w.name} window ${w.pct}% used. Opens plan limits.`}
-          className="flex shrink-0 items-center gap-1.5 rounded-[5px] px-1 hover:bg-[var(--app-row-hover)]"
-        >
-          <span className="cockpit-track h-[4px] w-[36px] overflow-hidden rounded-full @max-[230px]/today:hidden" role="meter" aria-label={`${w.name} window used`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={w.pct}>
-            <span className="cockpit-fill block h-full rounded-full" data-tone={w.tone} style={{ width: `${Math.max(2, Math.min(100, w.pct))}%` }} />
-          </span>
-          <span className={`num whitespace-nowrap ${tone(w)}`}>{w.label} {w.pct}%</span>
-        </button>
-      )}
-      {onHide && (
-        <button
-          type="button"
-          data-today-hide
-          aria-label="Hide the Today line"
-          title="Hide. Settings → Appearance or the ⋯ menu above shows it again."
-          onClick={onHide}
-          className="grid h-5 w-5 shrink-0 place-items-center rounded-[5px] text-fg-faint hover:bg-[var(--app-row-hover)] hover:text-fg"
-        >
-          <CloseIcon size={10} />
-        </button>
-      )}
+      {hide}
     </section>
   )
 }

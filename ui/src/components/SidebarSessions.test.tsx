@@ -259,18 +259,29 @@ describe('the Today line', () => {
     },
   } as unknown as Summary
 
-  it('is one line: spend, running, what waits in amber and the fuller plan window', () => {
-    const { props } = setup(mix(), [], { ...route, summary })
+  // Owner, 2026-11-27: no figures for today, a clear plan bar instead.
+  it('with a plan window is that window alone: label, a wide bar, the percent', () => {
+    setup(mix(), [], { ...route, summary })
     const line = screen.getByRole('region', { name: 'Today' })
-    expect(line.textContent).toBe('$19.99 today·4 running·1 waiting7d 74%')
-    expect(line.querySelector('[data-today-waiting]')!.className).toContain('text-warn')
-    fireEvent.click(line.querySelector('[data-today-waiting]')!)
-    expect(props.onOpenInbox).toHaveBeenCalled()
+    expect(line.textContent).toBe('Weekly limit74%')
+    expect(line.querySelector('[data-today-spend]')).toBeNull()
+    expect(line.querySelector('[data-today-running]')).toBeNull()
+    expect(line.querySelector('[data-today-waiting]')).toBeNull()
     // 74% of the week is past the amber line; the calmer 5-hour window is in the tooltip.
     const w = line.querySelector<HTMLElement>('[data-today-window]')!
     expect(w).toHaveAttribute('data-today-window', '7d')
     expect(w.querySelector('.num')!.className).toContain('text-warn')
     expect(w.title).toContain('5-hour window: 6% used')
+    expect(within(line).getByRole('meter', { name: 'Weekly window used' })).toHaveAttribute('aria-valuenow', '74')
+  })
+
+  it('without a plan window keeps spend, running and what waits in amber', () => {
+    const { props } = setup(mix(), [], { ...route, summary: { cost_usd: 19.99 } as unknown as Summary })
+    const line = screen.getByRole('region', { name: 'Today' })
+    expect(line.textContent).toBe('$19.99 today·4 running·1 waiting')
+    expect(line.querySelector('[data-today-waiting]')!.className).toContain('text-warn')
+    fireEvent.click(line.querySelector('[data-today-waiting]')!)
+    expect(props.onOpenInbox).toHaveBeenCalled()
   })
 
   it('draws the fuller window, the weekly one on a tie', () => {

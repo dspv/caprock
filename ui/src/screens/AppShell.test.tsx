@@ -177,10 +177,13 @@ describe('the app workspace', () => {
     expect(within(waitingRow('Waiting one')).getByText('waiting')).toBeInTheDocument()
     const projects = [...document.querySelectorAll('[data-project-row]')].map((b) => b.querySelector('span.truncate')?.textContent)
     expect(projects.sort()).toEqual(['app', 'other'])
-    // Today, in the sidebar's Today strip; the status strip leaves it out
-    // while the sidebar shows it.
+    // The plan window, in the sidebar's Today line (alone since 2026-11-27);
+    // the status strip leaves it out while the sidebar shows it, and today's
+    // spend is in neither.
     const today = screen.getByRole('region', { name: 'Today' })
-    expect(await within(today).findByText('$1.25')).toBeInTheDocument()
+    expect(await within(today).findByText('40%')).toBeInTheDocument()
+    expect(within(today).queryByText('$1.25')).toBeNull()
+    expect(within(document.querySelector('footer')!).queryByText('40%')).toBeNull()
     expect(within(document.querySelector('footer')!).queryByText('$1.25')).toBeNull()
     // A project's row: its one-word summary, what needs you first (2026-11-05).
     expect([...document.querySelectorAll('[data-project-summary]')].map((e) => e.textContent)).toContain('1 needs you')
