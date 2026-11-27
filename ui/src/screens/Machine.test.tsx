@@ -28,6 +28,23 @@ describe('MachineScreen — another computer’s sessions (ADR-067)', () => {
     expect(screen.getByText('Recent · 1')).toBeTruthy()
   })
 
+  // ADR-108: right after a join with a key made here, the page says so and
+  // that what is left waits for clicks.
+  it('says a computer just joined, and that nothing ran or was sent', async () => {
+    vi.spyOn(machinesApi, 'list').mockResolvedValue([mini])
+    vi.spyOn(machinesApi, 'sessions').mockResolvedValue([])
+    render(<MachineScreen id={ID} joined />)
+    const note = await screen.findByText(/Mac mini joined with the key/)
+    const box = note.closest('[data-machine-joined]')!
+    expect(box.textContent).toContain('Nothing has run there and nothing was sent')
+    expect(box.textContent).toContain('Send secrets')
+    expect(box.querySelector('a')!.getAttribute('href')).toBe(`#/m/${ID}`)
+    cleanup()
+    render(<MachineScreen id={ID} />)
+    await screen.findByText('Nothing runs on Mac mini now.')
+    expect(document.querySelector('[data-machine-joined]')).toBeNull()
+  })
+
   it('opens one session in a frame of this dashboard pointed at that computer', async () => {
     vi.spyOn(machinesApi, 'list').mockResolvedValue([mini])
     render(<MachineScreen id={ID} session="a" />)

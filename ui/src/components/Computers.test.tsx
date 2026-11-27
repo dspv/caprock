@@ -191,6 +191,15 @@ describe('Settings → Computers (ADR-067)', () => {
     expect((await screen.findByRole('status')).textContent).toContain('Now allow it there')
   })
 
+  it('leads Add a computer with a key, the link after it (ADR-108)', async () => {
+    vi.spyOn(machinesApi, 'list').mockResolvedValue([])
+    render(<Computers />)
+    const make = await screen.findByRole('button', { name: 'Add with a key' })
+    const steps = document.querySelector('[data-steps="main"]')!
+    expect(make.compareDocumentPosition(steps) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(document.querySelector('[data-steps-or]')!.textContent).toContain('Or with a link')
+  })
+
   it('says what a refused link means', async () => {
     vi.spyOn(machinesApi, 'list').mockResolvedValue([])
     vi.spyOn(machinesApi, 'add').mockRejectedValue(new ApiError(400, '400', { error: 'the computer refused the code' }))

@@ -35,7 +35,7 @@ import { Empty, Skeleton } from '@/components/ui'
 import { RemoteSetup } from '@/components/RemoteSetup'
 import { SendSecrets } from '@/components/SendSecrets'
 
-export function MachineScreen({ id, session, tab }: { id: string; session?: string; tab?: string }) {
+export function MachineScreen({ id, session, tab, joined }: { id: string; session?: string; tab?: string; joined?: boolean }) {
   const list = useMachines()
   const m = list.data?.find((x) => x.id === id)
   if (!list.data) return list.error ? <Empty title="Cannot reach the daemon">{list.error.message}</Empty> : <Skeleton rows={4} />
@@ -46,7 +46,7 @@ export function MachineScreen({ id, session, tab }: { id: string; session?: stri
       </Empty>
     )
   }
-  return session ? <MachineSession m={m} session={session} tab={tab} /> : <MachineSessions m={m} />
+  return session ? <MachineSession m={m} session={session} tab={tab} /> : <MachineSessions m={m} joined={joined} />
 }
 
 /** The computer's name and how it stands, above its list or its session. */
@@ -65,7 +65,7 @@ function MachineHead({ m, back, children }: { m: Machine; back?: boolean; childr
   )
 }
 
-function MachineSessions({ m }: { m: Machine }) {
+function MachineSessions({ m, joined }: { m: Machine; joined?: boolean }) {
   const now = useNow(30_000)
   const actions = useAppActions()
   // The one list the sidebar reads too (shared, no second request): its
@@ -127,6 +127,8 @@ function MachineSessions({ m }: { m: Machine }) {
           )}
         </div>
       </header>
+      {/* Just joined with a key made here (ADR-108): what is left is offered, nothing runs. */}
+      {joined && <JoinedNote m={m} online={st.online} />}
       {/* What it still needs, each step run there on a click (#1088). */}
       {st.online && <RemoteSetup m={m} />}
       {/* Keys copied there on a click, through the link (ADR-107, #1095). */}
@@ -165,6 +167,27 @@ function MachineSessions({ m }: { m: Machine }) {
           )}
         </>
       )}
+    </div>
+  )
+}
+
+/**
+ * The line a computer's page opens with right after it joined with a key
+ * made here (ADR-108, `#/m/<id>?joined=1`): what the join did, and that what
+ * is left there — the checklist below and Send secrets — waits for clicks.
+ */
+function JoinedNote({ m, online }: { m: Machine; online: boolean }) {
+  return (
+    <div role="status" data-machine-joined className="flex min-w-0 flex-wrap items-start gap-x-3 gap-y-1 rounded-[10px] border border-ok/40 bg-ok/5 px-5 py-3.5 text-[13.5px]">
+      <span className="min-w-0 flex-1 basis-64">
+        <b className="font-semibold text-fg">✓ {m.name} joined with the key.</b>{' '}
+        <span className="text-fg-muted">
+          {online
+            ? 'Nothing has run there and nothing was sent. Below: what it still needs, each step run there when you click it, and Send secrets, which sends only what you tick.'
+            : `Nothing has run there and nothing was sent. Its steps and Send secrets show here once ${m.name} is online.`}
+        </span>
+      </span>
+      <a href={href({ name: 'machine', id: m.id })} className="shrink-0 text-[12.5px] text-fg-muted hover:text-fg">Dismiss</a>
     </div>
   )
 }

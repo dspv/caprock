@@ -141,6 +141,72 @@ export const machinesApi = {
 }
 
 /**
+ * A join key (ADR-108) as `GET /v1/machines/join-key` says it stands. Never
+ * the key itself: that is in `NewJoinKey`, the one answer that made it.
+ */
+export interface JoinKeyState {
+  state: 'none' | 'waiting' | 'joining' | 'joined' | 'expired' | 'failed'
+  /** Unix ms, this machine's clock. */
+  expires_at?: number
+  relay?: string
+  /** This machine's wait at its relay: connecting, online, offline. */
+  relay_status?: string
+  /** The name the new computer gave, once it proved the key. */
+  joiner?: string
+  /** The computer that joined, as `GET /v1/machines` lists it. */
+  machine?: Machine
+  error?: string
+}
+
+export interface NewJoinKey extends JoinKeyState {
+  key: string
+}
+
+/** `POST /v1/join`'s answer, on the new computer. */
+export interface JoinResult {
+  controller: string
+  controller_name: string
+  status: string
+  name: string
+  turned_on_remote: boolean
+  relay: string
+}
+
+export const joinApi = {
+  /** Makes a key here (withdrawing any open one); the answer is the only place it is ever shown. */
+  make: () => call<NewJoinKey>('/v1/machines/join-key', { method: 'POST', body: '{}' }),
+  state: () => call<JoinKeyState>('/v1/machines/join-key'),
+  withdraw: () => call<{ withdrawn: boolean }>('/v1/machines/join-key', { method: 'DELETE', body: '{}' }),
+  /** Uses a key made on another computer, here (two minutes at most). */
+  join: (key: string) => call<JoinResult>('/v1/join', { method: 'POST', body: JSON.stringify({ key }) }),
+}
+
+/** `caprock join <key>`, as the new computer's terminal takes it. */
+export function joinCommand(key: string): string {
+  return `caprock join ${key}`
+}
+
+/** The install commands the site's button and docs/install-agent.md give, per system. */
+export const INSTALL_COMMANDS: readonly { os: string; command: string }[] = [
+  { os: 'macOS', command: 'curl -fsSL https://caprock.dev/mac.sh | sh' },
+  { os: 'Windows', command: 'irm https://caprock.dev/win.ps1 | iex' },
+  { os: 'Linux', command: 'curl -fsSL https://caprock.dev/linux.sh | sh' },
+]
+
+/** What a failed join means, for a person on the new computer. */
+export function joinError(e: unknown): string {
+  if (!(e instanceof ApiError)) return e instanceof Error ? e.message : String(e)
+  const msg = (e.body as { error?: string } | undefined)?.error ?? e.message
+  switch (e.status) {
+    case 400: return `That is not a join key. Copy it again from the computer you work on: Settings → Computers → Add with a key.`
+    case 404: return 'The computer that made this key is not waiting for it: the key expired (15 minutes), was used or cancelled, or that computer is off. Make a new key there.'
+    case 403: return `That computer did not accept the key: ${msg}`
+    case 504: return 'It took too long. Check that both computers are online, then try again with a new key.'
+  }
+  return msg
+}
+
+/**
  * The computers this machine reaches, re-read every `intervalMs`, and again
  * (debounced) when the daemon says one of them changed — a `machines` frame
  * on `/v1/live`, sent when a computer's channel comes up or goes down — so

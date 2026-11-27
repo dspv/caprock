@@ -13,6 +13,30 @@ much — never what. Nothing reaches the computer that runs agents until you
 press **Allow** there, by name, and you can remove the laptop at any time.
 Linking computers is free and not counted.
 
+## The quick way: one key
+
+1. **On your laptop:** Settings → Computers → *This is where I work* →
+   **Add with a key**. It shows a key that works once, for 15 minutes, the
+   command to run on the new computer, and — if Caprock is not there yet —
+   the install command for each system:
+   - **macOS:** `curl -fsSL https://caprock.dev/mac.sh | sh`
+   - **Windows:** `irm https://caprock.dev/win.ps1 | iex`
+   - **Linux:** `curl -fsSL https://caprock.dev/linux.sh | sh`
+2. **On the new computer:** run `caprock join <key>` in a terminal, or, in
+   the app there, paste the key in Settings → Computers → *Run agents for
+   another computer* → **Join with a key**. It turns on access from
+   anywhere there, lets your laptop in (no Allow to press), and says what
+   it did and what is next.
+3. **Back on your laptop:** the new computer's page opens by itself. It
+   lists what that computer still needs — Git, agents, sign-ins — each
+   step run there when you click it, and **Send secrets** for the keys you
+   tick. Nothing runs or is sent until you click.
+
+The key carries no secrets and grants nothing a pasted link and Allow do
+not. While it is open your laptop waits for the new computer at its relay;
+only end-to-end ciphertext passes through. **Cancel** withdraws it. The
+steps below are the same thing by hand, with a link.
+
 ## 1. Install Caprock on both computers
 
 - **Windows:** the installer from the
@@ -152,6 +176,10 @@ and pick its folder.
 
 Tick each one, and note anything that is not true.
 
+- [ ] **One key.** **Add with a key** on the laptop, then `caprock join
+  <key>` (or **Join with a key**) on the new computer: it joins within a
+  minute with no Allow pressed, the laptop opens its page, and the same key
+  a second time is refused.
 - [ ] **The checklist.** On a fresh computer every missing step is named,
   each with a button (or, on Linux and over SSH, the command), and it ticks
   without a restart once done.
