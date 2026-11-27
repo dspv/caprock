@@ -17,4 +17,4 @@ CREATE TABLE IF NOT EXISTS telegram_outbox (
   tries      INTEGER NOT NULL DEFAULT 0,
   last_error TEXT NOT NULL DEFAULT ''
 );
-CREATE INDEX IF NOT EXISTS idx_telegram_outbox_created ON telegram_outbox(created_at);
+CREATE INDEX IF NOT EXISTS idx_telegram_outbox_created ON telegram_outbox(created_at, id);
