@@ -2118,6 +2118,11 @@ type ModelShare struct {
 	// Fable 5.1 and Mythos 5.1 read at 0.025x, so one blended rate would be
 	// wrong for any mixed workload.
 	CacheRead int64 `json:"cache_read"`
+	// CacheWrite is the model's cache writes, for the savings meter, which
+	// weighs each model's cache at its own rates (cost.SavingsFor). Not in
+	// the JSON: the meter is computed here, and the row's shape is a
+	// contract.
+	CacheWrite int64 `json:"-"`
 }
 
 // ProjectShare is tokens/cost per REPOSITORY. Sessions is how many distinct

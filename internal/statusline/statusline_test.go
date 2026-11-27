@@ -377,6 +377,24 @@ func pointAtServer(t *testing.T, url string) {
 	}
 }
 
+// The cut is weighed at the session model's own cache-read rate (#1113):
+// Opus 5.5 reads at 0.05x of input, so the same tokens cut more of its bill
+// than at the 0.10x a model with no row is weighed at.
+func TestCacheSegmentUsesTheModelsOwnRate(t *testing.T) {
+	st := &stats{Turns: 1, TokensIn: 100_000, CacheRead: 1_000_000, CacheWrite: 100_000}
+	var opus input
+	if err := json.Unmarshal([]byte(`{"model":{"id":"claude-opus-5-5","display_name":"Opus 5.5"}}`), &opus); err != nil {
+		t.Fatal(err)
+	}
+	// (1.2M - (100k + 125k + 50k)) / 1.2M = 77%; at 0.10x it is 73%.
+	if got := renderWidth(opus, st, 500); !strings.Contains(got, "cache −77%") {
+		t.Fatalf("opus 5.5: %q, want cache −77%%", got)
+	}
+	if got := renderWidth(input{}, st, 500); !strings.Contains(got, "cache −73%") {
+		t.Fatalf("no model: %q, want cache −73%%", got)
+	}
+}
+
 // The cache segment reports what the cache cut off the bill, not how often it
 // was hit. This is the whole reason it is not a hit rate: on real sessions the
 // cached reads outnumber uncached input by orders of magnitude, so a hit rate

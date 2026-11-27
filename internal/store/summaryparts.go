@@ -59,6 +59,7 @@ type modelPart struct {
 	tokens                int64
 	cost                  float64
 	turns, out, cacheRead int64
+	cacheWrite            int64
 }
 
 // countPart is turns and tokens of one model: unpriced turns (non-internal,
@@ -268,7 +269,7 @@ func scanEventParts(ctx context.Context, q Querier, from int64, where string, ar
 		}
 		switch kind {
 		case string(event.KindTurnAssistant):
-			acc.model(model, tokens, cost, tout.Int64, cr.Int64)
+			acc.model(model, tokens, cost, tout.Int64, cr.Int64, cw.Int64)
 			if !cost.Valid && tokens > 0 {
 				acc.unpricedTurn(model, tokens)
 			}
@@ -361,7 +362,7 @@ func (a *partAcc) kind(kind string, tin, tout, cr, cw int64, cost sql.NullFloat6
 	}
 }
 
-func (a *partAcc) model(model string, tokens int64, cost sql.NullFloat64, out, cacheRead int64) {
+func (a *partAcc) model(model string, tokens int64, cost sql.NullFloat64, out, cacheRead, cacheWrite int64) {
 	i := slices.IndexFunc(a.models, func(m modelPart) bool { return m.model == model })
 	if i < 0 {
 		a.models = append(a.models, modelPart{model: model})
@@ -373,6 +374,7 @@ func (a *partAcc) model(model string, tokens int64, cost sql.NullFloat64, out, c
 	m.turns++
 	m.out += out
 	m.cacheRead += cacheRead
+	m.cacheWrite += cacheWrite
 }
 
 func addCount(list []countPart, model string, tokens int64) []countPart {
@@ -680,6 +682,7 @@ func buildSummary(ctx context.Context, q Querier, from int64, spark SparkSpec, a
 			ms.Turns += m.turns
 			ms.Output += m.out
 			ms.CacheRead += m.cacheRead
+			ms.CacheWrite += m.cacheWrite
 		}
 		for _, u := range x.p.unpriced {
 			c := unpriced[u.model]

@@ -360,11 +360,16 @@ func (t *Table) PriceAt(model string, d event.TokenDelta, at time.Time) (float64
 	return usd / perMTok, true
 }
 
-// Savings is the cache-savings math from Caprock-python, in input-token equivalents.
+// Savings is the cache-savings math from Caprock-python, in input-token
+// equivalents, with each model's cache weighed at its own prices:
 //
-//	billed_with    = in + 1.25·cache_write + 0.10·cache_read
+//	billed_with    = in + Σ write_m·cache_write_m + Σ read_m·cache_read_m
 //	billed_without = in + cache_write + cache_read     (all fresh input)
 //	saved          = billed_without − billed_with
+//
+// where read_m and write_m are model m's cache-read and 5-minute cache-write
+// prices over its input price (SavingsWeights): 0.10 and 1.25 on most Claude
+// rows, 0.05 on Opus 5.5 and Sonnet 5.5, 0.025 on Fable and Mythos 5.1.
 type Savings struct {
 	BilledWith    float64 `json:"billed_with"`
 	BilledWithout float64 `json:"billed_without"`
@@ -375,21 +380,71 @@ type Savings struct {
 	CutPct float64 `json:"cut_pct"`
 }
 
-// Anthropic prompt-cache multipliers relative to base input (documented): writes
-// +25% (5m TTL), reads 10%. The 1h TTL write is 2× and is priced correctly by
-// Price(); the savings *meter* keeps the legacy 1.25 for continuity with the
-// numbers Caprock-python printed.
+// The weights for tokens no pricing row speaks for: Anthropic's documented
+// prompt-cache multipliers that held for every model before the 5.5 family,
+// writes +25% (5m TTL), reads 10% of base input.
 const (
-	wWrite = 1.25
-	wRead  = 0.10
+	fallbackWrite = 1.25
+	fallbackRead  = 0.10
 )
 
-// ComputeSavings applies the formula to raw token counts.
-func ComputeSavings(in, cacheRead, cacheWrite int64) Savings {
-	s := Savings{
-		BilledWith:    float64(in) + wWrite*float64(cacheWrite) + wRead*float64(cacheRead),
-		BilledWithout: float64(in + cacheWrite + cacheRead),
+// SavingsWeights are a model's cache-read and cache-write prices over its
+// input price, from its current row: what one cached token costs in fresh-
+// input tokens. A model with no row, or a row with no input price (a free
+// model), gets the fallback 0.10 and 1.25; so does a row's read price of 0,
+// which no row means as "free". A cache-write price of 0 — OpenAI's and
+// Google's rows, which bill no surcharge for writing — counts as 1: written
+// tokens cost what fresh input does, and the meter never counts them as
+// saved. The 1-hour write (2x on Claude rows) is not split here: the summed
+// events do not carry it, so every write is weighed at the 5-minute price,
+// as the meter always has; Price() prices the 1-hour tokens correctly.
+func (t *Table) SavingsWeights(model string) (read, write float64) {
+	if t == nil {
+		return fallbackRead, fallbackWrite
 	}
+	m, ok := t.Lookup(model)
+	if !ok || m.Input <= 0 {
+		return fallbackRead, fallbackWrite
+	}
+	read, write = fallbackRead, 1.0
+	if m.CacheRead > 0 {
+		read = m.CacheRead / m.Input
+	}
+	if m.CacheWrite5m > 0 {
+		write = m.CacheWrite5m / m.Input
+	}
+	return read, write
+}
+
+// CacheUse is one model's cache tokens within a savings figure.
+type CacheUse struct {
+	Model                 string
+	CacheRead, CacheWrite int64
+}
+
+// SavingsFor is the savings over the totals in, cacheRead and cacheWrite, the
+// cache tokens of each model in byModel weighed at that model's own rates
+// (SavingsWeights). Whatever part of the totals byModel does not name — a
+// figure summed with no model beside it — is weighed at the fallback rates,
+// and an entry past what the totals hold is cut to fit, so the result is
+// always over the totals given. A nil table weighs everything at the
+// fallback.
+func (t *Table) SavingsFor(in, cacheRead, cacheWrite int64, byModel []CacheUse) Savings {
+	s := Savings{BilledWithout: float64(in + cacheWrite + cacheRead)}
+	with := float64(in)
+	leftRead, leftWrite := max(cacheRead, 0), max(cacheWrite, 0)
+	for _, u := range byModel {
+		cr, cw := min(max(u.CacheRead, 0), leftRead), min(max(u.CacheWrite, 0), leftWrite)
+		if cr == 0 && cw == 0 {
+			continue
+		}
+		r, w := t.SavingsWeights(u.Model)
+		with += r*float64(cr) + w*float64(cw)
+		leftRead -= cr
+		leftWrite -= cw
+	}
+	with += fallbackRead*float64(leftRead) + fallbackWrite*float64(leftWrite)
+	s.BilledWith = with
 	s.Saved = s.BilledWithout - s.BilledWith
 	if s.Saved < 0 {
 		s.Saved = 0
@@ -401,4 +456,10 @@ func ComputeSavings(in, cacheRead, cacheWrite int64) Savings {
 		s.CutPct = s.Saved / s.BilledWithout * 100
 	}
 	return s
+}
+
+// ComputeSavings applies the formula to raw token counts with no model known,
+// at the fallback rates. Callers that know the models use SavingsFor.
+func ComputeSavings(in, cacheRead, cacheWrite int64) Savings {
+	return (*Table)(nil).SavingsFor(in, cacheRead, cacheWrite, nil)
 }
