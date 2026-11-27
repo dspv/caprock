@@ -341,7 +341,9 @@ type Daemon struct {
 	remoteSet  *remote.Settings
 	remoteHost *remote.Host
 	// machines are the other computers this one reaches (ADR-067).
-	machines   *machinesAdapter
+	machines *machinesAdapter
+	// join is join keys, both sides (ADR-108).
+	join       *joinAdapter
 	remoteStop context.CancelFunc
 	// devShare opens a local dev server on a phone on the same Wi-Fi
 	// (ADR-087); every share ends when the daemon does.
@@ -800,6 +802,8 @@ func (d *Daemon) run(ctx context.Context) error {
 	}
 	d.machines = &machinesAdapter{d: d}
 	defer d.machines.close()
+	d.join = &joinAdapter{d: d}
+	defer d.join.close()
 	// The daemon's own port is never shared: a share of the dashboard would
 	// put it on the network behind a link instead of a pairing code.
 	d.devShare = devshare.New(devshare.Options{Log: d.log, Forbid: func(p int) bool { return p == d.port }})
@@ -858,7 +862,7 @@ func (d *Daemon) run(ctx context.Context) error {
 		Browsers: &browser.Opener{
 			Env: func() []string { return userenv.Environ(d.log) },
 		},
-		Pairing: d.pairing, LANURL: d.lanURL, Started: d.start, LAN: d, Remote: d, Machines: d.machines, TelegramVia: d, DevShare: d.devShare, Secrets: &secretShare{d: d},
+		Pairing: d.pairing, LANURL: d.lanURL, Started: d.start, LAN: d, Remote: d, Machines: d.machines, Join: d.join, TelegramVia: d, DevShare: d.devShare, Secrets: &secretShare{d: d},
 		Projects: d.projs, Templates: tpls, Shells: &shellAdapter{m: d.mgr, live: d.livePIDs}, GitHub: d.gh,
 		Obsidian: vaults, Mail: d.mail.Handler(), BrainAuto: &brainAdapter{d: d, eng: d.brain},
 		TLDR:              d.newTLDRRunner(),

@@ -121,6 +121,17 @@ caprock setup --link       # then: access from anywhere on, a one-time link, and
 caprock setup --agent codex on   # switch an agent on (or off) in the checklist
 ```
 
+Or link it with one key instead of the link and Allow. On your laptop,
+`caprock machines key` prints a key (one use, 15 minutes) and the command
+for the other computer; there:
+
+```bash
+caprock join cj1-…         # access from anywhere on, your laptop allowed; it says what it did
+```
+
+`caprock join` with no key reads it from standard input, so the key stays
+out of your shell history.
+
 `caprock setup` prints each item with what to do and `run: <command>` for
 the ones a command fixes; run it, then `caprock setup` again. `caprock
 setup --link` ends by printing the link for your laptop (paste it in

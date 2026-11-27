@@ -178,6 +178,159 @@ func TestTwoDaemonsOneControlsTheOther(t *testing.T) {
 	target.stop(t, true)
 }
 
+// ADR-108 end to end: the same two daemons, linked with a join key instead
+// of a link and Allow. The computer the user works on makes a key (`caprock
+// machines key`, with access from anywhere off there); the new computer,
+// with access from anywhere off too, runs `caprock join <key>`. Afterwards
+// the new computer is reached from the first with no Allow pressed, lists it
+// as an allowed computer bound to its key, and the key is in no log or file
+// on either side and works no second time.
+func TestTwoDaemonsJoinWithAKey(t *testing.T) {
+	root := t.TempDir()
+	if r, err := filepath.EvalSymlinks(root); err == nil {
+		root = r
+	}
+	bin := filepath.Join(root, "bin")
+	nHome, nData := filepath.Join(root, "new-home"), filepath.Join(root, "new-data")
+	mHome, mData := filepath.Join(root, "main-home"), filepath.Join(root, "main-data")
+	for _, d := range []string{bin, nHome, nData, mHome, mData} {
+		if err := os.MkdirAll(d, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	exe := ""
+	if runtime.GOOS == "windows" {
+		exe = ".exe"
+	}
+	caprock := filepath.Join(bin, "caprock"+exe)
+	goBuild(t, caprock, "./cmd/caprock")
+	goBuild(t, filepath.Join(bin, "claude"+exe), "./testdata/fakeclaude")
+	t.Cleanup(func() {
+		killHolders(t, nData)
+		killHolders(t, mData)
+		if runtime.GOOS == "windows" {
+			time.Sleep(2 * time.Second)
+		}
+	})
+
+	relay := startRelay(t, "127.0.0.1:0")
+	relayURL := "ws://" + relay.addr
+
+	nPort, mPort := freePort(t), freePort(t)
+	nBase := "http://127.0.0.1:" + strconv.Itoa(nPort)
+	mBase := "http://127.0.0.1:" + strconv.Itoa(mPort)
+	nEnv := daemonEnv(bin, nHome, nData)
+	mEnv := daemonEnv(bin, mHome, mData)
+	newer := startBinary(t, caprock, nEnv, nPort, nData, "new")
+	main := startBinary(t, caprock, mEnv, mPort, mData, "main")
+
+	// On the computer the user works on: its relay chosen, access from
+	// anywhere left off; then a key, from the command line.
+	post(t, mBase+"/v1/pair/remote", `{"on":false,"relay":"`+relayURL+`"}`)
+	out := runCLI(t, caprock, mEnv, "machines", "key")
+	key := ""
+	for _, f := range strings.Fields(out) {
+		if strings.HasPrefix(f, "cj1-") {
+			key = f
+		}
+	}
+	if key == "" || !strings.Contains(out, "caprock join "+key) || !strings.Contains(out, "https://caprock.dev/win.ps1") {
+		t.Fatalf("`caprock machines key` printed:\n%s", out)
+	}
+	var desk struct {
+		State       string `json:"state"`
+		RelayStatus string `json:"relay_status"`
+	}
+	deadline := time.Now().Add(30 * time.Second)
+	for desk.RelayStatus != "online" {
+		if time.Now().After(deadline) {
+			t.Fatalf("the key's rendezvous never reached the relay: %+v\nmain log:\n%s", desk, main.log())
+		}
+		getJSONAt(t, mBase+"/v1/machines/join-key", &desk)
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	// On the new computer: one command.
+	joined := runCLI(t, caprock, nEnv, "join", key)
+	for _, want := range []string{"Joined.", "turned on access from anywhere", "Next, on", "Send secrets"} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("`caprock join` did not say %q:\n%s\nnew log:\n%s\nmain log:\n%s", want, joined, newer.log(), main.log())
+		}
+	}
+
+	// The new computer: access from anywhere on, at the key's relay, and the
+	// computer that made the key allowed there and bound to its key.
+	var here struct {
+		Devices []struct {
+			Kind    string `json:"kind"`
+			Pending bool   `json:"pending"`
+			Bound   bool   `json:"bound"`
+			Role    string `json:"role"`
+		} `json:"devices"`
+		Remote struct {
+			Enabled bool   `json:"enabled"`
+			Relay   string `json:"relay"`
+		} `json:"remote"`
+	}
+	getJSONAt(t, nBase+"/v1/pair/state", &here)
+	if !here.Remote.Enabled || here.Remote.Relay != relayURL || len(here.Devices) != 1 || here.Devices[0].Kind != "machine" || here.Devices[0].Pending || !here.Devices[0].Bound || here.Devices[0].Role != "controller" {
+		t.Fatalf("the new computer after the join: %+v", here)
+	}
+
+	// The computer the user works on reaches it, with no Allow pressed.
+	var list struct {
+		Machines []machineStatus `json:"machines"`
+	}
+	if code := callJSON(t, "GET", mBase+"/v1/machines?check=1", "", &list); code != 200 || len(list.Machines) != 1 || list.Machines[0].Status != "online" || list.Machines[0].Role != "controller" {
+		t.Fatalf("machines after the join: %d %+v", code, list)
+	}
+	id := list.Machines[0].ID
+	var after struct {
+		State   string         `json:"state"`
+		Machine *machineStatus `json:"machine"`
+	}
+	getJSONAt(t, mBase+"/v1/machines/join-key", &after)
+	if after.State != "joined" || after.Machine == nil || after.Machine.ID != id {
+		t.Fatalf("the key after the join: %+v", after)
+	}
+	if code := callJSON(t, "GET", mBase+"/v1/m/"+id+"/v1/sessions", "", nil); code != 200 {
+		t.Fatalf("read the new computer's sessions: %d", code)
+	}
+
+	// Single use.
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	again := exec.CommandContext(ctx, caprock, "join", key)
+	again.Env = nEnv
+	b, err := again.CombinedOutput()
+	cancel()
+	if err == nil {
+		t.Fatalf("a spent key joined again:\n%s", b)
+	}
+
+	// The key is in no log and no file on either computer.
+	jk := strings.TrimPrefix(key, "cj1-")
+	if strings.Contains(main.log(), jk) || strings.Contains(newer.log(), jk) {
+		t.Fatal("a daemon logged the key")
+	}
+	for _, dir := range []string{mData, nData} {
+		_ = filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
+			if err != nil {
+				return nil //nolint:nilerr // a file that vanished mid-walk holds nothing
+			}
+			if d.IsDir() {
+				return nil
+			}
+			if raw, err := os.ReadFile(p); err == nil && strings.Contains(string(raw), jk) {
+				t.Errorf("%s holds the key", p)
+			}
+			return nil
+		})
+	}
+	relay.stop()
+	main.stop(t, true)
+	newer.stop(t, true)
+}
+
 type machineStatus struct {
 	ID     string `json:"id"`
 	Name   string `json:"name"`

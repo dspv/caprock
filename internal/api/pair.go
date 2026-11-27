@@ -14,6 +14,7 @@ import (
 	"github.com/dspv/caprock/internal/config"
 	"github.com/dspv/caprock/internal/lan"
 	"github.com/dspv/caprock/internal/pairing"
+	"github.com/dspv/caprock/internal/remote"
 )
 
 // The pairing endpoints.
@@ -278,7 +279,9 @@ func (s *Server) handlePairRedeem(w http.ResponseWriter, r *http.Request) {
 		// pairing.
 		name = "This computer · " + name
 	}
-	dev, err := ps.Redeem(strings.TrimSpace(req.Code), name)
+	// The key the request's channel proved (remote.KindProve): a join's
+	// code is redeemed by the one computer it names alone (ADR-108).
+	dev, err := ps.RedeemFrom(strings.TrimSpace(req.Code), name, remote.PeerKey(r))
 	if err != nil {
 		// Same answer for wrong, expired, exhausted and never-issued. Each
 		// distinction tells someone guessing how close they are.
@@ -289,7 +292,11 @@ func (s *Server) handlePairRedeem(w http.ResponseWriter, r *http.Request) {
 	// the machine; its next request would say the same.
 	_, _, _ = ps.CheckVia(dev.Token, transportOf(r))
 	s.saveDevices()
-	if dev.Kind == pairing.KindMachine {
+	if dev.Kind == pairing.KindMachine && !dev.Pending {
+		// A join's code (ADR-108): allowed here before it asked, by
+		// `caprock join` run on this machine.
+		s.d.Log.Info("a computer joined with a key and is allowed", "component", "api", "device", dev.ID, "device_name", dev.Name)
+	} else if dev.Kind == pairing.KindMachine {
 		// The owner is asked by name: the dashboard's card, the prompt of
 		// `caprock pair --computer`, or `caprock machines pending`.
 		s.d.Log.Info("a computer redeemed a code and waits to be allowed", "component", "api", "device", dev.ID, "device_name", dev.Name)

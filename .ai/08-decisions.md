@@ -8822,3 +8822,106 @@ of #1095 (bootstrapping tools from the join key, the port, PATH).
 **Revisit if** a credential appears that two computers must not share (as
 the bot token) — it stays off the list — or the owner wants Send secrets
 offered right after pairing.
+
+## ADR-108 — A new computer joins with one key made on the computer you work on; running the key there is its Allow
+
+**Date:** 2026-11-27 · **Status:** accepted (owner approved the shape: a
+one-time key on the main machine, `caprock join <key>` on the new one, the
+checklist and Send secrets offered after; the details decided without him).
+Amends [ADR-067](#adr-067--your-computers-reach-each-other-through-the-same-relay-the-local-daemon-speaks-for-the-others)
+(a second way to pair, from the other end) and
+[ADR-099](#adr-099--adding-a-computer-is-a-checklist-on-the-computer-that-runs-agents-and-the-laptop-reads-its-readiness)
+(Add a computer leads with the key). The channel is
+[ADR-058](#adr-058--a-phone-reaches-the-machine-from-anywhere-through-a-relay-that-carries-only-ciphertext)'s,
+unchanged; what follows a join is ADR-099's checklist and
+[ADR-107](#adr-107--secrets-travel-from-the-laptop-to-a-linked-computer-through-the-link-on-a-click-store-to-store)'s
+Send secrets. Contract: [03-contracts.md § Other computers](03-contracts.md),
+*Join keys*. Issue #1095.
+
+**Context.** Linking a computer took a visit to each screen: on the new
+computer, turn on access from anywhere and show a link; on the laptop,
+paste it; on the new computer again, press Allow. Setting up a fresh
+Windows PC the owner found it "very hard, impossible to set up a new
+computer, it should be done with some kind of key" (translated). The rest
+of #1095 shipped in 0.200.0 (Send secrets, Bypass consent on every start,
+the Windows PATH refresh, `caprock url`, steps run from the laptop); one
+paste to link was what was left.
+
+**The decision.**
+
+- **The key is made where the user works.** Settings → Computers → *Add a
+  computer* → **Add with a key** (or `caprock machines key` over SSH) makes
+  one and shows it once, with the command for the new computer, `caprock
+  join <key>`, and — for a computer without Caprock yet — the install
+  command per system that the site and `docs/install-agent.md` already
+  give. On a computer with the app only, the key is pasted in its Settings →
+  Computers → *Run agents for another computer* → **Join with a key**.
+- **One use, 15 minutes, one open at a time.** A new key withdraws the open
+  one; **Cancel** withdraws it at once; five wrong secrets burn it. Fifteen
+  minutes, not the link's five: the new computer may need Caprock installed
+  first.
+- **How it works: a rendezvous at the issuer's relay.** The key carries a
+  relay address, a relay id and an X25519 key made for this key alone, and
+  a 128-bit secret. While it is open the issuer waits at its own relay (the
+  one access from anywhere uses) under that id, running an ordinary Host
+  whose requests reach two in-process routes and nothing of the API. The
+  new computer turns access from anywhere on — running `caprock join` there
+  is that decision, as *Show the link* is — dials the rendezvous, pinning
+  its key (Noise NK), and proves the secret; the issuer answers with its own
+  relay key, the one every channel to a computer proves (ADR-067 Phase 4).
+  The new computer issues a code for a computer that **pre-approves that
+  key and no other** and hands its ordinary pairing link over the
+  rendezvous; the issuer pairs with it exactly as `caprock machines add`
+  does. The code is redeemed only through a channel that proved that key:
+  the device is stored allowed, as a controller, its token bound to that
+  key from the first request. The right code from any other channel, or
+  from one that proved nothing, burns it.
+- **Running the key is the Allow.** ADR-067 counts `caprock machines allow
+  <name>` run on the target, by whoever holds a shell there, as the owner's
+  Allow. `caprock join <key>` run there is the same decision taken before
+  the controller asks, for the one computer whose key the rendezvous named.
+  It grants nothing beyond what a pasted link and Allow grant: the same
+  kind, role and scope, the same Remove, the same one-way direction.
+- **Nothing secret travels in the key, and the key is kept nowhere.** It
+  carries no token and no credential. The issuer keeps a SHA-256 of the
+  secret in memory; the key is in the one answer that made it and in no
+  log, event, file or later answer (the smoke test walks both data
+  directories for it). It can sit in a shell's history; by then it is spent
+  or expired. `caprock join` with no argument reads it from standard input
+  instead.
+- **After a join, the issuer offers; nothing runs.** The new computer's page
+  opens on the issuer with a line saying it joined, the checklist of steps
+  still missing there (each runs on a click, ADR-099 amended for #1088) and
+  Send secrets (nothing ticked). No step runs and nothing is sent by
+  itself. `caprock join` prints what it did — access from anywhere on and
+  through which relay, which computer is allowed, that nothing was
+  installed and no secret came — what is next on the other computer, and
+  how to undo it.
+- **Rule 4.** Making a key is the one case where the issuer dials a relay
+  before any computer is linked: on the click, to its own relay, for at
+  most 15 minutes, carrying Noise ciphertext only; the screen says so where
+  the key is shown. The new computer dials the relay named in the key, the
+  issuer's choice, and adopts it as its own only when it never chose one.
+
+**Threats.** A key someone else reads within its 15 minutes lets *their*
+computer be linked as one the user reaches — the same as a link the user
+pasted from the wrong screen — and gives them nothing on the user's
+computers: the access a join grants runs from the issuer to the joiner,
+never back. Revoke on either side removes it. The relay sees what ADR-058
+says it sees, plus that a short-lived host came and went.
+
+**Rejected.** A six-digit code instead of a long key: it cannot name the
+relay, the id or a key to pin, and making it enough needs a
+password-authenticated rendezvous (new cryptography and a relay change; ADR-067
+rejected it for the same reason). Putting the issuer's long-lived relay id
+in the key: it would add 43 characters, and the rendezvous can tell it over
+the pinned channel. Pre-approving any redeemer of the join's code: the code
+travels only inside the rendezvous, but binding to the proven key also
+holds if it did not.
+
+**Not done here.** Installing tools, signing in and accepting Bypass as
+part of the join: those stay the checklist's steps, each a click on the
+issuer, so nothing runs that the user did not press.
+
+**Revisit if** the owner wants steps run as part of the join, or a key that
+links several computers.
