@@ -4,32 +4,32 @@ Read this file first. Then read the task-specific file below.
 
 Caprock is a local, open-source **mission control for Claude Code**: a single static Go binary that runs a loopback daemon, captures every `claude` session on the machine through Claude Code hooks (via a tiny shim) and transcript tailing, normalizes everything into one event stream in SQLite, and serves a dense React dashboard (Now · Session Detail · Cost · Lifetime · Memory · Tasks) with live activity, per-repo cost, token burn, loop alerts, the prose Claude actually wrote (searchable across sessions, and handed to a new session opening the same folder), plus spawning/typing into sessions and a verified multi-agent orchestrator. Local-first, zero servers, Apache-2.0, free for solo use. Owner: Dima; repo `dspv/caprock`; domain `caprock.dev`.
 
-| File                                               | Contents                                                                | Read when...                                           |
-| -------------------------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------ |
-| [01-product.md](01-product.md)                     | One-liner, prior art, problem, users, traceability, principles          | Always                                                 |
-| [02-architecture.md](02-architecture.md)           | Daemon, data planes, cross-platform rules, sources, event model         | Touching any Go component                              |
-| [03-contracts.md](03-contracts.md)                 | Shim protocol, HTTP API, WS frames, DDL, pricing, runtime file          | Adding/changing an endpoint, table, or file format     |
-| [04-ui.md](04-ui.md)                               | The screens, visual tokens, narration map                               | Touching `ui/`                                         |
-| [05-orchestration.md](05-orchestration.md)         | Hive, mailboxes, Stop-loop, verification, approvals                     | Orchestration internals                                |
-| [06-engineering-rules.md](06-engineering-rules.md) | Binding rules; definition of green                                      | Before writing code                                    |
-| [07-orchestrator.md](07-orchestrator.md)           | The orchestrator's system prompt (embedded, kept in sync)               | Changing orchestrator behaviour                        |
-| [08-decisions.md](08-decisions.md)                 | ADR log                                                                 | Before revisiting any decision                         |
-| [09-execution-plan.md](09-execution-plan.md)       | Roadmap, phase DoDs, tasks T0–T25 with AC                               | Picking up or finishing a task                         |
-| [10-infrastructure.md](10-infrastructure.md)       | Versions, CI, release, local dev                                        | Toolchain, CI, releases                                |
-| [12-risks.md](12-risks.md)                         | Assumptions, risks, open questions                                      | Before expanding scope                                 |
-| [13-testing.md](13-testing.md)                     | Coverage per package, what it does not mean, known gaps                 | Writing tests, judging risk                            |
-| [14-build-status.md](14-build-status.md)           | What is built, what is not, next action, log                            | Checking progress                                      |
-| [16-opencode.md](16-opencode.md)                   | OpenCode support: what it gives us, decisions, traps, plan              | Adding or changing OpenCode support                    |
-| [17-teams.md](17-teams.md)                         | The team tier: shape, boundary, open questions (not built)              | Working on anything paid                               |
-| [18-postmortem.md](18-postmortem.md)               | The ~0% compression finding that closed the prior direction             | Before reopening token optimisation (FB-031)           |
-| [19-codex.md](19-codex.md)                         | Codex support: what it gives us, what it cannot price, plan             | Adding or changing Codex support                       |
-| [20-deepseek.md](20-deepseek.md)                   | DeepSeek Harness support: what it gives us, what is not built           | Adding or changing DeepSeek Harness support            |
-| [21-app.md](21-app.md)                             | The desktop app: goal, features by priority, budgets, protocols         | Working on the app, terminal protocol v2, projects     |
-| [22-app-plan.md](22-app-plan.md)                   | The desktop app: milestones, work packages, definitions of done         | Picking up or finishing an app work package            |
-| [23-grok.md](23-grok.md)                           | Grok Build support: the flags, the files, what is not read              | Adding or changing Grok support                        |
-| [24-hermes.md](24-hermes.md)                       | Hermes Agent support: its database, cost, background runs, launch       | Adding or changing Hermes support                      |
-| [25-cursor.md](25-cursor.md)                       | Cursor support: its database, cost, hooks, overhead estimate, launch    | Adding or changing Cursor support                      |
-| [26-server.md](26-server.md)                       | A server in one click on the user's own provider: build plan (proposed) | Working on New server, the setup script, provider APIs |
+| File                                               | Contents                                                             | Read when...                                           |
+| -------------------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------ |
+| [01-product.md](01-product.md)                     | One-liner, prior art, problem, users, traceability, principles       | Always                                                 |
+| [02-architecture.md](02-architecture.md)           | Daemon, data planes, cross-platform rules, sources, event model      | Touching any Go component                              |
+| [03-contracts.md](03-contracts.md)                 | Shim protocol, HTTP API, WS frames, DDL, pricing, runtime file       | Adding/changing an endpoint, table, or file format     |
+| [04-ui.md](04-ui.md)                               | The screens, visual tokens, narration map                            | Touching `ui/`                                         |
+| [05-orchestration.md](05-orchestration.md)         | Hive, mailboxes, Stop-loop, verification, approvals                  | Orchestration internals                                |
+| [06-engineering-rules.md](06-engineering-rules.md) | Binding rules; definition of green                                   | Before writing code                                    |
+| [07-orchestrator.md](07-orchestrator.md)           | The orchestrator's system prompt (embedded, kept in sync)            | Changing orchestrator behaviour                        |
+| [08-decisions.md](08-decisions.md)                 | ADR log                                                              | Before revisiting any decision                         |
+| [09-execution-plan.md](09-execution-plan.md)       | Roadmap, phase DoDs, tasks T0–T25 with AC                            | Picking up or finishing a task                         |
+| [10-infrastructure.md](10-infrastructure.md)       | Versions, CI, release, local dev                                     | Toolchain, CI, releases                                |
+| [12-risks.md](12-risks.md)                         | Assumptions, risks, open questions                                   | Before expanding scope                                 |
+| [13-testing.md](13-testing.md)                     | Coverage per package, what it does not mean, known gaps              | Writing tests, judging risk                            |
+| [14-build-status.md](14-build-status.md)           | What is built, what is not, next action, log                         | Checking progress                                      |
+| [16-opencode.md](16-opencode.md)                   | OpenCode support: what it gives us, decisions, traps, plan           | Adding or changing OpenCode support                    |
+| [17-teams.md](17-teams.md)                         | The team tier: shape, boundary, open questions (not built)           | Working on anything paid                               |
+| [18-postmortem.md](18-postmortem.md)               | The ~0% compression finding that closed the prior direction          | Before reopening token optimisation (FB-031)           |
+| [19-codex.md](19-codex.md)                         | Codex support: what it gives us, what it cannot price, plan          | Adding or changing Codex support                       |
+| [20-deepseek.md](20-deepseek.md)                   | DeepSeek Harness support: what it gives us, what is not built        | Adding or changing DeepSeek Harness support            |
+| [21-app.md](21-app.md)                             | The desktop app: goal, features by priority, budgets, protocols      | Working on the app, terminal protocol v2, projects     |
+| [22-app-plan.md](22-app-plan.md)                   | The desktop app: milestones, work packages, definitions of done      | Picking up or finishing an app work package            |
+| [23-grok.md](23-grok.md)                           | Grok Build support: the flags, the files, what is not read           | Adding or changing Grok support                        |
+| [24-hermes.md](24-hermes.md)                       | Hermes Agent support: its database, cost, background runs, launch    | Adding or changing Hermes support                      |
+| [25-cursor.md](25-cursor.md)                       | Cursor support: its database, cost, hooks, overhead estimate, launch | Adding or changing Cursor support                      |
+| [26-server.md](26-server.md)                       | A server in one click on the user's own provider: build plan         | Working on New server, the setup script, provider APIs |
 
 These files absorbed the hand-off specification (`CaprockV2-SPEC.md`, deleted after the loss audit recorded in [docs/migration-audit.md](../docs/migration-audit.md)). The spec is not a separate source of truth — **these files are**. (Numbering is non-contiguous by design — 11 was never used; nothing is missing.)
 

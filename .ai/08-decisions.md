@@ -9008,10 +9008,24 @@ issuer, so nothing runs that the user did not press.
 **Revisit if** the owner wants steps run as part of the join, or a key that
 links several computers.
 
+*Amended 2026-11-28 — a key made for a server lives 60 minutes
+([ADR-109](#adr-109--a-server-in-one-click-on-the-users-own-provider-account)).*
+A key made by **New server** goes into a setup script the user pastes into
+a provider's create form, and the server runs `caprock join` only after the
+user has signed up, picked a type and the machine has booted and installed
+its tools; an expired key inside a server's user data cannot be replaced
+without SSH. Such a key lives 60 minutes; a key made by *Add with a key*
+keeps 15. Everything else holds: one use, one open at a time (a server key
+and an ordinary key withdraw each other), five wrong secrets burn it, kept
+only as a hash in memory, and the laptop's Caprock must be running and
+online while it is open.
+
 ## ADR-109 — A server in one click, on the user's own provider account
 
-**Date:** 2026-11-28 · **Status:** proposed (written without the owner from
-his ask of 2026-11-27; nothing is built). Builds on
+**Date:** 2026-11-28 · **Status:** accepted 2026-11-28 (decided without the
+owner from his ask of 2026-11-27, under his standing rule that the work is
+decided and done without his OK; its open questions decided the same day,
+below; nothing is built). Builds on
 [ADR-067](#adr-067--your-computers-reach-each-other-through-the-same-relay-the-local-daemon-speaks-for-the-others)
 (other computers),
 [ADR-099](#adr-099--adding-a-computer-is-a-checklist-on-the-computer-that-runs-agents-and-the-laptop-reads-its-readiness)
@@ -9106,14 +9120,17 @@ token, and then treats the server as any other linked computer.
     *unmodified binary*);
   - installs Caprock **the same version as the laptop's** (a development
     build names the latest release) from the GitHub release archive
-    `caprock_<version>_linux_<arch>.tar.gz`, its SHA-256 checked against
-    the value the laptop wrote into the script from that release's
-    `checksums.txt`; a mismatch stops the script;
+    `caprock_<version>_linux_<arch>.tar.gz`, its **minisign signature**
+    checked against the public key the script carries — the key the
+    desktop app's updater already verifies with ([ADR-042](#adr-042--the-app-updates-itself-in-one-click-a-minisign-signed-bundle-one-channel-checked-only-when-the-release-check-is-on-or-the-user-asks)) —
+    and its SHA-256 against the value the laptop wrote into the script from
+    that release's `checksums.txt`; either failing stops the script (OQ-32,
+    decided below);
   - as `caprock`: `caprock hooks install --yes`, `caprock service install`,
     then `caprock join <key>` — whose output says, as on any computer, that
     access from anywhere is on and which computer is allowed.
 - **The join is ADR-108's, with a longer key.** A key made for a server
-  lives 60 minutes, not 15 (an amendment to ADR-108, proposed here): signing
+  lives 60 minutes, not 15 (ADR-108, amended 2026-11-28): signing
   up at a provider and booting the server can outlast 15, and an expired key
   inside a server's user data cannot be replaced without SSH. It is still one
   use, still one open at a time, still five wrong secrets to burn it. The
@@ -9204,13 +9221,44 @@ destination the user turns on by pasting a token — the provider's API — and
 CLAUDE.md rule 4 needs a sentence naming it, landed with P2 (draft in
 [26-server.md § Rule 4](26-server.md#rule-4)).
 
-**Open questions.** `OQ-31` (what server size the screen suggests, which
-waits on OQ-19's measured memory per session), `OQ-32` (a checksum signed
-by Caprock rather than one read from the same release), `OQ-33` (reaching
-the server from the phone and Telegram with the laptop closed) and `OQ-34`
-(keeping the server's Caprock in step with the laptop's), in
-[12-risks.md](12-risks.md#open-questions); provider and terms churn is
-`RISK-12`.
+**Open questions, decided 2026-11-28** (recorded as closed in
+[12-risks.md](12-risks.md#open-questions); provider and terms churn stays
+open as `RISK-12`):
+
+- **`OQ-31`, the suggested size.** Path B's picker pre-selects the smallest
+  type with at least 16 GB of memory available in the chosen location,
+  labelled *suggested, not measured*; the user can pick any type. No
+  screen or page says how many sessions it holds or how fast it is (rule
+  6); OQ-19's measurement is still owed before any such claim.
+- **`OQ-32`, a signed archive.** The Linux archives are signed with the
+  minisign key the app updater already uses (ADR-042), in the release
+  pipeline, landing in P1, and the script verifies the signature, not only
+  `checksums.txt`. If that key cannot be made available to goreleaser in
+  CI, P1 ships checksum-only with the gap said in the script's header and
+  in `docs/machines.md`, and signing becomes P1b.
+- **`OQ-33`, the phone and Telegram with the laptop closed.** During setup
+  the server's checklist offers two optional rows, both off by default:
+  - *Pair your phone with this server too*: the server's own daemon makes an
+    ordinary phone pairing code, and the laptop shows its QR. This narrows
+    ADR-067's *pairing stays the machine's own* for this one case: the
+    laptop asks, the server mints, and only a phone code (never a computer
+    code, never a role above the phone's) is offered, during setup only.
+    The phone appears in the server's device list, which the laptop shows,
+    and is removed there like any other device.
+  - *Move the Telegram bot here*: the bot moves to the server and the laptop
+    sends through it (ADR-047 amended 2026-11-27, #1100: one computer holds
+    the bot, the others send through it). The bot token crosses the link as
+    Send secrets carries a value (ADR-107), and the laptop stops polling in
+    the same step: ADR-107 left the token off its list because two pollers
+    take each other's messages, and a move leaves one.
+- **`OQ-34`, versions in step.** When the laptop's and the server's Caprock
+  versions differ, the server's checklist shows *Update Caprock there*;
+  pressing it types that install's upgrade command (the one `GET
+  /v1/update` names for it) into a terminal tab on the server, shown on the
+  laptop, and the user presses Enter — shown, never run by itself, as every
+  Caprock update. A link tolerates whatever gap links tolerate today: no
+  minimum version is enforced between computers, and a route the older side
+  lacks answers 404, which the newer side shows as nothing new (ADR-099).
 
 **Revisit if** Anthropic's terms stop allowing a user's own sign-in on a
 hosted machine, a provider's API stops taking user data, or the owner wants

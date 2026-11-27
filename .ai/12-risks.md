@@ -99,7 +99,7 @@ to the App Store; the risk stays open for every later version, 1.1's push
 first.
 
 **`RISK-12` — A provider's API or Anthropic's terms change under the server
-path.** A server in one click ([ADR-109](08-decisions.md), proposed) rests
+path.** A server in one click ([ADR-109](08-decisions.md)) rests
 on two things Caprock does not control. A provider can change or retire the
 API calls path B makes (create with user data, prices, delete) or the user
 data field path A pastes into; a script that boots and silently fails to
@@ -445,39 +445,36 @@ Anything the spec did not answer. Do not resolve these by inventing an answer. "
   by: five to ten phrases dictated into the app on a real Windows and a
   real Linux machine, scored with the research's script, and the notes in
   Settings corrected to what they show.
-- `OQ-31` — **What server size New server suggests** ([ADR-109](08-decisions.md),
-  proposed). The owner's ask rests on "each session loads the computer
-  heavily"; how much memory and CPU one agent session takes on a server is
-  not measured (OQ-19 measures what moving work frees on the laptop, not
-  what it needs there). Until it is, the picker pre-selects nothing by size
-  and shows each type's memory and the provider's price. Decided by: OQ-19's
-  measurement plus one run of three to five agent sessions on a 16 GB
-  server, peak memory recorded, before any suggested size or any public
-  "enough for N sessions".
-- `OQ-32` — **A checksum Caprock signs.** The setup script checks the
-  Caprock archive against the SHA-256 the laptop read from the same
-  release's `checksums.txt`, which catches a broken download, not a
-  tampered release. Signing the checksums (a key whose public half is built
-  into Caprock) would close that. The CLI archives and `checksums.txt`
-  carry no signature today; the desktop app's update bundle is
-  minisign-signed ([ADR-042](08-decisions.md)), so a signing key and a
-  verifier exist. Decided by: the owner, when P1 lands — sign in the release
-  workflow, or accept the GitHub release as the trust root and say so.
-- `OQ-33` — **The phone and Telegram with the laptop closed.** Links are
-  one-way and not transitive (ADR-067): a phone paired with the laptop does
-  not reach the server, and the Telegram bot answers from the one computer
-  that polls it. With the laptop asleep, nothing the user carries reaches
-  the server. Pairing a phone is the target's own action, which a linked
-  computer may not take for it. Decided by: the owner — pair the phone with
-  the server too (a QR the server's daemon shows through the laptop's page,
-  which needs a decision on ADR-067's "pairing stays the machine's own"), or
-  move the Telegram poller to the server.
-- `OQ-34` — **Keeping the server's Caprock in step.** The server starts on
-  the laptop's version and never updates itself (`internal/update` names
-  the upgrade command for an install and never runs it); the laptop updates and the two drift. Whether the checklist
-  offers *Update Caprock there* as a step run on a click (ADR-099 #1088),
-  and how far apart two versions may be before a link refuses, is not
-  decided. Decided by: the owner, with P3.
+- ~~`OQ-31` — What server size New server suggests.~~ Decided 2026-11-28
+  ([ADR-109](08-decisions.md)): path B's picker pre-selects the smallest
+  type with at least 16 GB of memory, labelled *suggested, not measured*,
+  and the user can pick any. It is a default, not a claim: how much memory
+  and CPU one agent session takes on a server is still not measured (OQ-19
+  measures what moving work frees on the laptop), and no screen or page says
+  how many sessions a type holds until a run of three to five agent sessions
+  on a 16 GB server, peak memory recorded, says so.
+- ~~`OQ-32` — A checksum Caprock signs.~~ Decided 2026-11-28
+  ([ADR-109](08-decisions.md)): the Linux archives are signed in the
+  release pipeline with the minisign key the desktop app's updater already
+  uses ([ADR-042](08-decisions.md)), landing in P1, and the setup script
+  verifies that signature as well as the SHA-256 from `checksums.txt`. If
+  the key cannot be made available to goreleaser in CI, P1 ships
+  checksum-only, says so in the script's header and in `docs/machines.md`,
+  and signing becomes P1b.
+- ~~`OQ-33` — The phone and Telegram with the laptop closed.~~ Decided
+  2026-11-28 ([ADR-109](08-decisions.md)): during setup the server's
+  checklist offers *Pair your phone with this server too* (a phone code the
+  server's daemon makes, its QR shown on the laptop) and *Move the Telegram
+  bot here* (the server holds the bot and the laptop sends through it, as
+  ADR-047's 2026-11-27 amendment, #1100, allows). Both are optional and off
+  by default.
+- ~~`OQ-34` — Keeping the server's Caprock in step.~~ Decided 2026-11-28
+  ([ADR-109](08-decisions.md)): when the versions differ, the server's
+  checklist shows *Update Caprock there*, which types that install's
+  upgrade command into a terminal tab on the server, shown on the laptop;
+  the user presses Enter, and nothing runs by itself. A link tolerates
+  whatever gap links tolerate today: no minimum version is enforced between
+  computers, and a route the older side lacks answers 404.
 
 ## What would falsify the whole plan
 

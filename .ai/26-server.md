@@ -1,6 +1,6 @@
 # A server in one click
 
-**Status: proposed, not built.** The decision is
+**Status: accepted 2026-11-28, not built.** The decision is
 [ADR-109](08-decisions.md#adr-109--a-server-in-one-click-on-the-users-own-provider-account);
 this file is its build plan. The server is the user's own, rented on their
 own provider account; Caprock writes its setup script, optionally calls the
@@ -24,7 +24,9 @@ provider on the user's token, and links it as any other computer
   second subscription (ADR-048).
 - **Linux builds**: `.goreleaser.yaml` ships `caprock_<version>_linux_amd64`
   and `_arm64` archives (the daemon, the hook shim, the PTY host) with
-  `checksums.txt`. The checksums file is not signed (OQ-32).
+  `checksums.txt`. Neither is signed yet; the desktop app's update bundle
+  is, with minisign (ADR-042), and P1 signs the Linux archives with that
+  key (OQ-32, decided 2026-11-28).
 
 ## Phases
 
@@ -44,6 +46,13 @@ the same commit (rule 9) and a changelog fragment.
 - The laptop fills in the archive's SHA-256 from that release's
   `checksums.txt` when the script is made — the release check already talks
   to GitHub (`internal/update`), so no new destination.
+- **Signed archives** (OQ-32, decided 2026-11-28): the release workflow
+  signs each `caprock_<version>_linux_<arch>.tar.gz` with the minisign key
+  the app updater uses (ADR-042) and publishes the `.minisig` beside it; the
+  script carries the public key and verifies the signature before the
+  checksum. If that key cannot be handed to goreleaser in CI, P1 ships
+  checksum-only, the script's header and `docs/machines.md` say so, and
+  signing is **P1b**, its own PR.
 - `POST /v1/machines/server-script` (loopback only, never on a device
   allowlist): makes a join key with the 60-minute server lifetime (ADR-108
   amended by ADR-109) and returns the script. The key is in that one answer
@@ -72,7 +81,10 @@ the same commit (rule 9) and a changelog fragment.
 - The picker: types and locations as the API returns them, each with the
   provider's price, labelled *Hetzner's price, read <time>*, in its currency
   with its VAT treatment; nothing Caprock computes. Types the API marks
-  unavailable in a location are shown as such, not hidden.
+  unavailable in a location are shown as such, not hidden. The smallest
+  available type with at least 16 GB of memory is pre-selected and labelled
+  *suggested, not measured* (OQ-31, decided 2026-11-28); any type can be
+  picked, and nothing says how many sessions a type holds.
 - Create: the P1 script as user data, a provider firewall with no inbound
   rule, a name the user can change; then the server's status until it joins.
 - **Delete server**: the typed-name dialog of ADR-109, Forget, then the
@@ -99,9 +111,27 @@ the same commit (rule 9) and a changelog fragment.
   never changed, by the server's own daemon.
 - *Then close your laptop*: one line once an agent runs there, saying the
   session goes on and the laptop reconnects when it wakes.
+- Two optional rows during setup, off by default (OQ-33, decided
+  2026-11-28):
+  - *Pair your phone with this server too*: the laptop asks the server's
+    daemon for an ordinary phone pairing code (never a computer code, never
+    above the phone's role, offered during setup only) and draws its QR;
+    the phone lands in the server's device list, which the laptop shows.
+  - *Move the Telegram bot here*: the bot token crosses the link as Send
+    secrets carries a value, the server starts polling, and the laptop stops
+    polling and switches to *Send through <server>* (ADR-047, #1100) in the
+    same step, so one poller remains.
+- *Update Caprock there* (OQ-34, decided 2026-11-28): shown when the two
+  versions differ; it types the server install's upgrade command (as `GET
+  /v1/update` names it there) into a terminal tab on the server, shown on
+  the laptop, and the user presses Enter. No minimum version is enforced on
+  the link; an older side answers 404 to a route it lacks.
 - Tests: the readiness reads on fixtures of each file and command output;
   the sign-in path with a fake `claude` that prints a URL and waits for a
-  code; nothing of the credential in any answer.
+  code; nothing of the credential in any answer; the phone code is a phone
+  code with the phone's role and is refused outside setup; the bot move
+  leaves exactly one poller, and a failed move leaves the laptop polling;
+  *Update Caprock there* types and never presses Enter.
 
 ### P4 — a browser for agents
 
@@ -136,4 +166,5 @@ ADRs do.
 - A managed server Caprock runs (ADR-109 keeps it as a later paid option).
 - Providers other than Hetzner Cloud on path B, until someone asks.
 - A desktop or remote browser for the person on the server.
-- The server's Caprock updating itself (OQ-34).
+- The server's Caprock updating itself (*Update Caprock there* types the
+  command; the user runs it).
