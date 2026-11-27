@@ -112,7 +112,10 @@ what it left open:
   and file server reached through socat on the container's loopback, the
   agents skipped (`CAPROCK_SETUP_SKIP_AGENTS=1`), ending in the join and
   reads of lingering, the firewall, unattended upgrades and the user unit.
-  It is not in CI (minutes, a privileged container, package mirrors) and
+  It is not in `make check` (minutes, a privileged container, package
+  mirrors); CI runs it as `ci.yml`'s required `server-container` job on
+  ubuntu-latest when `internal/serverscript/`, `internal/peers/`,
+  `cmd/caprock/`, the test or `ci.yml` change, and on `workflow_dispatch`. It
   was not run when it was written: the machine it was written on had no
   Docker daemon.
 

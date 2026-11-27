@@ -163,7 +163,8 @@ smoke: build-go ## Phase 0 DoD scenario + the Phase 2 e2e (what CI's smoke step 
 
 # The new server's setup script (ADR-109) run on a Debian with systemd in a
 # privileged container, joining a daemon here. Linux with Docker only; not in
-# `make check` or CI (minutes, a privileged container, package mirrors).
+# `make check` (minutes, a privileged container, package mirrors); CI runs it
+# in ci.yml's server-container job when its files change.
 .PHONY: server-container-test
 server-container-test: ## the server setup script in a Debian container (Linux + Docker)
 	go test -tags 'smoke servercontainer' -count=1 -timeout 40m -run TestTheSetupScriptOnADebianServer -v ./internal/smoke/

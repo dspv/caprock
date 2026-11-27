@@ -24,7 +24,8 @@ import (
 
 // The setup script on a real Debian with systemd, in a container (ADR-109
 // P1, .ai/26-server.md): `make server-container-test` on a Linux machine
-// with Docker. Not in `make check` or CI: it needs Docker, a privileged
+// with Docker, and ci.yml's server-container job on ubuntu-latest when its
+// files change. Not in `make check`: it needs Docker, a privileged
 // container running systemd and the distribution's package mirrors, and
 // takes minutes. It installs no agent (CAPROCK_SETUP_SKIP_AGENTS=1: no
 // Claude Code or Codex download, no sign-in).
