@@ -43,7 +43,8 @@ func TestSecretsTravelStoreToStore(t *testing.T) {
 		t.Fatalf("values: %v", err)
 	}
 
-	in := append(vals,
+	in := append([]api.SecretValue{}, vals...)
+	in = append(in,
 		api.SecretValue{Name: "kimi", Value: "two\nlines"},
 		api.SecretValue{Name: "telegram", Value: "x"},
 		api.SecretValue{Name: "github", Value: "x"},

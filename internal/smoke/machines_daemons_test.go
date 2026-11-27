@@ -355,7 +355,10 @@ func sendSecretsSmoke(t *testing.T, cBase, tBase, id, cData, tData string, cLog,
 	// database, config.json, the record of arrivals or a log.
 	for _, dir := range []string{cData, tData} {
 		_ = filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
-			if err != nil || d.IsDir() || filepath.Base(p) == "deepseek-api-key" {
+			if err != nil {
+				return nil //nolint:nilerr // a file that vanished mid-walk holds nothing
+			}
+			if d.IsDir() || filepath.Base(p) == "deepseek-api-key" {
 				return nil
 			}
 			if raw, err := os.ReadFile(p); err == nil && strings.Contains(string(raw), value) {
