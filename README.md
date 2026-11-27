@@ -172,6 +172,9 @@ scoop install caprock
 caprock up        # opens localhost:22776; offers to set up hooks + plan-limit status line
 ```
 
+An install from before the port changed keeps `localhost:4173`; `caprock url`
+prints the address on any computer, for a script: `curl "$(caprock url)/v1/status"`.
+
 Have Go? `go install github.com/dspv/caprock/cmd/caprock@latest` — the dashboard
 is embedded, so it works with no Node build. No package manager? Grab a binary
 from [Releases](https://github.com/dspv/caprock/releases).

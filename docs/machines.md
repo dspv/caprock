@@ -267,7 +267,7 @@ Pick one real task you would give an agent (the same prompt, the same
 repository at the same commit on both computers). On the laptop:
 
 ```bash
-URL=$(caprock status --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["url"])')
+URL=$(caprock url)  # the configured port: 22776, or 4173 on an older install
 # Here: start the task on This Mac, then sample every 10 s until it ends.
 while sleep 10; do curl -s "$URL/v1/resources"; echo; done > oq19-here.jsonl
 # Elsewhere: start the same task on the other computer (New agent → Machine),

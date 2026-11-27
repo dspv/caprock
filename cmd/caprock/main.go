@@ -75,12 +75,12 @@ func newRoot() *cobra.Command {
 	root := &cobra.Command{
 		Use:           "caprock",
 		Short:         "Mission control for Claude Code — local, observe-first",
-		Long:          "Caprock watches every Claude Code session on this machine (hooks + transcripts), shows live activity, cost and loop alerts at http://127.0.0.1:22776, and keeps all data local.",
+		Long:          "Caprock watches every Claude Code session on this machine (hooks + transcripts), shows live activity, cost and loop alerts at http://127.0.0.1 on its configured port (22776 on a fresh install; `caprock url` prints it), and keeps all data local.",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Version:       version.Version,
 	}
-	root.AddCommand(upCmd(), downCmd(), statusCmd(), reportCmd(), exportCmd(), sessionsCmd(), tasksCmd(), taskCmd(), hooksCmd(), hookCmd(), statuslineCmd(), licenseCmd(), serviceCmd(), versionCmd(), ptyHostCmd(), worktreeSetupCmd(), doctorCmd(), remoteCmd(), pairCmd(), setupCmd(), machinesCmd(), moduleCmd(), mcpCmd())
+	root.AddCommand(upCmd(), downCmd(), statusCmd(), reportCmd(), exportCmd(), sessionsCmd(), tasksCmd(), taskCmd(), hooksCmd(), hookCmd(), statuslineCmd(), licenseCmd(), serviceCmd(), versionCmd(), ptyHostCmd(), worktreeSetupCmd(), doctorCmd(), remoteCmd(), pairCmd(), setupCmd(), machinesCmd(), moduleCmd(), mcpCmd(), urlCmd())
 	return root
 }
 
@@ -492,10 +492,13 @@ func statusCmd() *cobra.Command {
 			if !running {
 				sp, _ := hooks.DefaultSettingsPath()
 				hs, _ := hooks.Inspect(sp, hooks.ShimCommand(dir))
+				// The address it will listen on: the configured port, not an
+				// assumed one (#1095).
+				url, _, _ := localURL(dir)
 				if asJSON {
-					return json.NewEncoder(out).Encode(map[string]any{"running": false, "data_dir": dir, "hooks": hs})
+					return json.NewEncoder(out).Encode(map[string]any{"running": false, "url": url, "data_dir": dir, "hooks": hs})
 				}
-				fmt.Fprintf(out, "daemon:  not running\ndata:    %s\nhooks:   %d/%d events registered in %s\n", dir, len(hs.Installed), len(hooks.Events), sp)
+				fmt.Fprintf(out, "daemon:  not running (configured address %s)\ndata:    %s\nhooks:   %d/%d events registered in %s\n", url, dir, len(hs.Installed), len(hooks.Events), sp)
 				return nil
 			}
 			resp, err := (&http.Client{Timeout: 3 * time.Second}).Get(fmt.Sprintf("http://127.0.0.1:%d/v1/status", rt.Port))
