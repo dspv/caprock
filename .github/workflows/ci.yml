@@ -53,7 +53,7 @@ jobs:
           PR: ${{ github.event.pull_request.number }}
           BEFORE: ${{ github.event.before }}
         run: |
-          # server: the setup script in a Debian container (server-container),
+          # server: the setup script in Ubuntu and Debian containers (server-container),
           # minutes long, so only when what it runs changed: on a pull request
           # its files, on a push to master the pushed commits' files, and
           # always by hand (workflow_dispatch) or when the files cannot be read.
@@ -324,20 +324,27 @@ jobs:
             ${{ steps.gocache.outputs.mod }}
           key: go-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum') }}
 
-  # A new server's setup script (ADR-109 P1), run as root on a Debian 12 with
-  # systemd in a privileged container, joining a daemon on the runner through
-  # a relay in the test (make server-container-test,
-  # internal/smoke/server_container_test.go). The agents' installs are
-  # skipped (CAPROCK_SETUP_SKIP_AGENTS=1): no Claude Code or Codex download,
-  # no sign-in. ubuntu-latest only, the runner with Docker; required.
+  # A new server's setup script (ADR-109 P1), run as root with systemd in a
+  # privileged container, joining a daemon on the runner through a relay in
+  # the test (make server-container-test,
+  # internal/smoke/server_container_test.go), on each supported family:
+  # ubuntu:24.04 (Hetzner's and DigitalOcean's default image) and debian:12,
+  # booted the same way. The agents' installs are skipped
+  # (CAPROCK_SETUP_SKIP_AGENTS=1): no Claude Code or Codex download, no
+  # sign-in. ubuntu-latest only, the runner with Docker; required.
   server-container:
     needs: changes
     if: needs.changes.outputs.code == 'true' && needs.changes.outputs.server == 'true'
-    name: server script (debian container)
+    name: server script (${{ matrix.image }})
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ["ubuntu:24.04", "debian:12"]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
       CGO_ENABLED: "0"
+      CAPROCK_SERVER_IMAGE: ${{ matrix.image }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0

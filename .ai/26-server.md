@@ -107,13 +107,16 @@ what it left open:
   GitHub, its key open for an hour, the join with that key on stdin as the
   script does it, and the key in no log or file. **The script run in a
   container is behind build tags** (`smoke servercontainer`, `make
-  server-container-test`, Linux with Docker): a Debian 12 with systemd as
+  server-container-test`, Linux with Docker; `CAPROCK_SERVER_IMAGE` picks the
+  image, `debian:12` when unset): Ubuntu 24.04 (Hetzner's and DigitalOcean's
+  default) and Debian 12, each with systemd as
   PID 1 in a privileged container, the release served locally, the relay
   and file server reached through socat on the container's loopback, the
   agents skipped (`CAPROCK_SETUP_SKIP_AGENTS=1`), ending in the join and
   reads of lingering, the firewall, unattended upgrades and the user unit.
   It is not in `make check` (minutes, a privileged container, package
-  mirrors); CI runs it as `ci.yml`'s required `server-container` job on
+  mirrors); CI runs it as `ci.yml`'s required `server-container` matrix
+  (`ubuntu:24.04`, `debian:12`) on
   ubuntu-latest when `internal/serverscript/`, `internal/peers/`,
   `cmd/caprock/`, the test or `ci.yml` change, and on `workflow_dispatch`. It
   was not run when it was written: the machine it was written on had no

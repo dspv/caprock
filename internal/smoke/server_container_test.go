@@ -22,8 +22,10 @@ import (
 	"time"
 )
 
-// The setup script on a real Debian with systemd, in a container (ADR-109
-// P1, .ai/26-server.md): `make server-container-test` on a Linux machine
+// The setup script on a real Ubuntu or Debian with systemd, in a container
+// (CAPROCK_SERVER_IMAGE, debian:12 when unset; CI runs ubuntu:24.04 and
+// debian:12: Hetzner's and DigitalOcean's default, and the other supported
+// family; ADR-109 P1, .ai/26-server.md): `make server-container-test` on a Linux machine
 // with Docker, and ci.yml's server-container job on ubuntu-latest when its
 // files change. Not in `make check`: it needs Docker, a privileged
 // container running systemd and the distribution's package mirrors, and
@@ -36,12 +38,12 @@ import (
 // on its own loopback, through socat, because a ws:// relay must be on
 // loopback (remote.CheckRelayURL) and the script turns a firewall on — in
 // the container's own network namespace, never the host's.
-func TestTheSetupScriptOnADebianServer(t *testing.T) {
+func TestTheSetupScriptOnALinuxServer(t *testing.T) {
 	docker, err := exec.LookPath("docker")
 	if err != nil {
 		t.Skip("no docker")
 	}
-	image := os.Getenv("CAPROCK_SERVER_TEST_IMAGE")
+	image := os.Getenv("CAPROCK_SERVER_IMAGE")
 	if image == "" {
 		image = "debian:12"
 	}
@@ -108,7 +110,8 @@ func TestTheSetupScriptOnADebianServer(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// A Debian with systemd as PID 1, as a cloud server boots.
+	// Ubuntu or Debian with systemd as PID 1, as a cloud server boots; the same
+	// packages and boot on both images.
 	name := fmt.Sprintf("caprock-servertest-%d", time.Now().UnixNano())
 	run := func(timeout time.Duration, args ...string) (string, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
@@ -251,4 +254,3 @@ func writeArchive(t *testing.T, path, dir string, names ...string) string {
 	}
 	return hex.EncodeToString(h.Sum(nil))
 }
-
