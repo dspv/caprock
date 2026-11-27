@@ -622,7 +622,7 @@ the target runs its ordinary Host and gate, and pairs it as a computer
     Ubuntu 24.04 LTS or newer and Debian 12 or newer (anything else stops
     at the top, naming both), run as root, each step printed as `==>
     caprock setup: <step>` and the failing one named on exit: packages from
-    the distribution (`ca-certificates curl git tar gzip nodejs npm ufw
+    the distribution (`ca-certificates curl git tar gzip procps nodejs npm ufw
     unattended-upgrades`, `minisign` when signed; Node.js 18 or newer
     required); user `caprock` (`useradd`, password locked, out of `sudo`),
     `loginctl enable-linger caprock`, waiting for its user manager; APT's

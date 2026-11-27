@@ -224,7 +224,7 @@ apt_get() {
 	apt-get -o DPkg::Lock::Timeout=600 -y "$@"
 }
 apt_get update
-apt_get install --no-install-recommends ca-certificates curl git tar gzip nodejs npm ufw unattended-upgrades
+apt_get install --no-install-recommends ca-certificates curl git tar gzip procps nodejs npm ufw unattended-upgrades
 if [ -n "$CAPROCK_MINISIGN_KEY" ]; then
 	apt_get install --no-install-recommends minisign
 fi
