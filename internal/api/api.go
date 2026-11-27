@@ -48,7 +48,6 @@ import (
 	"github.com/dspv/caprock/internal/obsidian"
 	"github.com/dspv/caprock/internal/pairing"
 	"github.com/dspv/caprock/internal/planshare"
-	"github.com/dspv/caprock/internal/premium"
 	"github.com/dspv/caprock/internal/projects"
 	"github.com/dspv/caprock/internal/store"
 	"github.com/dspv/caprock/internal/subs"
@@ -3090,21 +3089,17 @@ func (s *Server) handleStartPack(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handlePremium(w http.ResponseWriter, _ *http.Request) {
-	// Pricing and licence state in one response: every surface that mentions
-	// the paid version needs both, and two requests to draw one banner is two
-	// chances for them to disagree about what the user has.
+	// The licence state alone. Caprock sells nothing to one person since
+	// 2026-11-27 (ADR-022, amended), so the old personal prices are gone; the
+	// licence code stays for the team tier.
 	type resp struct {
-		premium.Pricing
 		License license.State `json:"license"`
 	}
 	key := ""
 	if s.d.Settings != nil {
 		key = s.d.Settings.Get().LicenseKey
 	}
-	writeJSON(w, http.StatusOK, resp{
-		Pricing: premium.Current(),
-		License: license.Parse(key, s.d.Now()),
-	})
+	writeJSON(w, http.StatusOK, resp{License: license.Parse(key, s.d.Now())})
 }
 
 func (s *Server) handlePricing(w http.ResponseWriter, _ *http.Request) {
