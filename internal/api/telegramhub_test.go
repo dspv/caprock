@@ -22,9 +22,18 @@ func TestOnlyAnAllowedComputerSendsThroughTheBot(t *testing.T) {
 	b := telegram.New(&tgHost{token: token, chat: "777"}, t.TempDir(), nil)
 	b.Base = bot.URL()
 	b.Out.Gap = 10 * time.Millisecond
+	// Stopped and waited for before the temporary directory goes, so
+	// Windows can delete it.
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go b.Run(ctx)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		b.Run(ctx)
+	}()
+	t.Cleanup(func() {
+		cancel()
+		<-done
+	})
 
 	s, ps, _, phone := pairedPhones(t, Deps{Telegram: b})
 	mac := pairedComputer(t, ps, "MacBook", true)

@@ -37,11 +37,8 @@ func viaDaemon(t *testing.T, holder *Daemon, offline *atomic.Bool) *Daemon {
 			return rec.Result(), nil
 		}}
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
-	go d.tg.Run(ctx)
-	go d.alertLoop(ctx, d.bus.Subscribe(64))
-	go d.runTelegramVia(ctx)
+	sub := d.bus.Subscribe(64)
+	runJoined(t, d.tg.Run, func(ctx context.Context) { d.alertLoop(ctx, sub) }, d.runTelegramVia)
 	return d
 }
 

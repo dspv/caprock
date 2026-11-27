@@ -251,10 +251,8 @@ func TestTheBotMovesWithoutANewPairing(t *testing.T) {
 	// The new holder, on the same (fake) Telegram.
 	s.b.Base = holder.bot.URL()
 	s.b.Out.Gap = 10 * time.Millisecond
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
-	go s.b.Run(ctx)
-	if err := s.b.TakeOver(ctx, h, "MacBook", "Mac mini"); err != nil {
+	runJoined(t, s.b)
+	if err := s.b.TakeOver(context.Background(), h, "MacBook", "Mac mini"); err != nil {
 		t.Fatal(err)
 	}
 	if tok, chat := s.h.Bot(); tok != token || chat != "777" {

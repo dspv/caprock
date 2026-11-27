@@ -157,7 +157,14 @@ func (d *Daemon) viaWords(id string, err error) error {
 // runTelegramVia sends what waits to the holder, and takes back the presses
 // under it, until ctx ends.
 func (d *Daemon) runTelegramVia(ctx context.Context) {
-	go d.viaPressLoop(ctx)
+	// The press loop ends with this one, so neither touches the data
+	// directory after it returns.
+	pressDone := make(chan struct{})
+	go func() {
+		defer close(pressDone)
+		d.viaPressLoop(ctx)
+	}()
+	defer func() { <-pressDone }()
 	backoff := time.Duration(0)
 	for ctx.Err() == nil {
 		if backoff > 0 {

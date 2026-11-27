@@ -281,7 +281,14 @@ func (b *Bridge) wanted() bool {
 
 // Run polls and sends until ctx ends.
 func (b *Bridge) Run(ctx context.Context) {
-	go b.Out.Run(ctx)
+	// The outbox ends with Run, so nothing it sends records a message in
+	// telegram.json after Run has returned.
+	outDone := make(chan struct{})
+	go func() {
+		defer close(outDone)
+		b.Out.Run(ctx)
+	}()
+	defer func() { <-outDone }()
 	idle := 30 * time.Second
 	for ctx.Err() == nil {
 		if !b.wanted() {
