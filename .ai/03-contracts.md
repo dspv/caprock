@@ -4876,8 +4876,11 @@ from the others on the screen (FB-035): the name the user gave it,
 `sessions.name` (`"name"`), else the stored `sessions.title`
 (`"title"`), else the first of the session's earliest eight `turn.user`
 prompts — or the stored `sessions.prompt`, for Codex — that says something (`"prompt"`):
-not a tag-wrapped command or notification, not a bare path, at least 12
-characters. First line only, clipped to 120 characters.
+not a tag-wrapped command or notification, not a bare path, not dropped
+files alone, at least 12 characters. Each absolute file path in it is cut
+to its file name first (`"/…/paste/drop-…/CV.pdf" how is my CV?` →
+`CV.pdf how is my CV?`; `internal/api/filenames.go`, the rules of
+`ui/src/lib/filepaths.ts`). First line only, clipped to 120 characters.
 
 **Non-Anthropic pricing.** `pricing/pricing.json` carries rows for the models Caprock observes through OpenCode — DeepSeek and MiniMax at the providers' own published rates, fetched with a date and noted in the file. They are priced so a total that includes non-Anthropic usage is a total; before this, $155 of the owner's own spend sat outside his. `normalizeModel` strips a gateway's vendor prefix, so `minimax/minimax-m3` from OpenRouter and `MiniMax-M3` from the direct API are one row rather than two, one of them unpriced. The unpriced warning fires only on turns whose tokens are greater than zero: a turn recorded with explicit zeroes has nothing to price, and warning about it says a total is missing money it is not missing.
 

@@ -1,4 +1,5 @@
 import { ApiError, errText } from './api'
+import { baseName, pathParts } from './filepaths'
 
 /**
  * What a phone may attach: photos, and the documents the daemon keeps.
@@ -75,37 +76,26 @@ export function isVideoName(name: string): boolean {
 /** One piece of a prompt's words: text, or the path of a video in them. */
 export type VideoPart = { kind: 'text'; text: string } | { kind: 'video'; path: string; raw: string }
 
-const VIDEO_EXT = String.raw`\.(?:mov|mp4|m4v|webm)`
-const ABS = String.raw`(?:\/|[A-Za-z]:[\\/])`
-/**
- * A video path as a terminal types a dropped file: double- or single-quoted
- * (Caprock's drop, so a space in "Application Support" stays one argument),
- * or bare after a space with each space backslash-escaped (a shell's drop).
- */
-const VIDEO_PATH = new RegExp(
-  String.raw`"(${ABS}[^"\n]*?${VIDEO_EXT})"|'(${ABS}[^'\n]*?${VIDEO_EXT})'|(^|[\s(])(${ABS}(?:\\ |[^\s"'])*?${VIDEO_EXT})(?=$|[\s"',;:)\]]|\.(?:\s|$))`,
-  'gi',
-)
-
 /**
  * `text` split around the absolute video paths in it, in order (owner,
  * 2026-11-25: a video dropped into a session showed as its path). Each
  * video keeps `raw`, the characters as written, to fall back to; `path` is
- * the file's, unquoted and unescaped. No video: one text part.
+ * the file's, unquoted and unescaped. No video: one text part. The paths
+ * are lib/filepaths' `pathParts`, the one parser every file chip uses; any
+ * other file stays text here, as written.
  */
 export function videoParts(text: string): VideoPart[] {
   const out: VideoPart[] = []
-  let at = 0
-  for (const m of text.matchAll(VIDEO_PATH)) {
-    const lead = m[3] ?? ''
-    const start = m.index + lead.length
-    if (start > at) out.push({ kind: 'text', text: text.slice(at, start) })
-    const raw = m[0].slice(lead.length)
-    const path = m[1] ?? m[2] ?? (m[4] ?? '').replace(/\\ /g, ' ')
-    out.push({ kind: 'video', path, raw })
-    at = m.index + m[0].length
+  const words = (t: string) => {
+    const last = out[out.length - 1]
+    if (last?.kind === 'text') last.text += t
+    else out.push({ kind: 'text', text: t })
   }
-  if (at < text.length || out.length === 0) out.push({ kind: 'text', text: text.slice(at) })
+  for (const p of pathParts(text)) {
+    if (p.kind === 'text') words(p.text)
+    else if (p.file === 'video') out.push({ kind: 'video', path: p.path, raw: p.raw })
+    else words(p.raw)
+  }
   return out
 }
 
@@ -115,10 +105,7 @@ export function isPhotoFile(f: { name: string; type: string }): boolean {
 }
 
 /** The last part of a path, either separator: what a file chip shows. */
-export function baseName(path: string): string {
-  const i = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'))
-  return i >= 0 ? path.slice(i + 1) : path
-}
+export { baseName }
 
 /**
  * Each attached path's label, in order: an image is "Image N", counted among

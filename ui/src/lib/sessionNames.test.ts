@@ -14,6 +14,7 @@ describe('promptTitle', () => {
     ['  "review PR 532 — the sidebar rows"  ', 'Review PR 532'],
     ['list of open issues', 'List of open issues'],
     ['ok', 'Ok'],
+    ['"/Users/me/Library/Application Support/caprock/paste/drop-1/CV.pdf" how is my CV?', 'CV.pdf how is my CV'],
     ['', ''],
   ])('%j → %j', (prompt, want) => {
     expect(promptTitle(prompt)).toBe(want)

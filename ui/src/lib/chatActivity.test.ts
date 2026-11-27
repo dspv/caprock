@@ -79,6 +79,10 @@ describe('promptParts', () => {
     expect(promptPlain('a <pasted_content id="x">1\n2\n3</pasted_content id="x"> b')).toBe('a  [pasted · 3 lines]  b')
   })
 
+  it('the one-line form cuts a dropped file to its name', () => {
+    expect(promptPlain('"/Users/me/Library/Application Support/caprock/paste/drop-1/CV.pdf" how is my CV?')).toBe('CV.pdf how is my CV?')
+  })
+
   it('a plain prompt is one part', () => {
     expect(promptParts('μήνυμα 日本 🙂')).toEqual([{ kind: 'text', text: 'μήνυμα 日本 🙂' }])
   })

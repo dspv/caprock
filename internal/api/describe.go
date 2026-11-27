@@ -68,8 +68,14 @@ func describeWith(sess store.Session, firstPrompts func() ([]string, error)) (te
 		prompts = append([]string{sess.Prompt}, prompts...)
 	}
 	for _, p := range prompts {
-		if substantivePrompt(p) {
-			return clipLine(p), DescriptionPrompt
+		// A dropped file's path is its name (filenames.go): before the
+		// clip, so the name and the words survive it. A prompt that is only
+		// dropped files names nothing, as a bare path never did.
+		if onlyFilePaths(p) {
+			continue
+		}
+		if q := pathsAsNames(p); substantivePrompt(q) {
+			return clipLine(q), DescriptionPrompt
 		}
 	}
 	return "", ""

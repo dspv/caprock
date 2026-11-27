@@ -2,6 +2,7 @@
 // on the wire, kept as-is in the types so the contract is visible in the code.
 import type { Gaps } from './gaps'
 import { onMemoryReset } from './memoryResets'
+import { pathsAsNames } from './filepaths'
 import type { ReapResult, ResourceReport } from './resources'
 import type { EndIdleResult, MemoryReport, RestartEnd } from './memory'
 import type { ResourceHistory } from './resourceHistory'
@@ -2592,6 +2593,24 @@ async function get<T>(path: string): Promise<T> {
  * Measured 2026-11-24: the full list was 424 KB on the owner's Mac, the same
  * most minutes. Small on purpose: the newest TAGGED_KEPT paths.
  */
+/**
+ * A session's description as every row, card and title shows it: when it
+ * is the first prompt, each file path in it cut to the file's name
+ * (lib/filepaths `pathsAsNames`, .ai/04-ui.md § File chips), so a session
+ * opened with a dropped PDF reads `CV.pdf how is my CV?`, not eighty
+ * characters of `Application Support/caprock/paste/drop-…`. A name or a
+ * title the agent gave is left as it is.
+ */
+export function tidyDescription<T extends { description?: string; description_source?: string } | null>(s: T): T {
+  if (!s || s.description_source !== 'prompt' || !s.description) return s
+  const d = pathsAsNames(s.description)
+  return d === s.description ? s : { ...s, description: d }
+}
+
+function tidySessions<T extends { description?: string; description_source?: string }>(list: T[]): T[] {
+  return Array.isArray(list) ? list.map(tidyDescription) : list
+}
+
 const tagged = new Map<string, { etag: string; value: unknown }>()
 const TAGGED_KEPT = 8
 onMemoryReset(() => tagged.clear())
@@ -2654,7 +2673,7 @@ async function sessionsWithTotal(activeOnly: boolean, search = '', limit = 0, ch
     try { body = await res.json() } catch { /* ignore */ }
     throw new ApiError(res.status, `${res.status} ${res.statusText}`, body)
   }
-  const items = (await res.json()) as SessionSummary[]
+  const items = tidySessions((await res.json()) as SessionSummary[])
   const n = Number(res.headers.get('X-Total-Count'))
   // An older daemon sends no header; then the page is all we know of.
   return { items, total: Number.isFinite(n) && n > 0 ? n : items.length }
@@ -2785,11 +2804,11 @@ export interface PairAddress {
 export const api = {
   /** The sessions list; the same array as last time when the daemon says it is unchanged (getTagged). */
   sessions: (activeOnly = false) =>
-    getTagged(`/v1/sessions${activeOnly ? '?active=true' : ''}`, async (res) => (await res.json()) as SessionSummary[]),
+    getTagged(`/v1/sessions${activeOnly ? '?active=true' : ''}`, async (res) => tidySessions((await res.json()) as SessionSummary[])),
   sessionsWithTotal,
   /** One Projects row's sessions, newest first, each with whether it can be picked up. */
-  sessionsInDir: (dir: string) => get<SessionSummary[]>(`/v1/sessions?dir=${encodeURIComponent(dir)}`),
-  session: (id: string) => get<SessionDetail>(`/v1/sessions/${encodeURIComponent(id)}`),
+  sessionsInDir: (dir: string) => get<SessionSummary[]>(`/v1/sessions?dir=${encodeURIComponent(dir)}`).then(tidySessions),
+  session: (id: string) => get<SessionDetail>(`/v1/sessions/${encodeURIComponent(id)}`).then(tidyDescription),
   /** A Cursor chat's first-request overhead estimate, null when it has none (ADR-095). */
   sessionOverhead: (id: string) => get<SessionOverhead | null>(`/v1/sessions/${encodeURIComponent(id)}/overhead`),
   /** Cursor's and Claude Code's first-request overhead, by model family. */
@@ -3232,7 +3251,7 @@ export const api = {
   /** The Queue view: every owned session, what waits in its queue, rough estimates, recent turns. */
   queueBoard: () => get<QueueBoard>('/v1/queue'),
   /** The Work board: live sessions with their pull requests, tasks, queued messages, each repository's release cadence. */
-  work: () => get<Work>('/v1/work'),
+  work: () => get<Work>('/v1/work').then((w) => (w && Array.isArray(w.sessions) ? { ...w, sessions: tidySessions(w.sessions) } : w)),
   /** The Jarvis digest: what needs you, every live agent, the day so far (ADR-094); deterministic, no model. */
   jarvis: () => get<JarvisDigest>('/v1/jarvis'),
   /** The chat field's send: typed in now at the prompt, otherwise queued. */

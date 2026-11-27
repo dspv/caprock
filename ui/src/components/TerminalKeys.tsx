@@ -3,6 +3,8 @@ import { INPUT_HIGHLIGHT_KEY, keys } from '@/lib/appkeys'
 import type { TermState } from '@/lib/termv2'
 import { useSavedPromptsFor } from '@/lib/saved'
 import { attachLabels, isImageName } from '@/lib/attach'
+import { fileKind } from '@/lib/filepaths'
+import { FileKindIcon } from './FileChip'
 import { AttachMenuItems, AttachPicker, MenuItem, useAttachInputs } from './AttachPicker'
 import { ChatPickerList, useChatPicker } from './ChatPicker'
 import { joinDictation, speechHint, speechSupport, speechWhere, startDictation, type Dictation } from '@/lib/speech'
@@ -912,7 +914,8 @@ export function TerminalKeys({ send, attach, attachIn, sendPaths, initial = '', 
 /**
  * The photos and files attached in the field, as Claude Code will show them
  * once sent: "Image 1", "Image 2" with a preview, any other file by its name
- * with a document icon, each with an × to take it out. The path is the file
+ * with its kind's icon (FileKindIcon: a PDF says PDF), each with an × to take
+ * it out. The path is the file
  * Caprock saved; it is pasted on Send, never typed here.
  */
 function AttachedChips({ attached, onRemove }: { attached: readonly Attached[]; onRemove: (i: number) => void }) {
@@ -923,7 +926,9 @@ function AttachedChips({ attached, onRemove }: { attached: readonly Attached[]; 
         <li key={`${a.path}-${i}`} className="flex h-9 min-w-0 max-w-full items-center gap-1.5 rounded-[12px] border border-border-strong bg-panel-2 pl-1 pr-0.5 text-[14px] text-fg">
           {a.url
             ? <img src={a.url} alt="" className="h-7 w-7 rounded-[8px] object-cover" />
-            : <span className="grid h-7 w-7 shrink-0 place-items-center">{isImageName(a.path) ? <PhotoIcon /> : <DocIcon />}</span>}
+            : isImageName(a.path)
+              ? <span className="grid h-7 w-7 shrink-0 place-items-center"><PhotoIcon /></span>
+              : <span data-doc-icon className="grid h-7 w-7 shrink-0 place-items-center"><FileKindIcon kind={fileKind(a.path)} size={22} /></span>}
           <span className="min-w-0 max-w-[14rem] truncate" title={labels[i]}>{labels[i]}</span>
           <button
             type="button"
@@ -1011,10 +1016,6 @@ function LangMenu({ current, onPick, onClose }: { current: string; onPick: (tag:
 }
 
 const ICON = { width: 22, height: 22, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, 'aria-hidden': true }
-
-function DocIcon() {
-  return <svg {...ICON} data-doc-icon className="text-fg-muted"><path d="M6 3h8l4 4v14H6z" /><path d="M14 3v4h4M9 12h6M9 16h4" /></svg>
-}
 
 function PhotoIcon() {
   return <svg {...ICON} className="text-fg-muted"><rect x="3" y="5" width="18" height="14" rx="2" /><circle cx="9" cy="10" r="1.6" /><path d="M21 16l-5-5-8 8" /></svg>

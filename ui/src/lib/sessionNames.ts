@@ -9,6 +9,7 @@
  * session frame carries the name to every other window.
  */
 import { api, type SessionSummary } from './api'
+import { pathsAsNames } from './filepaths'
 
 type Listener = (id: string, name: string) => void
 const listeners = new Set<Listener>()
@@ -79,7 +80,8 @@ const MAX_WORDS = 4
  * along). No model, no network: string work on text already held.
  */
 export function promptTitle(prompt: string | undefined): string {
-  const line = (prompt ?? '').split('\n').map((l) => l.trim()).find((l) => l) ?? ''
+  // A dropped file's quoted path is one word, its name (lib/filepaths).
+  const line = pathsAsNames(prompt ?? '').split('\n').map((l) => l.trim()).find((l) => l) ?? ''
   const sentence = line.replace(/^["“”'`]+|["“”'`]+$/g, '').split(/(?<=[.!?])\s|[;:]\s|\s[—–-]\s/)[0] ?? ''
   let words = sentence.split(/\s+/).filter(Boolean).map(word)
   while (words.length > 1 && OPENERS.has(bare(words[0]!))) words = words.slice(1)
