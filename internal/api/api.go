@@ -198,6 +198,9 @@ type Deps struct {
 	// Machines are the other computers this machine reaches (ADR-067,
 	// machines.go); nil in a build or test without them.
 	Machines Machines
+	// Join is join keys (ADR-108, join.go): making one here, and using one
+	// from another computer. Nil answers 501.
+	Join JoinControl
 	// Secrets is Send secrets (ADR-107, secretshare.go): what this machine
 	// can send, and where what arrives is kept. Nil answers 501.
 	Secrets SecretShare
@@ -869,6 +872,12 @@ func New(d Deps) *Server {
 	m.HandleFunc("PATCH /v1/machines/{id}", s.handlePatchMachine)
 	m.HandleFunc("DELETE /v1/machines/{id}", s.handleForgetMachine)
 	m.HandleFunc("/v1/m/{id}/{path...}", s.handleMachineProxy)
+	// Join keys (ADR-108, join.go): loopback only, in the handlers, and on
+	// no device's allowlist.
+	m.HandleFunc("POST /v1/machines/join-key", s.handleNewJoinKey)
+	m.HandleFunc("GET /v1/machines/join-key", s.handleJoinKeyState)
+	m.HandleFunc("DELETE /v1/machines/join-key", s.handleWithdrawJoinKey)
+	m.HandleFunc("POST /v1/join", s.handleJoin)
 	// Send secrets (ADR-107, secretshare.go): the two sending routes are
 	// loopback only, like the rest; the receiving one is for a computer
 	// allowed here alone (computerRoutes, and the handler checks the kind).

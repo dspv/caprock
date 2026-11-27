@@ -47,7 +47,7 @@ export type Route =
   | { name: 'module'; id: string; to?: string }
   // Another computer this one reaches (ADR-067): its sessions, or one of
   // them — the Session view and terminal through /v1/m/{id}/… (screens/Machine).
-  | { name: 'machine'; id: string; session?: string; tab?: string }
+  | { name: 'machine'; id: string; session?: string; tab?: string; joined?: boolean }
   // All computers (#/m): one card per linked computer, opened from the
   // sidebar's Computers heading (screens/Machine).
   | { name: 'machines' }
@@ -130,7 +130,8 @@ export function parseHash(hash: string): Route {
       if (!id) return { name: 'machines' }
       if (!/^[A-Za-z0-9_-]{16,128}$/.test(id)) return { name: 'now' }
       if (parts[2] === 'session' && parts[3]) return { name: 'machine', id, session: decodeURIComponent(parts[3]), ...(tab ? { tab } : {}) }
-      return { name: 'machine', id }
+      // ?joined=1: it has just joined with a key made here (ADR-108).
+      return params.get('joined') === '1' ? { name: 'machine', id, joined: true } : { name: 'machine', id }
     }
     case 'files': {
       const project = params.get('project') || undefined
@@ -171,7 +172,7 @@ export function href(r: Route): string {
     case 'chats': return r.archived ? '#/chats?archived=1' : '#/chats'
     case 'chat': return `#/chats/${encodeURIComponent(r.id)}`
     case 'module': return r.to && isModuleHref(r.to) ? `#/x/${r.id}?to=${encodeURIComponent(r.to)}` : `#/x/${r.id}`
-    case 'machine': return r.session ? `#/m/${r.id}/session/${encodeURIComponent(r.session)}${r.tab ? `?tab=${encodeURIComponent(r.tab)}` : ''}` : `#/m/${r.id}`
+    case 'machine': return r.session ? `#/m/${r.id}/session/${encodeURIComponent(r.session)}${r.tab ? `?tab=${encodeURIComponent(r.tab)}` : ''}` : `#/m/${r.id}${r.joined ? '?joined=1' : ''}`
     case 'machines': return '#/m'
     case 'files': {
       const q = new URLSearchParams()

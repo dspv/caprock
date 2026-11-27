@@ -52,6 +52,7 @@ import { SetupChecklist } from './SetupChecklist'
 import { MachineReadiness } from './MachineReadiness'
 import { Section } from './SettingsParts'
 import { Copyable } from './ui'
+import { AddWithKey, JoinWithKey } from './JoinKey'
 
 /** What a failed add means, for a person. */
 export function addError(e: unknown): string {
@@ -285,6 +286,9 @@ function MainSteps({ machines, onAdded }: { machines: Machine[]; onAdded: () => 
   }
 
   return (
+    <div className="grid min-w-0 gap-3">
+    <AddWithKey />
+    <span className="text-[12.5px] text-fg-muted" data-steps-or>Or with a link the other computer shows:</span>
     <ol className="grid min-w-0 gap-3" data-steps="main">
       <Step n={1} done={done[0]}>
         <span>On the other computer, install Caprock and choose <b>Run agents for another computer</b> in Settings → Computers. It lists what that computer still needs, each with its button.</span>
@@ -321,6 +325,7 @@ function MainSteps({ machines, onAdded }: { machines: Machine[]; onAdded: () => 
         )}
       </Step>
     </ol>
+    </div>
   )
 }
 
@@ -450,6 +455,8 @@ function LinkStep({ remote, loaded, onChanged, onLink }: { remote?: RemoteState;
   const { busy, err, shown, copied, left, up, turn, show, copy } = useComputerLink(onChanged, onLink)
   return (
     <div className="grid min-w-0 gap-2" data-link-step>
+      <JoinWithKey onJoined={onChanged} />
+      <span className="text-[12.5px] text-fg-muted">Or turn on access from anywhere, show this computer&apos;s link, and allow your laptop here:</span>
       <AnywhereLine remote={remote} loaded={loaded} busy={busy} turn={turn} status={remoteStatus(remote)} />
       <div className="grid min-w-0 gap-1.5">
         <LinkShown quiet remote={remote} busy={busy} shown={up ? shown : null} left={left} copied={copied} copy={copy} show={show} />

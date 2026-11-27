@@ -199,6 +199,10 @@ type Store struct {
 	code     string
 	codeRole string // the role a device pairing with code gets
 	codeKind string // the kind it pairs as: KindPhone or KindMachine
+	// codeKey is the relay key a join's code pre-approves (NewCodeForKey):
+	// only a computer whose channel proved it may redeem the code, and it is
+	// allowed at once. Empty for every other code.
+	codeKey  string
 	codeAt   time.Time
 	attempts int
 	devices  map[string]*Device // by token
@@ -245,7 +249,29 @@ func (s *Store) NewCodeFor(role, kind string) (string, error) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.code, s.codeRole, s.codeKind, s.codeAt, s.attempts = code, role, kind, s.Now(), 0
+	s.code, s.codeRole, s.codeKind, s.codeKey, s.codeAt, s.attempts = code, role, kind, "", s.Now(), 0
+	return code, nil
+}
+
+// NewCodeForKey issues a code for a computer that is allowed the moment it
+// redeems it — but only by the computer whose channel proves key (its relay
+// id, remote.HostID), and by no other (ADR-108). It is what `caprock join`
+// does on this machine: running it here, with the key the user carried from
+// the computer they work on, is the owner's Allow for that one computer,
+// given before it asks, exactly as `caprock machines allow` is after. The
+// token it pairs is bound to key at once (Device.Key). A redeem that proves
+// another key, or none, burns the code.
+func (s *Store) NewCodeForKey(key string) (string, error) {
+	if key == "" {
+		return "", errors.New("a join needs the key of the computer it lets in")
+	}
+	code, err := s.NewCodeFor(RoleController, KindMachine)
+	if err != nil {
+		return "", err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.codeKey = key
 	return code, nil
 }
 
@@ -278,7 +304,7 @@ func (s *Store) CodeRole() string {
 func (s *Store) ClearCode() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.code, s.attempts = "", 0
+	s.code, s.codeKey, s.attempts = "", "", 0
 }
 
 // Code returns the outstanding code, or "" when there is none or it has
@@ -318,6 +344,13 @@ func (s *Store) CodeActive() (bool, time.Duration) {
 // character-by-character compare is not far-fetched, and the cost of doing it
 // properly is nothing.
 func (s *Store) Redeem(code, name string) (*Device, error) {
+	return s.RedeemFrom(code, name, "")
+}
+
+// RedeemFrom is Redeem for a request whose channel proved peer, its relay
+// key (remote.PeerKey; "" for none). Only a code from NewCodeForKey looks at
+// it: that code is redeemed by the key it names alone.
+func (s *Store) RedeemFrom(code, name, peer string) (*Device, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -336,6 +369,14 @@ func (s *Store) Redeem(code, name string) (*Device, error) {
 			// reading the wrong screen.
 			s.code, s.attempts = "", 0
 		}
+		return nil, ErrBadCode
+	}
+	if s.codeKey != "" && subtle.ConstantTimeCompare([]byte(peer), []byte(s.codeKey)) != 1 {
+		// The right code from the wrong computer: it travelled to one
+		// computer only, inside the join's encrypted channel, so this is
+		// not a mistyping. Burned, and the join fails rather than letting
+		// anyone else in pending.
+		s.code, s.codeKey, s.attempts = "", "", 0
 		return nil, ErrBadCode
 	}
 
@@ -363,9 +404,15 @@ func (s *Store) Redeem(code, name string) (*Device, error) {
 	if s.codeKind == KindMachine {
 		d.Kind, d.Pending = KindMachine, true
 	}
+	if s.codeKey != "" {
+		// A join's code (NewCodeForKey): the owner allowed exactly this
+		// computer here before it asked, and its token is held to its key
+		// from the first request.
+		d.Pending, d.Key = false, s.codeKey
+	}
 	s.devices[tok] = d
 	// Single use: the code is spent whether or not another device is waiting.
-	s.code, s.codeKind, s.attempts = "", KindPhone, 0
+	s.code, s.codeKind, s.codeKey, s.attempts = "", KindPhone, "", 0
 	cp := *d
 	return &cp, nil
 }

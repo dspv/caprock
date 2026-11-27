@@ -548,6 +548,56 @@ the target runs its ordinary Host and gate, and pairs it as a computer
   - **`GET /v1/secrets/received`** (loopback only) answers `{arrivals:
     [{from_id, from, names, at}]}`, newest first: `from_id` the sending
     computer's device id here, `at` unix ms.
+- **Join keys** (ADR-108, `internal/remote/join.go`, `internal/peers/join.go`,
+  `internal/api/join.go`, `internal/daemon/join.go`). One paste links a new
+  computer to the one the user works on; every route is loopback only (`403`
+  otherwise, `501` without the feature) and on no device's allowlist.
+  - **The key** is `cj1-` then base64url (no padding) of: one version byte
+    `0x01`, the rendezvous's Ed25519 relay id (32 bytes), its X25519 static
+    key (32), the secret (16), then the relay's address as UTF-8, left out
+    when it is `wss://relay.caprock.dev` (112 characters then).
+    `ParseJoinKey` also takes the whole command (`caprock join cj1-…`),
+    quotes around it and a key wrapped over lines; the relay must pass
+    `CheckRelayURL`. The rendezvous keys are made for one key and dropped
+    with it; the key carries no token and no credential.
+  - **`POST /v1/machines/join-key`** (no body) makes a key, withdrawing any
+    open one, and answers `{state: "waiting", expires_at, relay,
+    relay_status, key}` with `Cache-Control: no-store` — the only answer
+    that ever holds the key; `409` when this machine has no relay key to
+    pre-approve. From then until it is spent, withdrawn, burned or
+    `expires_at` (15 minutes, this machine's clock), this machine waits at
+    its own relay (`remote.relay`, the hosted one unless the owner chose
+    another) under the rendezvous id, running an ordinary `remote.Host`
+    whose requests are served in process by the two join routes alone.
+    Only `sha256(secret)` is kept, in memory.
+  - **`GET /v1/machines/join-key`** answers `{state, expires_at?, relay?,
+    relay_status?, joiner?, machine?, error?}`: `state` is `none`,
+    `waiting`, `joining` (a computer proved the secret; `joiner` its name),
+    `joined` (`machine` the entry `GET /v1/machines` lists), `expired` or
+    `failed` (`error` says why). Never the key. **`DELETE
+    /v1/machines/join-key`** withdraws it at once: `{withdrawn: true}`.
+  - **The rendezvous** answers, through the channel, `POST /v1/join/hello
+    {secret, name}` → `{controller, name}` (`controller` this machine's
+    relay id, the key its channels prove, `remote.KindProve`) and `POST
+    /v1/join/link {secret, link}` → this machine pairs with `link` as
+    `POST /v1/machines` does and answers `{id, name, status}`; `410` once
+    spent, `502` with the pairing's error. `secret` is base64url. A wrong
+    one is `401`; the fifth burns the key (`failed`). Anything else is
+    `404`.
+  - **`POST /v1/join {key}`** on the new computer (two minutes at most):
+    turns access from anywhere on if it is off — at the key's relay when
+    this computer never chose one — waits up to 30 s for it to be online,
+    says hello, issues a code for a computer that pre-approves the returned
+    `controller` (`pairing.Store.NewCodeForKey`), hands its pairing link
+    over, and answers `{controller, controller_name, status, name,
+    turned_on_remote, relay}`. A pre-approved code is redeemed only through
+    a channel that proved that key (`remote.PeerKey`): the device is
+    stored allowed, a controller, its token bound to the key (`pending`
+    false, `bound` true); the right code from another key, or none, burns
+    the code (`401`). Errors: `400` not a key; `404` the rendezvous is not
+    there (expired, used, withdrawn, that computer off); `403` refused
+    (wrong secret, spent); `504` out of time; `502` anything else, with
+    its `error`. The join's code is withdrawn when the link step fails.
 - **The CLI** (`cmd/caprock/machines.go`), against the local daemon:
   `caprock machines` / `ls` (the computers this one reaches, checked, and
   the computers that reach this one from `GET /v1/pair/state`), `add
@@ -564,7 +614,15 @@ the target runs its ordinary Host and gate, and pairs it as a computer
   Allow? [y/N]`, allowing on `y`/`yes` and removing it otherwise. On Linux,
   when `loginctl show-user <user> --property=Linger --value` answers `no`,
   it and `caprock service install` print how to run `loginctl enable-linger
-  <user>`; neither runs it.
+  <user>`; neither runs it. `caprock machines key` (`POST
+  /v1/machines/join-key`) prints the key once, `caprock join <key>` to run
+  on the new computer, and the install commands from
+  `docs/install-agent.md`. `caprock join [key]` (`cmd/caprock/join.go`,
+  `POST /v1/join`, 150 s at most) reads the key from stdin when none is
+  given, and prints what it did (access from anywhere on and through which
+  relay, which computer is allowed, that nothing was installed and no
+  secret came with it), what is next on the other computer, and how to
+  undo it; it exits non-zero with the daemon's `error` when the join fails.
 - **One list across computers** (Phase 2). **`GET /v1/machines/sessions`**
   (loopback-only, on no device allowlist, `501` without computers) answers
   `{machines: [{id, name, status, error?, sessions?, at?, last_ok?}]}`, one

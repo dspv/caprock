@@ -107,7 +107,9 @@ describe('another computer (ADR-067)', () => {
       { name: 'machine' as const, id },
       { name: 'machine' as const, id, session: 'a b' },
       { name: 'machine' as const, id, session: 's1', tab: 'terminal' },
+      { name: 'machine' as const, id, joined: true },
     ]) expect(parseHash(href(r))).toEqual(r)
+    expect(href({ name: 'machine', id, joined: true })).toBe(`#/m/${id}?joined=1`)
     expect(href({ name: 'machine', id, session: 's1' })).toBe(`#/m/${id}/session/s1`)
   })
   it('sends a malformed id home', () => {
