@@ -3482,7 +3482,7 @@ func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 	// Spawn with a background context: the process must outlive this HTTP request.
 	id, cwd, err := s.d.Agents.Spawn(context.WithoutCancel(r.Context()), req)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		spawnFail(w, err)
 		return
 	}
 	if dev != nil {

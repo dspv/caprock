@@ -2,10 +2,13 @@ package api
 
 import (
 	"bytes"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/dspv/caprock/internal/agents"
 )
 
 // A bypass start on a machine that never accepted Claude Code's bypass
@@ -45,6 +48,29 @@ func TestBypassStartNeedsConsent(t *testing.T) {
 	}
 	if r := do("/v1/agents", `{"cwd":"/tmp/x","permission_mode":"bypassPermissions"}`); r.Code != http.StatusOK {
 		t.Fatalf("bypass after consent: %d %s", r.Code, r.Body)
+	}
+}
+
+// The settings a session reads can be another file than the one the API
+// checks (a subscription's own directory): the manager's refusal is the
+// same 409, so the dialogs show the warning, never a bare error (#1095).
+func TestManagerBypassRefusalIs409(t *testing.T) {
+	e := newEnv(t)
+	fa := &fakeAgents{avail: true, spawnErr: fmt.Errorf("start: %w", agents.ErrBypassConsent)}
+	e.srv.Config.Handler = New(Deps{Store: e.st, Version: "t", Token: "tok", Now: func() time.Time { return e.now }, Agents: fa,
+		BypassAccepted: func() (bool, error) { return true, nil },
+	})
+	for _, body := range []string{
+		`{"cwd":"/tmp/x","permission_mode":"bypassPermissions"}`,
+		`{"cwd":"/tmp/x","permission_mode":"bypassPermissions","attempts":2,"worktree":"w"}`,
+	} {
+		req := httptest.NewRequest("POST", "/v1/agents", bytes.NewBufferString(body))
+		req.Header.Set("Content-Type", "application/json")
+		rr := httptest.NewRecorder()
+		e.srv.Config.Handler.ServeHTTP(rr, req)
+		if rr.Code != http.StatusConflict || !bytes.Contains(rr.Body.Bytes(), []byte(`"code":"bypass_consent"`)) {
+			t.Fatalf("%s: %d %s", body, rr.Code, rr.Body)
+		}
 	}
 }
 

@@ -2182,6 +2182,17 @@ at another desk and may already start any session there. A phone still
 cannot. A start that ends at once is said wherever it was started from
 (03-contracts.md § Session exits).
 
+**Amended 2026-11-27 (#1095): every start is checked, not only the API's.**
+The 409 covered `POST /v1/agents`; a start Caprock made itself — a
+continue-on, the orchestrator, attempts — and a session on a subscription
+whose own settings lacked the key still reached the warning, where the
+first message Caprock types is the Enter that picks *No, exit*. The agent
+manager now refuses a Claude Code start in Bypass without the key in the
+settings that session reads (`agents.ErrBypassConsent`), and the start
+routes answer it as 409 `bypass_consent`, which New agent here and on a
+linked computer turns into the warning with *Accept and start*. Nothing is
+accepted on the user's behalf.
+
 ## ADR-043 — A new install asks before running commands; the mode picked is kept
 
 **Date:** 2026-10-08 · **Status:** accepted (owner, 2026-10-08; amends the

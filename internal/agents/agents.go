@@ -640,6 +640,17 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (*Agent, error) {
 			return nil, err
 		}
 	}
+	// A Claude Code start in bypass, where its one-time warning has not been
+	// accepted in the settings it reads, would open on that warning, whose
+	// default answer is "No, exit": the next Enter — the first message
+	// Caprock types — ends it some seconds later, on a screen nobody may be
+	// watching (a linked computer, the orchestrator, a continue-on). Refused
+	// here, before anything is made, so every path that starts a session
+	// says why instead (ADR-041, #1095).
+	if (req.Agent == "" || req.Agent == AgentClaude) && req.Command == "" && req.PermissionMode == ModeBypass &&
+		m.BypassConsent != nil && !m.BypassConsent(req.ConfigDir) {
+		return nil, ErrBypassConsent
+	}
 	sessionID := m.NewSessionID()
 	cwd := req.Cwd
 	worktree := ""
@@ -1229,6 +1240,12 @@ func (m *Manager) Shutdown() {
 }
 
 // ErrNotOwned is returned for control operations on a session Caprock did not spawn.
+// ErrBypassConsent is Spawn refusing a Claude Code start in bypass before
+// its one-time warning was accepted in the settings that session reads
+// (ADR-041). The API answers it as 409 bypass_consent, which the start
+// dialogs, here and on a linked computer, turn into the warning itself.
+var ErrBypassConsent = errors.New("bypass needs a one-time consent first: Claude Code's warning for skipping permissions has not been accepted on this computer; start it from New agent, which shows the warning with Accept and start, or pick a mode that asks")
+
 var ErrNotOwned = errors.New("caprock did not start this session, so only its own terminal can control it")
 
 func errNotOwned(id string) error { return fmt.Errorf("%w: %s", ErrNotOwned, id) }
