@@ -77,6 +77,19 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-11-27 — 0.200.0: one Telegram bot for every computer, secrets sent without SSH
+
+A minor release. A second computer linked through the relay sends its alerts and
+approval questions through the computer that holds the Telegram bot, so one bot
+serves every machine. Each message names the computer it came from, and a press
+goes back to the computer that asked. Messages wait while that computer is
+offline, and the bot moves between computers without a new one. The machine page
+sends chosen secrets (the GitHub token Caprock keeps, the DeepSeek and Kimi keys)
+to a linked computer over the end-to-end encrypted link. Every way of starting a
+Claude Code session in Bypass now shows Claude's warning instead of exiting.
+Windows finds tools installed after Caprock started, and `caprock url` prints the
+local address. The sidebar's Today line is the plan limit alone, as a wide bar.
+
 ### 2026-11-27 — unreleased: send secrets to a linked computer (ADR-107)
 
 One slice of #1095: a computer's page has *Send secrets* — the GitHub token
