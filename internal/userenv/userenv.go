@@ -139,7 +139,9 @@ func Environ(log *slog.Logger) []string {
 		// Windows has no login profile to replay: a process's environment is
 		// built from the registry. The daemon inherited it when it started;
 		// PATH is read again (path.go), so a program installed since is
-		// found by the session too.
+		// found by the session too, and by the daemon's own lookups
+		// (RefreshOwnPath).
+		RefreshOwnPath()
 		return freshEnviron(os.Environ())
 	}
 	mu.Lock()
@@ -178,6 +180,7 @@ func Environ(log *slog.Logger) []string {
 // never hold a request for the user's shell profile. The caller owns the slice.
 func Cached() []string {
 	if runtime.GOOS == "windows" {
+		RefreshOwnPath()
 		return freshEnviron(os.Environ())
 	}
 	mu.Lock()

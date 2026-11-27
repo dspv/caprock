@@ -113,6 +113,34 @@ func freshEnviron(env []string) []string {
 	return withPath(env, mergePaths(pathOf(env), fresh, ";", true))
 }
 
+// RefreshOwnPath appends to this process's own PATH every directory the
+// registry's system and user Path have that it lacks (Windows; elsewhere it
+// does nothing). A program the daemon runs by its bare name — `git` for a
+// worktree, a clone or a diff, `gh` for the GitHub tabs — is looked up on the
+// daemon's own PATH (os/exec resolves the name before cmd.Env applies), so
+// handing the child a fresh PATH is not enough: Git or the GitHub CLI
+// installed by winget after the daemon started was "not found" until Caprock
+// restarted (#1095). What the daemon was started with keeps its order and
+// wins; nothing is removed. Called wherever a fresh environment is read, so a
+// status poll or a start is enough to pick an install up.
+func RefreshOwnPath() { refreshOwnPath(runtime.GOOS) }
+
+func refreshOwnPath(goos string) bool {
+	if goos != "windows" {
+		return false
+	}
+	fresh, err := registryPathCached()
+	if err != nil || fresh == "" {
+		return false
+	}
+	own := os.Getenv("PATH")
+	merged := mergePaths(own, fresh, ";", true)
+	if merged == mergePaths(own, "", ";", true) {
+		return false // nothing new
+	}
+	return os.Setenv("PATH", merged) == nil
+}
+
 // CurrentPath is the user's PATH as a program started now would get it, and
 // whether it was read fresh. false means it is the daemon's own snapshot (the
 // registry could not be read, or the login shell has not been resolved), so

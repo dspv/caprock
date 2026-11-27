@@ -722,6 +722,12 @@ GET /v1/setup/runs → {"runs": [{"key", "step", "agent"?, "shell", "state", "li
   detail says Claude Code needs it there), `xcode-select --install` on macOS,
   no command on Linux (the detail names apt, dnf and pacman). When the PATH
   could not be read fresh the detail ends *Restart Caprock to see it*.
+  On Windows the daemon's own PATH gains the registry's new folders too,
+  appended after its own whenever a session, a shell, a step or a status
+  poll reads the environment (`userenv.RefreshOwnPath`): a program the
+  daemon runs by its bare name — `git` for a clone, a worktree or a diff,
+  `gh` for the GitHub tabs — is looked up on that PATH, so one winget
+  installed after the daemon started is found without a restart (#1095).
 - **`agents`: one row per agent, each with a switch** (owner, 2026-11-20).
   Every built-in agent of `GET /v1/agents/catalog` that is installed here or
   has an install command (Claude Code, Codex, OpenCode, Gemini CLI, Grok,
