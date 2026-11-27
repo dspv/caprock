@@ -695,6 +695,15 @@ describe('ChatView: a turn at work', () => {
     expect(document.querySelector('[data-chat-working]')).toBeNull()
   })
 
+  // The owner, 2026-11-27 (translated): "on the phone I see the session status 'done'".
+  it('after the Stop, says what background work the session still waits on', async () => {
+    store.events = [msg(1, 'review it'), reply(2, 'A reviewer is on it.'), stop(3)]
+    render(<ChatView sessionId="s" canType={false} agent="claude" background="Background · 1 agent" />)
+    expect(await screen.findByText('Background · 1 agent')).toBeInTheDocument()
+    expect(document.querySelector('[data-chat-working="background"]')).not.toBeNull()
+    expect(screen.queryByText('Claude is thinking…')).toBeNull()
+  })
+
   it('a turn with no event for 15 minutes says the agent stopped answering, and Send again types it in now', async () => {
     const clock = vi.spyOn(Date, 'now').mockReturnValue(BASE + 2 * 86_400_000)
     onTestFinished(() => clock.mockRestore())

@@ -46,6 +46,7 @@ import { NeedChip } from './NeedChip'
 import { sessionTitle } from '@/lib/sidebar'
 import { needsYou, reasonsSentence } from '@/lib/needs'
 import { STALLED_TIP, stalledAge, stalledWord } from '@/lib/stalled'
+import { backgroundShort, backgroundWait, phoneHealth } from '@/lib/cockpit'
 import { agentLabel, isCustomAgent, startable, useAgentCatalog, type SpawnAgent } from './AgentPicker'
 import { CaprockMark, ChatIcon, ChatPlusIcon, ChevronIcon, CloseIcon, InboxIcon, PaperclipIcon } from './AppIcons'
 import { FileKindIcon } from './FileChip'
@@ -349,7 +350,8 @@ function LimitsLine({ glance }: { glance?: LimitsGlance }) {
 
 function healthDot(s: SessionSummary): string {
   if (s.status === 'ended') return 'bg-fg-faint'
-  const h = s.activity?.health
+  // Waiting on background work it started reads as working, never done (lib/cockpit backgroundWait).
+  const h = phoneHealth(s)
   if (h === 'working') return 'bg-ok animate-pulse'
   if (h === 'waiting-on-you') return s.activity?.need?.reason === 'error' ? 'bg-danger' : 'bg-warn'
   if (h === 'done') return 'border-[1.5px] border-fg-faint bg-transparent'
@@ -359,6 +361,8 @@ function healthDot(s: SessionSummary): string {
 
 function healthWord(s: SessionSummary): string {
   if (s.status === 'ended') return 'ended'
+  const bg = backgroundWait(s)
+  if (bg) return backgroundShort(bg)
   const h = s.activity?.health
   return h === 'waiting-on-you' ? 'needs you' : h === 'done' ? 'done' : h === 'working' ? 'working' : h === 'looping' ? 'looping' : h === 'error' ? 'error' : 'idle'
 }
@@ -492,8 +496,9 @@ function Continue({ rows, source, now, loading, canControl, ended, folded, onTog
             // The tab's own name on the computer (lib/tablabels), then where it runs.
             const title = sessionTitle(s)
             const project = labels.get(s.session_id) || s.project || 'unknown project'
-            // What it is doing, unless that only repeats the word at the right ("idle").
-            const phrase = s.activity?.phrase && s.activity.phrase !== healthWord(s) ? s.activity.phrase : ''
+            // What it is doing, unless that only repeats the word at the right
+            // ("idle", or *Background · 1 agent* for "waiting on background work · 1 agent").
+            const phrase = s.activity?.phrase && s.activity.phrase !== healthWord(s) && !backgroundWait(s) ? s.activity.phrase : ''
             const about = phrase || (s.description && s.description !== title ? s.description : '')
             // A turn with no reply for STALL_MS: an amber dot and *no reply 2d* (lib/stalled.ts).
             const stall = stalledAge(s, now)

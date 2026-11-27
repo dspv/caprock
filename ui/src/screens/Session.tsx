@@ -46,6 +46,7 @@ import { endState } from '@/components/PhoneEnd'
 import { PlanShare } from '@/components/PlanShare'
 import { sessionParts } from '@/lib/planShare'
 import { MovingLine } from '@/components/MoveNotice'
+import { backgroundShort, backgroundWait, phoneHealth } from '@/lib/cockpit'
 
 type Tab = 'chat' | 'timeline' | 'notes' | 'changes' | 'terminal'
 
@@ -225,6 +226,10 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
     </>
   )
   const linkReading = readLink(link, live.heardAt(), now)
+  // On a phone a turn that ended with background work still running reads
+  // *Background · 1 agent*, working, never done (lib/cockpit backgroundWait).
+  const bg = backgroundWait(s)
+  const bgLabel = bg ? backgroundShort(bg) : ''
   const details = (
     <>
       <div className="flex items-center gap-3 flex-wrap">
@@ -287,7 +292,8 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
         <PhoneSessionBar
           backHref={href({ name: 'now' })}
           title={s.description || s.project || 'unknown project'}
-          health={detail.stale ? undefined : s.activity.health}
+          health={detail.stale ? undefined : phoneHealth(s)}
+          healthLabel={bgLabel || undefined}
           alert={linkReading.tone === 'ok' ? undefined : { tone: linkReading.tone, label: linkReading.label }}
           views={tabs}
           active={active}
@@ -311,7 +317,7 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
               <h1 className="text-[17px] font-medium leading-snug">{s.project || 'unknown project'}</h1>
             </div>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[13px] text-fg-muted">
-              {!detail.stale && <Badge health={s.activity.health} />}
+              {!detail.stale && <Badge health={phoneHealth(s)} label={bgLabel || undefined} />}
               <span className="num">{s.model || 'unknown model'}</span>
               <span className="num" title={sc.title}>{sc.value}</span>
               <ConnectionState link={link} heardAt={live.heardAt} className="text-[12px]" />
@@ -418,6 +424,7 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
             canType={!reader && s.owned && s.status !== 'ended' && !s.detached}
             ended={s.status === 'ended' || !!s.detached}
             agent={s.agent}
+            background={bgLabel}
             className={phone ? 'h-[70dvh]' : 'h-[70dvh] min-h-[360px]'}
             phone={phone}
             boxRef={fillChat}

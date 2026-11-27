@@ -423,6 +423,25 @@ describe('PhoneHome folds, limits and rows', () => {
     expect(summary.textContent).toBe('1 no reply · 1 idle')
     expect(summary.querySelector('[data-continue-stalled]')).toHaveAttribute('title', 'Your last message got no reply. Open it to send again.')
   })
+
+  // The owner, 2026-11-27 (translated): "on the phone I see the session status 'done'".
+  it('says "Background · 1 agent", working, on a row whose turn ended waiting on a background subagent', async () => {
+    stubs()
+    vi.mocked(api.sessionsWithTotal).mockResolvedValue({ items: [
+      session('s1', 'alpha', 'done', { activity: { health: 'done', phrase: 'waiting on background work · 1 agent', at: '', background: 1 } } as Partial<SessionSummary>),
+      session('s2', 'beta', 'done'),
+    ], total: 2 })
+    render(<PhoneHome />)
+    await screen.findByText('alpha')
+    const row = document.querySelector('[data-continue-row="s1"]')!
+    expect(row.textContent).toContain('Background · 1 agent')
+    expect(row.textContent).not.toContain('done')
+    expect(row.textContent).not.toContain('waiting on background work')
+    expect(row.firstElementChild!.className).toContain('bg-ok')
+    expect(document.querySelector('[data-continue-row="s2"]')!.textContent).toContain('done')
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    expect(screen.getByRole('region', { name: 'Continue' }).querySelector('[data-fold-summary]')!.textContent).toBe('1 working · 1 done')
+  })
 })
 
 // Owner, 2026-10-22 (translated): the phone shows the sessions open as tabs

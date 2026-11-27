@@ -233,20 +233,20 @@ function healthTone(h: Health): 'ok' | 'warn' | 'danger' | 'muted' {
 
 /** The session's state as a dot alone, its word for screen readers and on
  *  hover: where a Badge does not fit (the phone's session bar). */
-export function HealthDot({ health, className = '' }: { health: Health; className?: string }) {
+export function HealthDot({ health, label, className = '' }: { health: Health; label?: string; className?: string }) {
   const tone = healthTone(health)
   return (
     <span
       role="img"
-      aria-label={healthLabel[health]}
-      title={healthLabel[health]}
+      aria-label={label ?? healthLabel[health]}
+      title={label ?? healthLabel[health]}
       data-health={health}
       className={`inline-block h-2 w-2 shrink-0 rounded-full ${tone === 'ok' ? 'bg-ok' : tone === 'warn' ? 'bg-warn' : tone === 'danger' ? 'bg-danger' : 'bg-fg-faint'} ${health === 'working' ? 'animate-pulse' : ''} ${className}`}
     />
   )
 }
 
-export function Badge({ health }: { health: Health }) {
+export function Badge({ health, label }: { health: Health; label?: string }) {
   const tone = healthTone(health)
   const cls =
     tone === 'ok' ? 'text-ok border-ok/40 bg-ok/10' :
@@ -256,7 +256,7 @@ export function Badge({ health }: { health: Health }) {
   return (
     <span className={`inline-flex items-center gap-1.5 border rounded-sm px-1.5 py-[1px] text-[11px] leading-4 ${cls}`}>
       <span className={`inline-block w-1.5 h-1.5 rounded-full ${tone === 'ok' ? 'bg-ok' : tone === 'warn' ? 'bg-warn' : tone === 'danger' ? 'bg-danger' : 'bg-fg-faint'} ${health === 'working' ? 'animate-pulse' : ''}`} />
-      {healthLabel[health]}
+      {label ?? healthLabel[health]}
     </span>
   )
 }

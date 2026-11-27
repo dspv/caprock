@@ -7,7 +7,7 @@
  * Every function here is pure, so the panel's honesty can be tested without a
  * DOM: a figure the data does not carry comes back undefined, never zero.
  */
-import type { Event, Permission, RateLimits, SessionSummary, Subagent, SubagentsNow, Summary } from './api'
+import type { Event, Health, Permission, RateLimits, SessionSummary, Subagent, SubagentsNow, Summary } from './api'
 import { toolCommand } from './chat'
 import { clip } from './clip'
 
@@ -269,9 +269,40 @@ export function backgroundCounts(s: Pick<SessionSummary, 'status' | 'activity' |
 
 /** "Waiting on background work · 1 agent, 1 shell": what such a session says (owner, 2026-11-24). */
 export function backgroundLabel(c: BackgroundCounts): string {
+  return `Waiting on background work · ${backgroundParts(c)}`
+}
+
+/** "1 agent, 1 shell": the counts that are not zero. */
+function backgroundParts(c: BackgroundCounts): string {
   const part = (n: number, one: string) => (n === 1 ? `1 ${one}` : n > 1 ? `${n} ${one}s` : '')
-  const parts = [part(c.agents, 'agent'), part(c.shells, 'shell'), part(c.monitors, 'monitor')].filter(Boolean)
-  return `Waiting on background work · ${parts.join(', ')}`
+  return [part(c.agents, 'agent'), part(c.shells, 'shell'), part(c.monitors, 'monitor')].filter(Boolean).join(', ')
+}
+
+/** "Background · 1 agent": the same, short enough for a phone's row or bar. */
+export function backgroundShort(c: BackgroundCounts): string {
+  return `Background · ${backgroundParts(c)}`
+}
+
+/**
+ * The background work a live session waits on, or null when it waits on
+ * none or something outranks it: a question or prompt for you, a loop, an
+ * error. Its turn ended, so a surface that reads only `health` can call it
+ * done or idle; it is at work, and Claude Code resumes it by itself (owner,
+ * 2026-11-27, translated: "on the phone I see the session status 'done'").
+ */
+export function backgroundWait(s: Pick<SessionSummary, 'status' | 'activity' | 'background_work'>): BackgroundCounts | null {
+  if (s.status === 'ended') return null
+  const h = s.activity?.health
+  if (h === 'waiting-on-you' || h === 'looping' || h === 'error' || h === 'ended') return null
+  const c = backgroundCounts(s)
+  return c.agents + c.shells + c.monitors > 0 ? c : null
+}
+
+/** The session's health as a phone shows it: working while it waits on background work (backgroundWait). */
+export function phoneHealth(s: Pick<SessionSummary, 'status' | 'activity' | 'background_work'>): Health {
+  if (s.status === 'ended') return 'ended'
+  if (backgroundWait(s)) return 'working'
+  return s.activity?.health ?? 'idle'
 }
 
 /** The state the character and the "now" line show. */
