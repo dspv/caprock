@@ -1,0 +1,1 @@
+import{n as e}from"./jsx-runtime-C3cWAN_r.js";var t=e(),n=(0,t.createContext)(null);function r(){return(0,t.useContext)(n)}export{r as n,n as t};

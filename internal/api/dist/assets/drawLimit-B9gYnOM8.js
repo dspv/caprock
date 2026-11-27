@@ -1,1 +1,0 @@
-var e=`Could not draw the card — try again.`,t=class extends Error{constructor(){super(`drawing took too long`),this.name=`DrawTimeout`}};function n(e,n=3e4){let r,i=new Promise((e,i)=>{r=setTimeout(()=>i(new t),n)});return Promise.race([e,i]).finally(()=>clearTimeout(r))}var r=e=>new Promise(t=>setTimeout(t,e));export{n as i,t as n,r,e as t};
