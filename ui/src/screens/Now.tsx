@@ -20,8 +20,6 @@ import { CacheStat } from '@/components/CacheStat'
 import { TodayTrend } from '@/components/TodayTrend'
 import { PlanLimitsPanel } from '@/components/PlanLimits'
 import { AtAGlancePanel } from '@/components/AtAGlance'
-import { PremiumBanner } from '@/components/PremiumBanner'
-import { PlanLimitNudge } from '@/components/Nudges'
 import { BreakdownPanel } from '@/components/Breakdown'
 import { PulsePanel } from '@/components/Pulse'
 import { ReposPanel } from '@/components/ReposPanel'
@@ -50,7 +48,7 @@ import { useNow, useNowFor } from '@/lib/useNow'
 import { STALLED_TIP, stalledAge, stalledWord } from '@/lib/stalled'
 import { startChat } from '@/lib/chats'
 import { rememberedQuickChoice } from '@/components/QuickChat'
-import { LivePace, NOW_LIVE_MS, SLOW_LIVE_MS } from '@/lib/refresh'
+import { LivePace, NOW_LIVE_MS } from '@/lib/refresh'
 import { useNarrowScreen } from '@/lib/phone'
 import { EndableRow, useEndedHere } from '@/components/PhoneEnd'
 import { NeedChip, NeedMove } from '@/components/NeedChip'
@@ -139,7 +137,6 @@ export function NowScreen({ inApp = false }: { inApp?: boolean } = {}) {
   const trends = useApi(() => api.trends(agent), [agent], { live: false, intervalMs: 5 * 60000, cache: `trends:${agent}` })
   // An answer without a series (an older daemon, a stub) draws nothing rather than throwing.
   const trendData = Array.isArray(trends.data?.series) ? trends.data : undefined
-  const lifetime = useApi(() => api.history('all'), [], { intervalMs: 60000, cache: 'history:all', liveMs: SLOW_LIVE_MS })
   // The plan-window stop: what it has paused, and whether this install has
   // it — the free plan-limit row offers it only when it does not.
   const windowStop = useApi(() => api.windowStop(), [], { intervalMs: 15000, liveMs: NOW_LIVE_MS })
@@ -305,19 +302,6 @@ export function NowScreen({ inApp = false }: { inApp?: boolean } = {}) {
         * two invitations one above the other and made the screen read as a
         * page that wants something from you. */}
 
-      {/* Now too, not only Cost and Lifetime. Keeping it off the screen people
-        * actually live in meant a user with no loop and no runaway session
-        * never saw that a paid version exists at all — the caution was so
-        * complete it removed the offer. Still one line, still dismissible for
-        * a month, still nothing on an empty dashboard. */}
-      {measured && lifetime.data?.totals && (
-        <PremiumBanner
-          costUSD={lifetime.data.totals.cost_usd}
-          days={lifetime.data.totals.days}
-          now={now}
-        />
-      )}
-
       <Panel
         fold="now.today"
         title="Today"
@@ -411,7 +395,6 @@ export function NowScreen({ inApp = false }: { inApp?: boolean } = {}) {
         * smallest thing on the screen. Every window the product tracks, by
         * agent, as gauges with the reset counting down. */}
       <PlanLimitsPanel limits={summary.data?.rate_limits} codex={summary.data?.codex_rate_limits} now={now} />
-      <PlanLimitNudge limits={summary.data?.rate_limits} now={now} />
 
       {/* Work, as a strip above the pulse (.ai/04-ui.md § Work): the headline
         * and the first rows that need you or are working, with the way to

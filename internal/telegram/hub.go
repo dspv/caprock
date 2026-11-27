@@ -23,7 +23,7 @@ import (
 // the holder over their end-to-end encrypted link, the holder posts each
 // under a first line naming the computer it came from, and a button press or
 // a reply to it goes back to that computer, which acts on it with its own
-// rules — rule 7, the licence and the two-way switch are the asking
+// rules — rule 7 and the two-way switch are the asking
 // computer's, never the holder's.
 //
 // The direction follows the link. A computer sends through a holder it

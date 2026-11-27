@@ -23,7 +23,6 @@ vi.mock('@/lib/api', async (orig) => {
       spawn,
       settings: async () => ({ spawn_permission_mode: '' }),
       agentCatalog: async () => ({
-        licensed: false,
         agents: [
           { id: 'claude', label: 'Claude Code', installed: true, ready: true, observed: true, prompt: true, models: [], efforts: ['low', 'medium', 'high', 'xhigh', 'max'], model_efforts: { 'claude-opus-5-5': 'medium', 'claude-sonnet-5-5': 'low' } },
           { id: 'gemini', label: 'Gemini CLI', installed: true, ready: true, observed: true, prompt: true, models: [] },

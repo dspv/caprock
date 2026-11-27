@@ -24,7 +24,6 @@ type host struct {
 	mu       sync.Mutex
 	token    string
 	chat     string
-	licensed bool
 	chatOn   bool
 	alertsOn bool
 	sessions map[string]telegram.Live
@@ -61,7 +60,6 @@ func (h *host) Bot() (string, string) {
 }
 func (h *host) SaveBot(t string) error  { h.mu.Lock(); h.token = t; h.mu.Unlock(); return nil }
 func (h *host) SaveChat(c string) error { h.mu.Lock(); h.chat = c; h.mu.Unlock(); return nil }
-func (h *host) Licensed() bool          { h.mu.Lock(); defer h.mu.Unlock(); return h.licensed }
 func (h *host) ChatOn() bool            { h.mu.Lock(); defer h.mu.Unlock(); return h.chatOn }
 func (h *host) AlertsOn() bool          { h.mu.Lock(); defer h.mu.Unlock(); return h.alertsOn }
 func (h *host) Sessions(context.Context) ([]telegram.Live, error) {
@@ -312,7 +310,7 @@ func TestConnectChecksTheToken(t *testing.T) {
 // A message from any chat but the paired one gets no answer and does
 // nothing.
 func TestAnotherChatIsIgnored(t *testing.T) {
-	s := paired(t, func(h *host) { h.licensed, h.chatOn = true, true })
+	s := paired(t, func(h *host) { h.chatOn = true })
 	id := s.deliver("own", "")
 	s.bot.Reply(555, id, "rm -rf ~")
 	s.bot.Say(555, "Stranger", "/sessions")
@@ -329,7 +327,7 @@ func TestAnotherChatIsIgnored(t *testing.T) {
 // A reply goes to the session its message is about, and is acknowledged
 // with a reaction, not another message.
 func TestAReplyIsTypedIntoItsSession(t *testing.T) {
-	s := paired(t, func(h *host) { h.licensed, h.chatOn = true, true })
+	s := paired(t, func(h *host) { h.chatOn = true })
 	id := s.deliver("own", "")
 	s.bot.Reply(owner, id, "run the tests again")
 	eventually(t, "typing", func() bool { return s.h.get(func(h *host) int { return len(h.typed["own"]) }) == 1 })
@@ -353,7 +351,7 @@ func TestAReplyIsTypedIntoItsSession(t *testing.T) {
 // reply as its next message; one that ended otherwise is still refused.
 func TestAReplyToASessionEndedForIdlingContinuesIt(t *testing.T) {
 	s := paired(t, func(h *host) {
-		h.licensed, h.chatOn = true, true
+		h.chatOn = true
 		h.sessions["idle"] = telegram.Live{ID: "idle", Header: "🟠 Claude Code · chats · Idle", Title: "Idle", Owned: true, IdleEnded: true}
 		h.sessions["gone"] = telegram.Live{ID: "gone", Header: "🟠 Claude Code · chats · Gone", Title: "Gone", Owned: true}
 	})
@@ -378,7 +376,7 @@ func TestAReplyToASessionEndedForIdlingContinuesIt(t *testing.T) {
 
 // Rule 7: a session Caprock did not start is watched, never typed into.
 func TestAReplyToASessionCaprockDidNotStartIsRefused(t *testing.T) {
-	s := paired(t, func(h *host) { h.licensed, h.chatOn = true, true })
+	s := paired(t, func(h *host) { h.chatOn = true })
 	id := s.deliver("ext", "")
 	s.bot.Reply(owner, id, "hello")
 	m := s.message(2)
@@ -397,54 +395,51 @@ func TestAReplyToASessionCaprockDidNotStartIsRefused(t *testing.T) {
 	}
 }
 
-// Without a licence a reply types nothing, and the chat hears why once.
-// Mute needs no licence.
-func TestTalkingBackIsPremium(t *testing.T) {
+// With two-way chat off a reply types nothing, and the chat hears where the
+// switch is, once. No licence is asked for (2026-11-27). Mute works either
+// way.
+func TestTalkingBackNeedsTheSwitch(t *testing.T) {
 	s := paired(t, nil)
 	id := s.deliver("own", "p1", "y", "n", "m")
 	s.bot.Reply(owner, id, "go on")
 	m := s.message(2)
-	if !strings.Contains(m.Text, "Premium") || !strings.Contains(m.Text, telegram.PremiumURL) {
-		t.Fatalf("premium line = %q", m.Text)
-	}
-	for _, bad := range []string{"coming soon", "not built", "pilot"} {
-		if strings.Contains(strings.ToLower(m.Text), bad) {
-			t.Fatalf("the premium line says %q", bad)
-		}
+	if !strings.Contains(m.Text, "Two-way chat is off") || strings.Contains(m.Text, "Premium") {
+		t.Fatalf("switched-off line = %q", m.Text)
 	}
 	s.bot.Reply(owner, id, "and again")
 	s.bot.Say(owner, "Owner", "/sessions")
 	s.bot.Press(owner, id, "y")
 	eventually(t, "the button's toast", func() bool { return len(s.bot.Answers()) >= 1 })
-	if a := s.bot.Answers()[0]; !strings.Contains(a, "Premium") {
+	if a := s.bot.Answers()[0]; !strings.Contains(a, "Two-way chat is off") {
 		t.Fatalf("toast = %q", a)
 	}
 	time.Sleep(200 * time.Millisecond)
 	if n := len(s.bot.Messages()); n != 2 {
-		t.Fatalf("%d messages: the premium line was repeated: %+v", n, s.bot.Messages())
+		t.Fatalf("%d messages: the switched-off line was repeated: %+v", n, s.bot.Messages())
 	}
 	if len(s.h.typed) != 0 || len(s.h.answered) != 0 {
-		t.Fatal("an unlicensed reply or button did something")
+		t.Fatal("a reply or button did something with two-way chat off")
 	}
-	// Free: mute.
+	// Mute needs no switch.
 	s.bot.Press(owner, id, "m")
 	eventually(t, "mute", func() bool { return s.b.Muted("own") })
 
-	// Licensed but switched off: says where the switch is.
+	// Switched on, without any licence: the reply is typed in.
 	s.h.mu.Lock()
-	s.h.licensed = true
+	s.h.chatOn = true
 	s.h.mu.Unlock()
-	_ = s.b.Store.Update(func(st *telegram.State) { st.PremiumNoteAt = 0 })
 	s.bot.Reply(owner, id, "now?")
-	if m := s.message(3); !strings.Contains(m.Text, "Two-way chat is off") {
-		t.Fatalf("switched off: %q", m.Text)
-	}
+	eventually(t, "the typed reply", func() bool {
+		s.h.mu.Lock()
+		defer s.h.mu.Unlock()
+		return len(s.h.typed) == 1
+	})
 }
 
 // Approve answers the prompt the message was about, through the host's
 // answer path, and the buttons say it was answered.
 func TestApproveAnswersItsPrompt(t *testing.T) {
-	s := paired(t, func(h *host) { h.licensed, h.chatOn = true, true })
+	s := paired(t, func(h *host) { h.chatOn = true })
 	id := s.deliver("own", "prompt-1", "y", "n", "m")
 	s.bot.Press(owner, id, "y")
 	eventually(t, "the answer", func() bool { return s.h.get(func(h *host) int { return len(h.answered) }) == 1 })
@@ -463,7 +458,7 @@ func TestApproveAnswersItsPrompt(t *testing.T) {
 
 // /new starts Claude Code in the named project; in Bypass it asks first.
 func TestNewAsksBeforeBypass(t *testing.T) {
-	s := paired(t, func(h *host) { h.licensed, h.chatOn, h.mode = true, true, "bypassPermissions" })
+	s := paired(t, func(h *host) { h.chatOn, h.mode = true, "bypassPermissions" })
 	s.bot.Say(owner, "Owner", "/new capr fix the flaky test")
 	m := s.message(1)
 	if !strings.Contains(m.Text, "Bypass") || len(m.Buttons) != 3 {
@@ -492,7 +487,7 @@ func TestNewAsksBeforeBypass(t *testing.T) {
 
 // /stop asks, and stops only on the button.
 func TestStopAsksFirst(t *testing.T) {
-	s := paired(t, func(h *host) { h.licensed, h.chatOn = true, true })
+	s := paired(t, func(h *host) { h.chatOn = true })
 	s.bot.Say(owner, "Owner", "/sessions")
 	list := s.message(1)
 	if !strings.Contains(list.Text, "1.</b> 🟠 Claude Code · caprock") || !strings.Contains(list.Text, "watch only") {
@@ -520,7 +515,7 @@ func TestStopAsksFirst(t *testing.T) {
 
 // A message sent while nobody was reading is not typed into anything.
 func TestAStaleMessageIsSkipped(t *testing.T) {
-	s := paired(t, func(h *host) { h.licensed, h.chatOn = true, true })
+	s := paired(t, func(h *host) { h.chatOn = true })
 	id := s.deliver("own", "")
 	s.bot.SayOld(owner, "/sessions", 10*time.Minute)
 	s.bot.Say(owner, "Owner", "/help")
@@ -605,7 +600,6 @@ type photoHost struct{ token, chat string }
 func (h *photoHost) Bot() (string, string)                             { return h.token, h.chat }
 func (h *photoHost) SaveBot(string) error                              { return nil }
 func (h *photoHost) SaveChat(string) error                             { return nil }
-func (h *photoHost) Licensed() bool                                    { return false }
 func (h *photoHost) ChatOn() bool                                      { return false }
 func (h *photoHost) AlertsOn() bool                                    { return false }
 func (h *photoHost) Sessions(context.Context) ([]telegram.Live, error) { return nil, nil }

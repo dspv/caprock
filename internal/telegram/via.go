@@ -152,7 +152,7 @@ func (b *Bridge) FromHub(hm HubMessage) {
 
 // Act does what a press or a reply under one of this machine's messages
 // asked, on this machine and by its own rules: the session it was about, a
-// licence and the two-way switch here for anything but Mute, and rule 7 in
+// two-way switch here for anything but Mute, and rule 7 in
 // Host. The result is what the holder shows in the chat.
 func (b *Bridge) Act(ctx context.Context, p HubPress) HubResult {
 	res := HubResult{ID: p.ID, Reply: p.Reply}
@@ -161,15 +161,11 @@ func (b *Bridge) Act(ctx context.Context, p HubPress) HubResult {
 		res.Say = "This computer no longer knows which session that was."
 		return res
 	}
-	premium := func() bool {
-		if b.Host.Licensed() && b.Host.ChatOn() {
+	chatOn := func() bool {
+		if b.Host.ChatOn() {
 			return true
 		}
-		if !b.Host.Licensed() {
-			res.Say = "Talking to this computer's sessions from Telegram is part of Caprock Premium: " + PremiumURL
-		} else {
-			res.Say = "Two-way chat is off on this computer: Settings → Telegram there."
-		}
+		res.Say = "Two-way chat is off on this computer: Settings → Telegram there."
 		return false
 	}
 	switch p.Action {
@@ -177,7 +173,7 @@ func (b *Bridge) Act(ctx context.Context, p HubPress) HubResult {
 		b.setMuted(ref.SessionID, true)
 		res.Label = "🔕 Muted"
 	case ActApprove, ActDeny:
-		if !premium() {
+		if !chatOn() {
 			return res
 		}
 		if ref.PromptID == "" {
@@ -194,7 +190,7 @@ func (b *Bridge) Act(ctx context.Context, p HubPress) HubResult {
 			res.Label = "✖️ Denied from Telegram"
 		}
 	case ActReply:
-		if !premium() {
+		if !chatOn() {
 			return res
 		}
 		res.Say, res.React = b.typeReply(ctx, ref.SessionID, strings.TrimSpace(p.Text))

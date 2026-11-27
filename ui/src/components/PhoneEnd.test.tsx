@@ -44,7 +44,7 @@ beforeEach(() => {
   control.value = true
   localStorage.clear()
   location.hash = '#/chats'
-  vi.spyOn(api, 'agentCatalog').mockResolvedValue({ agents: [claude], licensed: false } as unknown as Awaited<ReturnType<typeof api.agentCatalog>>)
+  vi.spyOn(api, 'agentCatalog').mockResolvedValue({ agents: [claude] } as unknown as Awaited<ReturnType<typeof api.agentCatalog>>)
 })
 
 describe('endState', () => {

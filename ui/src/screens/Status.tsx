@@ -29,10 +29,10 @@ import { Empty } from '@/components/ui'
 import { PlanOptions, usePlan } from '@/components/PlanPicker'
 import { AccountPlans, planText } from '@/components/AccountPlan'
 import { subscriptionsFor, useSubscriptionList } from '@/components/SubscriptionPicker'
-import { LicenseField } from '@/components/LicenseField'
 import { Computers } from '@/components/Computers'
 import { Pairing, revealWhenDrawn, settingsSectionId } from '@/components/Pairing'
 import { PhoneAlerts } from '@/components/PhoneAlerts'
+import { AdminKeyStatus } from '@/components/AdminKeyStatus'
 import { TelegramChat } from '@/components/TelegramChat'
 import { DesktopNotifications } from '@/components/DesktopNotifications'
 import { StoragePanel } from '@/components/Storage'
@@ -59,7 +59,6 @@ import { AgentCloseSetting } from '@/components/AgentCloseSetting'
 import { WorktreeCleanupSetting } from '@/components/WorktreeCleanupSetting'
 import { GitHubSettings } from '@/components/GitHubSettings'
 import { WindowStopSetting } from '@/components/WindowStopSetting'
-import { Locked } from '@/components/Locked'
 import { BrainAutoSetting } from '@/components/BrainAutoSetting'
 import { McpSetting } from '@/components/McpSetting'
 import { SharedPictures } from '@/components/SharedPictures'
@@ -250,7 +249,7 @@ function PlanSection() {
   if (!plan) return null
   const current = planText(plan, fmtUSD) || 'not set'
   return (
-    <Section title="Plan & licence">
+    <Section title="Plan">
       {accounts.length > 1 ? (
         <div className="grid gap-2">
           <p className="text-[12px] leading-relaxed text-fg-muted">
@@ -272,31 +271,20 @@ function PlanSection() {
           </div>
         </div>
       )}
-      <div className="border-t border-border pt-3">
-        <LicenseField plan={plan} save={savePlan} />
-      </div>
+      <AdminKeyStatus />
     </Section>
   )
 }
 
-/** The plan-window stop (Premium): live with a licence, behind glass without
- *  one — the control in the place it will be, with this machine's figures. */
+/** The plan-window stop: free, live for everyone (2026-11-27). */
 function WindowStopSection() {
-  return (
-    <Locked feature="window" title="Pause Caprock's sessions before the plan limit">
-      <WindowStopSetting />
-    </Locked>
-  )
+  return <WindowStopSetting />
 }
 
-/** Talking to the agents from Telegram (Premium, ADR-047): live with a
- *  licence, behind glass without one, under the free alerts it builds on. */
+/** Talking to the agents from Telegram (ADR-047): free, under the alerts it
+ *  builds on (owner decision, 2026-11-27: parity with Orca). */
 function TelegramChatSection() {
-  return (
-    <Locked feature="telegram" title="Talk to your agents from Telegram">
-      <TelegramChat />
-    </Locked>
-  )
+  return <TelegramChat />
 }
 
 /** Second Brain built automatically (ADR-063): free for everyone, off
@@ -305,14 +293,10 @@ function BrainSection() {
   return <BrainAutoSetting />
 }
 
-/** Custom agents (Premium, ADR-046): live with a licence, behind glass
- *  without one, in the place they will be. */
+/** Custom agents (ADR-046): free (owner decision, 2026-11-27: parity with
+ *  Orca). */
 function CustomAgentsSection() {
-  return (
-    <Locked feature="agents" title="Add your own coding agents">
-      <CustomAgentsSetting />
-    </Locked>
-  )
+  return <CustomAgentsSetting />
 }
 
 function AppearanceSection() {

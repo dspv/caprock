@@ -79,7 +79,7 @@ func newWin(t *testing.T) *winFixture {
 	f := &winFixture{
 		sig:   &winSig{kinds: map[string]string{"a": "claude", "b": "claude", "codex1": "codex"}, hand: "mine", ended: map[string]bool{}},
 		clock: &winClock{t: t0},
-		set:   WindowSettings{Pct: 90, Licensed: true},
+		set:   WindowSettings{Pct: 90},
 	}
 	f.g = &WindowGuard{
 		Settings: func() WindowSettings { return f.set },
@@ -184,15 +184,6 @@ func TestWindowStopRefusesStaleFigures(t *testing.T) {
 				t.Errorf("Fresh = %v, %q; want false with a reason the dashboard can show", ok, why)
 			}
 		})
-	}
-}
-
-func TestWindowStopUnlicensedIsAlertOnly(t *testing.T) {
-	f := newWin(t)
-	f.set.Licensed = false
-	f.ws = []Window{f.fiveHour(99)}
-	if f.g.Check(context.Background()) || len(f.sig.paused) > 0 || len(f.events) > 0 {
-		t.Fatalf("an unlicensed install paused %v", f.sig.paused)
 	}
 }
 

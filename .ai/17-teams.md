@@ -113,6 +113,8 @@ two things to sell, and they are sold to different people:
 
 - **Premium** — a solo developer, a few dollars a month, bought in a minute
   from the dashboard. Extra features on one machine, no server, no enrolment.
+  (Withdrawn 2026-11-27: nobody paid, so Caprock is free for one person and
+  the team tier is the only thing sold; [ADR-022](08-decisions.md) amended.)
 - **Teams** — a lead, hundreds a month, self-hosted, bought after a call.
 
 The free product is the floor under both and is never reduced to make room for
@@ -151,8 +153,12 @@ user's own call.
 paid plans existed, and the question it poses — what premium should contain —
 was answered by building it: a daily spend cap, the weekly report, and Gemini on
 the user's own key, unlocked by an offline licence key
-([ADR-022](08-decisions.md)). What follows describes the waitlist page that came
-before the purchase page.
+([ADR-022](08-decisions.md)); the plan-window pause and the tool drill-down
+joined later, and subscriptions past three, custom agents and talking back
+from Telegram for a while. On 2026-11-27 all of it became free: first those
+three (parity with Orca), then the rest, when the owner withdrew the plan for
+one person (nobody had paid). Second Brain was made free on 2026-10-14. What follows describes the waitlist page that came before the
+purchase page.
 
 **The instrument for finding that out is `/premium`.** An email field, one
 question — which of five things you would want first — and a free-text box. It

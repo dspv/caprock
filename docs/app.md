@@ -327,12 +327,11 @@ others. Installing it: [install-app.md](install-app.md).
   at the prompt, not run — read it and press Enter. Copy and the agent's docs
   are beside it. Grok (xAI's `grok`) is started like the others, but Caprock
   does not read its turns or cost, and says so.
-- **Custom agents** (Premium). Settings → *Custom agents* adds any terminal
+- **Custom agents** (free). Settings → *Custom agents* adds any terminal
   coding agent by name, command and arguments, one per line, with `{prompt}`
   where the first message goes and `{model}` where the model goes, plus the
   models to offer. It then appears in New agent and Quick chat and opens in a
   tab. Caprock keeps its sessions in your list but does not read their cost.
-  Without a licence key the section is shown with the upgrade button.
 - **Claude Code's status line.** Settings → *Status line* picks what
   Caprock's line at the bottom of Claude Code shows. *Full* (the default)
   is everything: model, context, cost, turns, steps and your plan limits.
@@ -356,8 +355,7 @@ others. Installing it: [install-app.md](install-app.md).
   — a click picks it for that session only; a running session never moves,
   and Caprock never switches on its own. A new subscription starts with the
   agent's defaults: your settings, plugins and servers are not copied.
-  Three per agent are free, your own sign-in included; more come with
-  Premium. *Remove* deletes the folder after asking.
+  Add as many as you use, free. *Remove* deletes the folder after asking.
 - **Claude Code on DeepSeek.** Under Claude Code in Settings →
   *Subscriptions*, paste your DeepSeek API key and *Save key*. *New agent*
   and *Quick chat* then offer **DeepSeek · your API key** in the
@@ -1295,10 +1293,10 @@ it off. It is separate from the Telegram alerts in
 [Phone alerts](../README.md#hear-about-it-on-your-phone--and-answer-from-telegram), which stay off until
 you turn them on.
 
-With Premium's plan-window stop on (Settings → *Pause at the plan limit*), a
+With the plan-window stop on (Settings → *Pause at the plan limit*), a
 notification names the sessions it paused and the time they resume, and a
 second one says when they have. These come whenever the stop acts; there is
-no switch for them. See [Premium](../README.md#premium).
+no switch for them. See [the README](../README.md#spend-controls-gemini-and-the-weekly-report).
 
 ## GitHub
 
@@ -1851,7 +1849,7 @@ What the phone opens to:
   **Delete** removes it.
 - **Full dashboard**, the last row, or **⋯** at the top right, opens
   everything else: a new session, all projects and sessions, Settings,
-  Feedback and Premium.
+  and Feedback.
 
 On Android, holding the icon also offers **New chat** and **Save**, and
 **Share** from another app can send text or a link to Caprock's Save. Both

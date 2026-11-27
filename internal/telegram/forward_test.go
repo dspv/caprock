@@ -63,7 +63,7 @@ func (h *host) forwarded() []string {
 func talking(t *testing.T, mut func(*host)) *stand {
 	h := newHost()
 	h.chat = "777"
-	h.licensed, h.chatOn = true, true
+	h.chatOn = true
 	if mut != nil {
 		mut(h)
 	}
@@ -318,16 +318,17 @@ func TestForwardFromAnotherChatIsIgnored(t *testing.T) {
 	}
 }
 
-// Without Premium the picker does not appear; the once-a-day line does.
-func TestForwardNeedsPremium(t *testing.T) {
+// With two-way chat off the picker does not appear; the once-a-day line
+// saying where the switch is does.
+func TestForwardNeedsTheSwitch(t *testing.T) {
 	s := paired(t, nil)
 	s.bot.Send(owner, fwdFrom("Alice", "x"))
 	m := s.message(1)
-	if !strings.Contains(m.Text, "Premium") {
+	if !strings.Contains(m.Text, "Two-way chat is off") {
 		t.Fatalf("got %q", m.Text)
 	}
 	if countPickers(s.bot) != 0 {
-		t.Fatal("a picker without a licence")
+		t.Fatal("a picker with two-way chat off")
 	}
 }
 

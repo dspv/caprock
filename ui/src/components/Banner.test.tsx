@@ -12,11 +12,11 @@ describe('Banner', () => {
     const go = vi.fn()
     const later = vi.fn()
     const { container } = render(
-      <Banner id="t" tone="premium" art="cap" title={<><Fig title="$16,820.12">$16.8k</Fig> all time</>} line="One idea."
-        actions={<><BannerButton kind="premium" onClick={go}>Go</BannerButton><BannerDismiss onClick={later}>Not now</BannerDismiss></>} />,
+      <Banner id="t" tone="warn" art="cap" title={<><Fig title="$16,820.12">$16.8k</Fig> all time</>} line="One idea."
+        actions={<><BannerButton kind="accent" onClick={go}>Go</BannerButton><BannerDismiss onClick={later}>Not now</BannerDismiss></>} />,
     )
     const el = container.querySelector('[data-banner="t"]')!
-    expect(el.getAttribute('data-tone')).toBe('premium')
+    expect(el.getAttribute('data-tone')).toBe('warn')
     // The picture is decoration: the words say what it is about.
     expect(el.querySelector('.bn-art')!.getAttribute('aria-hidden')).toBe('true')
     expect(el.querySelector('.bn-art svg')).toBeTruthy()

@@ -23,7 +23,7 @@ import (
 //     Undo — continue-on back to the move's From.
 //   - "wait": nothing happens by itself either. Claude Code has already
 //     stopped the turn; there is nothing to pause, so the plan-window stop
-//     (Premium, internal/cap/window.go, which pauses at a share below 100%)
+//     (internal/cap/window.go, which pauses at a share below 100%)
 //     is not what this is.
 //
 // With limit_return_after_reset on, a session moved automatically goes back

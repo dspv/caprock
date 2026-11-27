@@ -43,7 +43,7 @@ const SYNONYMS: [words: string[], title: RegExp][] = [
   [['theme', 'dark', 'light', 'colour', 'color', 'palette', 'mode', 'sidebar', 'zoom', 'scale', 'size'], /appearance/i],
   [['font', 'shell', 'cursor', 'scrollback'], /^terminal$/i],
   [['keys', 'shortcut', 'shortcuts', 'hotkey', 'keyboard', 'chord'], /shortcut|hotkey|keyboard/i],
-  [['licence', 'license', 'premium', 'pay', 'paid', 'price', 'pro', 'max', 'billing'], /plan & licence/i],
+  [['pay', 'paid', 'price', 'pro', 'max', 'billing'], /^plan$/i],
   [['account', 'login', 'signin', 'sign', 'profile'], /subscriptions/i],
   [['notification', 'notify', 'sound', 'banner'], /notifications/i],
   [['sleep', 'awake', 'caffeinate', 'lid'], /keep awake/i],

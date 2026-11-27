@@ -10,21 +10,20 @@
  * folder and types the agent's own sign-in command into a shell tab, not
  * run; the user presses Enter and signs in there. Caprock never sees a
  * password or a token: whether a folder is signed in is read from what the
- * agent wrote. Three per agent are free, the user's own sign-in included; a
- * fourth is Premium, and the daemon refuses it (402) whatever the page does.
+ * agent wrote. As many as the user wants, free: no cap and no licence (owner
+ * decision, 2026-11-27: parity with Orca; ADR-048 amended).
  *
  * Self-contained: one section, its own fetching and state, so the Settings
  * screen places it and nothing else.
  */
 import { useState, type ReactNode } from 'react'
-import { api, errText, type Settings, type Subscription, type SubscriptionAgentId, type SubscriptionsResponse, ApiError } from '@/lib/api'
+import { api, errText, type Settings, type Subscription, type SubscriptionAgentId, type SubscriptionsResponse } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { fmtUSD } from '@/lib/format'
 import { currentWindows, forgetAgentPicks, forgetSubscription, resetText, signIns, windowLabel, DEEPSEEK_ID, KIMI_ID, NEAR_PCT } from '@/lib/subscriptions'
 import { planFields, planText } from './AccountPlan'
 import { subscriptionsChanged, useSubscriptionsChanged } from './SubscriptionPicker'
 import { useSetupShell } from '@/lib/setupShell'
-import { PremiumModal } from './PremiumModal'
 import { useEscapeToClose } from './Dialog'
 import { Section } from './SettingsParts'
 import { SecretField, type SecretProvider } from './SecretField'
@@ -71,7 +70,7 @@ function SubscriptionsBody({ data, refresh }: { data: SubscriptionsResponse; ref
       {toRun && <CommandToRun what={toRun.what} command={toRun.command} onClose={() => setToRun(null)} />}
       <AddSubscription data={data} onAdded={(s) => { refresh(); signIn(s) }} />
       <p className="text-[11.5px] leading-snug text-fg-faint">
-        {data.free_per_agent} per agent are free, your own sign-in included{data.licensed ? '; Premium adds more.' : '.'} A new subscription starts with the agent’s own defaults: your settings, plugins and servers in <span className="mono">~/.claude</span> or <span className="mono">~/.codex</span> are not copied. You choose which subscription each session uses; Caprock never switches one for you.
+        Add as many as you use, free. A new subscription starts with the agent’s own defaults: your settings, plugins and servers in <span className="mono">~/.claude</span> or <span className="mono">~/.codex</span> are not copied. You choose which subscription each session uses; Caprock never switches one for you.
       </p>
       {/* Claude Code's docs: a Console sign-in without an API key is stored
           outside the configuration directory, so folders do not separate two. */}
@@ -364,8 +363,7 @@ function SubscriptionRow({ sub, onSignIn, onSignOut, refresh, choice }: { sub: S
  * The same add form, opened from where an agent is started — New agent and
  * Quick chat — so a second sign-in is found where it is used, not only in
  * Settings (owner, 2026-11-18, translated: he "didn't find it under my
- * hand"). Nothing differs from Settings: the free number, the Premium path
- * and the sign-in typed into a shell tab, not run. `onAdded` gets the new one
+ * hand"). Nothing differs from Settings: the sign-in typed into a shell tab, not run. `onAdded` gets the new one
  * so the dialog can pick it; `onSetup` is the dialog's way to a shell tab (the
  * app shell's), else Settings' context; with neither, the command is shown to
  * copy. Escape closes the form, not the dialog under it.
@@ -412,7 +410,7 @@ export function AddSubscriptionInline({ agent, onAdded, onClose, onSetup }: {
   return <div className="grid" onKeyDown={(e) => e.stopPropagation()}>{body}</div>
 }
 
-/** The add form, or — at the free number without a licence — the Premium path. */
+/** The add form. */
 function AddSubscription({ data, onAdded, initialAgent, onCancel }: {
   data: SubscriptionsResponse
   onAdded: (s: Subscription) => void
@@ -426,12 +424,8 @@ function AddSubscription({ data, onAdded, initialAgent, onCancel }: {
   const [label, setLabel] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const [premium, setPremium] = useState(false)
-  const count = signIns(data.agents.find((g) => g.agent === agent)?.subscriptions ?? []).length || 1
-  const atLimit = !data.licensed && count >= data.free_per_agent
 
   const add = async () => {
-    if (atLimit) { setPremium(true); return }
     setBusy(true)
     setError('')
     try {
@@ -439,8 +433,7 @@ function AddSubscription({ data, onAdded, initialAgent, onCancel }: {
       setLabel('')
       onAdded(s)
     } catch (e) {
-      if (e instanceof ApiError && e.status === 402) setPremium(true)
-      else setError(errText(e))
+      setError(errText(e))
     } finally {
       setBusy(false)
     }
@@ -459,22 +452,15 @@ function AddSubscription({ data, onAdded, initialAgent, onCancel }: {
           <span className="text-[12px] text-fg-muted">Name</span>
           <input className="input h-[30px]" placeholder="Work Max" maxLength={40} value={label} onChange={(e) => setLabel(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void add() }} />
         </label>
-        <button type="button" disabled={busy || (!atLimit && !label.trim())} onClick={() => void add()} className="h-[30px] rounded-[7px] bg-accent px-3 text-[12.5px] font-medium text-panel hover:brightness-110 disabled:opacity-50">
+        <button type="button" disabled={busy || !label.trim()} onClick={() => void add()} className="h-[30px] rounded-[7px] bg-accent px-3 text-[12.5px] font-medium text-panel hover:brightness-110 disabled:opacity-50">
           Add subscription
         </button>
         {onCancel && (
           <button type="button" onClick={onCancel} className="h-[30px] px-1 text-[12.5px] text-fg-muted hover:text-fg">Cancel</button>
         )}
       </div>
-      {atLimit && (
-        <p className="text-[12px] leading-snug text-fg-muted">
-          {AGENT_LABEL[agent]} has {count} subscriptions, the free number. A fourth and more come with{' '}
-          <button type="button" onClick={() => setPremium(true)} className="text-premium underline-offset-2 hover:underline">Premium</button>.
-        </p>
-      )}
-      {!atLimit && <p className="text-[11.5px] leading-snug text-fg-faint">Adding opens a shell tab with the sign-in typed; press Enter there and sign in with the account you want.</p>}
+      <p className="text-[11.5px] leading-snug text-fg-faint">Adding opens a shell tab with the sign-in typed; press Enter there and sign in with the account you want.</p>
       {error && <p role="alert" className="text-[12px] text-danger">{error}</p>}
-      {premium && <PremiumModal feature="subscriptions" onClose={() => setPremium(false)} />}
     </div>
   )
 }

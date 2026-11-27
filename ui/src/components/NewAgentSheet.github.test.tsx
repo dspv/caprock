@@ -18,7 +18,7 @@ vi.mock('@/lib/api', async (orig) => {
     api: {
       ...actual.api,
       status: async () => ({ version: 'v0.0.0', claude_available: true, claude_bypass_accepted: true }),
-      agentCatalog: async () => ({ licensed: false, home: '/h', agents: [{ id: 'claude', label: 'Claude Code', installed: true, ready: true, models: [], observed: true, prompt: true }] }),
+      agentCatalog: async () => ({ home: '/h', agents: [{ id: 'claude', label: 'Claude Code', installed: true, ready: true, models: [], observed: true, prompt: true }] }),
       settings: async () => ({}),
       saveSettings: async (s: unknown) => s,
       spawn: (req: unknown) => spawn(req),

@@ -17,9 +17,6 @@ import (
 
 // Errors a SubscriptionManager answers with, mapped to statuses here.
 var (
-	// ErrSubscriptionPremium: the agent already has the free number of
-	// subscriptions and there is no licence.
-	ErrSubscriptionPremium = errors.New("premium required")
 	// ErrSubscriptionInUse: a session Caprock started is running on it.
 	ErrSubscriptionInUse = errors.New("a session is running on this subscription")
 	// ErrSubscriptionNotFound: no subscription with that id.
@@ -115,9 +112,7 @@ type SubscriptionAgent struct {
 
 // SubscriptionsResponse is GET /v1/subscriptions.
 type SubscriptionsResponse struct {
-	Agents       []SubscriptionAgent `json:"agents"`
-	Licensed     bool                `json:"licensed"`
-	FreePerAgent int                 `json:"free_per_agent"`
+	Agents []SubscriptionAgent `json:"agents"`
 	// Home is where a sign-in's shell tab opens.
 	Home string `json:"home,omitempty"`
 }
@@ -159,11 +154,6 @@ func (s *Server) subscriptionsWritable(w http.ResponseWriter, r *http.Request) b
 
 func (s *Server) subscriptionError(w http.ResponseWriter, err error) {
 	switch {
-	case errors.Is(err, ErrSubscriptionPremium):
-		writeJSON(w, http.StatusPaymentRequired, map[string]string{
-			"error":  "premium required",
-			"detail": "three subscriptions per agent are free, your own sign-in included; more need Premium",
-		})
 	case errors.Is(err, ErrSubscriptionInUse):
 		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
 	case errors.Is(err, ErrSubscriptionNotFound):

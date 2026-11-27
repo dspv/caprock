@@ -1,15 +1,15 @@
 /**
  * Private modules (ADR-076): nothing is drawn without a valid admin key; with
- * one, each installed module gets a sidebar row and a route; a CRA1 key pasted
- * into the licence field goes to /v1/admin and never into settings.
+ * one, each installed module gets a sidebar row and a route; Settings names a
+ * stored key and the modules it opens, with no field to paste one into.
  */
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { BRAIN_FOLD_KEY, MODULE_FOLD_KEY, setBrainFold } from './sidebarAccordion'
 import { href, parseHash } from './router'
 import { ModuleRows } from '@/components/ModuleRows'
-import { LicenseField } from '@/components/LicenseField'
-import type { AdminState, ModuleAttention, Settings } from './api'
+import { AdminKeyStatus } from '@/components/AdminKeyStatus'
+import type { AdminState, ModuleAttention } from './api'
 
 function stubFetch(admin: AdminState, onPut?: (body: unknown) => AdminState) {
   const calls: { method: string; url: string; body?: unknown }[] = []
@@ -19,7 +19,6 @@ function stubFetch(admin: AdminState, onPut?: (body: unknown) => AdminState) {
     calls.push({ method, url, body })
     let out: unknown = {}
     if (url === '/v1/admin') out = method === 'PUT' && onPut ? onPut(body) : admin
-    if (url === '/v1/premium') out = { license: { active: false, reason: 'no key' } }
     return new Response(JSON.stringify(out), { status: 200, headers: { 'Content-Type': 'application/json' } })
   }))
   return calls
@@ -148,33 +147,18 @@ describe('the sidebar rows', () => {
   })
 })
 
-describe('the licence field', () => {
-  const plan = { license_key: '' } as Settings
-
-  it('sends a CRA1 key to /v1/admin, not to settings, and says it is on', async () => {
-    const calls = stubFetch({ admin: false }, () => ({ admin: true, modules: ['alpha'], installed: [] }))
-    const save = vi.fn()
-    render(<LicenseField plan={plan} save={save} />)
-    fireEvent.change(screen.getByLabelText('Licence key'), { target: { value: ' CRA1.abc.def ' } })
-    fireEvent.click(screen.getByRole('button', { name: 'save' }))
-    await screen.findByText(/Admin key is on — alpha/)
-    expect(save).not.toHaveBeenCalled()
-    expect(calls.find((c) => c.method === 'PUT')).toEqual({ method: 'PUT', url: '/v1/admin', body: { key: 'CRA1.abc.def' } })
-  })
-
-  it('says nothing about admin keys to someone without one', async () => {
+describe('the admin key in Settings', () => {
+  it('says nothing to someone without one', async () => {
     const calls = stubFetch({ admin: false })
-    render(<LicenseField plan={plan} save={vi.fn()} />)
+    const { container } = render(<AdminKeyStatus />)
     await waitFor(() => expect(calls.some((c) => c.url === '/v1/admin')).toBe(true))
-    expect(document.body.textContent).not.toMatch(/admin|module/i)
+    expect(container.innerHTML).toBe('')
   })
 
-  it('still saves a Premium key as before', () => {
-    stubFetch({ admin: false })
-    const save = vi.fn()
-    render(<LicenseField plan={plan} save={save} />)
-    fireEvent.change(screen.getByLabelText('Licence key'), { target: { value: 'CR-2027-01-01-ABCDEF12' } })
-    fireEvent.click(screen.getByRole('button', { name: 'save' }))
-    expect(save).toHaveBeenCalledWith({ license_key: 'CR-2027-01-01-ABCDEF12' })
+  it('names the modules a stored key opens', async () => {
+    stubFetch({ admin: true, modules: ['alpha'], installed: [] })
+    render(<AdminKeyStatus />)
+    await screen.findByText(/Admin key is on — alpha/)
+    expect(screen.queryByLabelText(/licence key/i)).toBeNull()
   })
 })

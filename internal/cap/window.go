@@ -1,6 +1,6 @@
 package cap
 
-// The plan-window stop (Premium; owner decision, 2026-10-08).
+// The plan-window stop (owner decision, 2026-10-08; free since 2026-11-27).
 //
 // The daily cap is priced in list-price dollars, which a Pro or Max
 // subscriber never pays, so it guards against a loss most users do not have.
@@ -36,11 +36,10 @@ package cap
 //     cap's own rule. A stop that found nothing to pause does not latch, so a
 //     session Caprock starts later in the window is still covered.
 //   - Resumed after the reset, by the same guard that paused it. The promise
-//     made by the pause is kept even if the setting is turned off or the
-//     licence lapses in between. A session the user resumed, paused or ended
+//     made by the pause is kept even if the setting is turned off in
+//     between. A session the user resumed, paused or ended
 //     by hand in the meantime is released (Release) and left alone.
-//   - Unlicensed: no pause at all. The free 90% alert on Now is untouched and
-//     is not this package's business.
+//   - The 90% alert on Now is untouched and is not this package's business.
 //   - The state survives a restart. Sessions in pty-hosts outlive the daemon
 //     (ADR-033), and a session left SIGSTOPped because the daemon that meant
 //     to resume it was upgraded meanwhile would be the worst failure here.
@@ -110,8 +109,6 @@ type Window struct {
 type WindowSettings struct {
 	// Pct is the share of a window that pauses; zero or less is off.
 	Pct int
-	// Licensed is whether Premium is active. Without it nothing is paused.
-	Licensed bool
 }
 
 // Fresh reports whether a sample may be acted on at now, and if not, why.
@@ -216,7 +213,7 @@ func (g *WindowGuard) State() WindowState {
 // the share and has not fired already. Returns whether it paused anything.
 func (g *WindowGuard) Check(ctx context.Context) bool {
 	set := g.Settings()
-	if !set.Licensed || set.Pct <= 0 {
+	if set.Pct <= 0 {
 		return false
 	}
 	ws, err := g.Windows(ctx)

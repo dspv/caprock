@@ -257,7 +257,7 @@ one in the agent of your choice with a summary you read first — what the agent
 last said, what changed in the folder, the PRs it opened. For Gemini, install
 the CLI
 (`npm install -g @google/gemini-cli`).
-With a Gemini key set (see [Premium](#premium) for where), Caprock passes it to
+With a Gemini key set (see [Spend controls, Gemini and the weekly report](#spend-controls-gemini-and-the-weekly-report) for where), Caprock passes it to
 the child process. Gemini has no hooks, and the session history it keeps
 for itself is not something Caprock reads; it does write OpenTelemetry, and
 Caprock asks it to write that to a file it then reads
@@ -684,12 +684,11 @@ Found a bug, or something that did not explain itself? The **feedback** button
 in the header opens a prefilled GitHub issue in your browser — nothing is sent
 from the dashboard, and what gets attached is on screen before you press it.
 
-## Premium
+## Spend controls, Gemini and the weekly report
 
-Everything above is free, Apache-2.0, and stays that way — including the cost
-of every provider Caprock can see, Anthropic or not.
-
-Premium adds the things that act on what you are looking at.
+Everything in this README is free for one person, Apache-2.0, with no licence
+key — including these, which act on what you are looking at. Caprock for Teams
+is the paid product.
 
 **A daily cap.** Pass a number you set, and Caprock pauses the sessions it
 started — paused, not killed, and never a session you started yourself. Built.
@@ -702,8 +701,8 @@ them after the window resets — nobody has to type "continue". Resume one
 yourself and it is left alone until the next window. Sessions you started
 yourself are never touched, and Caprock never pauses on figures more than ten
 minutes old. The figures come from Caprock's status line
-(`caprock statusline install`). Without Premium the 90% alert on Home stays as
-it is.
+(`caprock statusline install`). With the stop off, the 90% alert on Home stays
+as it is.
 
 **Ask Gemini about your numbers, on your own key.** A second model inside
 Caprock, billed to you by Google at their prices. Get a key from
@@ -725,25 +724,11 @@ Telegram bot.
 
 **Where each tool failed.** On Lifetime a tool's row opens into its calls
 grouped by what they were about — Bash by command, Read and Edit by file,
-WebFetch by domain — and that much is free. Output, failure rate and a trend
-per group are Premium; without a licence the daemon leaves those figures out.
+WebFetch by domain — with the output, failure rate and a trend per group.
 
-**More subscriptions.** Three Claude Code and three Codex sign-ins are free,
-your own included; Premium adds as many more as you use.
-
-$30/year or $100 once — [caprock.dev/premium](https://caprock.dev/premium/).
-
-A key arrives by email and goes in the dashboard's settings, or:
-
-```bash
-caprock license set YOUR-KEY      # the key from the email
-caprock license                 # what is in force
-```
-
-The key carries its own expiry and is checked on your machine. Caprock makes no
-request to us to verify it, now or ever — there is nothing to verify against.
-Paid features keep working for seven days after a key expires, so a late
-renewal does not interrupt you.
+Also free, with no cap: as many Claude Code and Codex sign-ins as you use, your
+own coding agents added by command, talking to your agents from Telegram, and
+Second Brain.
 
 ## Updating
 
@@ -980,13 +965,13 @@ finished run, how long it worked since your last prompt, what it cost, its tool
 calls, the files it changed and the first line of its reply. Under it: *Mute
 this session*, and *Open on phone* when phone access is on.
 
-**With Premium, talk back.** Reply to a session's message and Caprock types it
+**Talk back.** Reply to a session's message and Caprock types it
 in and presses Enter; the answer comes back in the chat as soon as the turn
 ends. *Approve* and *Deny* answer a question the way the app's card does.
 `/sessions` lists what is running, `/new caprock fix the flaky test` starts
 Claude Code in a project (Bypass asks first), `/stop 2` stops one. Only
 sessions Caprock started are typed into; one in your own terminal is watched.
-Off until you switch it on, licence or not.
+Off until you switch it on. Free, like the alerts.
 
 It goes from your machine straight to Telegram, which can read it; nothing
 passes a server of ours, and nothing on your computer listens for Telegram — it

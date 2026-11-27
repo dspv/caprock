@@ -22,12 +22,6 @@ vi.mock('@/lib/api', async (orig) => {
       ...actual.api,
       subscriptions: m.list, addSubscription: m.add, removeSubscription: m.remove, updateSubscription: m.update,
       settings: m.settings, saveSettings: m.save,
-      premium: async () => ({
-        yearly: { per_month_usd: 2.5, charged_usd: 30, period: 'year', url: 'https://buy/y' },
-        lifetime: { per_month_usd: 0, charged_usd: 100, period: 'once', url: 'https://buy/l' },
-        info_url: 'https://caprock.dev/premium/',
-        license: { active: false, in_grace: false },
-      }),
     },
   }
 })
@@ -37,13 +31,13 @@ import { SetupShellContext } from '@/lib/setupShell'
 import { SubscriptionNote, SubscriptionPicker } from './SubscriptionPicker'
 import { AccountPlans } from './AccountPlan'
 
-function response(claude: Subscription[], licensed = false): SubscriptionsResponse {
+function response(claude: Subscription[]): SubscriptionsResponse {
   return {
     agents: [
       { agent: 'claude', label: 'Claude Code', installed: true, subscriptions: claude },
       { agent: 'codex', label: 'Codex', installed: false, subscriptions: [sub({ agent: 'codex', dir: '/h/.codex', signed_in: false })] },
     ],
-    licensed, free_per_agent: 3, home: '/h',
+    home: '/h',
   }
 }
 
@@ -114,14 +108,19 @@ describe('Settings → Subscriptions', () => {
     await waitFor(() => expect(setup).toHaveBeenCalledWith(added.login_command, '/h'))
   })
 
-  it('shows the Premium path at the free number, without asking the daemon', async () => {
+  // No cap and no licence (owner decision, 2026-11-27: parity with Orca): a
+  // fourth sign-in is added like the first.
+  it('adds a fourth sign-in without a licence or a Premium path', async () => {
     m.list.mockResolvedValue(response([sub({}), sub({ id: 'a1', label: 'Work', default: false }), sub({ id: 'b2', label: 'Home', default: false })]))
     m.add.mockClear()
+    m.add.mockResolvedValueOnce(sub({ id: 'c3', label: 'Client', default: false }))
     render(<SubscriptionsSetting />)
-    expect(await screen.findByText(/the free number/)).toBeInTheDocument()
+    await screen.findByText('Home')
+    expect(screen.queryByText(/the free number|Premium/)).toBeNull()
+    fireEvent.change(screen.getByPlaceholderText('Work Max'), { target: { value: 'Client' } })
     fireEvent.click(screen.getByRole('button', { name: 'Add subscription' }))
-    expect(m.add).not.toHaveBeenCalled()
-    expect(await screen.findByText('More sign-ins, each a pick away')).toBeInTheDocument()
+    await waitFor(() => expect(m.add).toHaveBeenCalledWith('claude', 'Client'))
+    expect(screen.queryByText('More sign-ins, each a pick away')).toBeNull()
   })
 
   it('asks before removing, and shows the command to copy in a browser', async () => {

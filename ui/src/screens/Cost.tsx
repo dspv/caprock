@@ -18,8 +18,6 @@ import { PlanShare } from '@/components/PlanShare'
 import { asSpendParts } from '@/lib/planShare'
 import { PlanLimitsPanel } from '@/components/PlanLimits'
 import { TeamsBanner } from '@/components/TeamsBanner'
-import { CapNudge, PlanLimitNudge } from '@/components/Nudges'
-import { Locked } from '@/components/Locked'
 import { SpendCap } from '@/components/SpendCap'
 import { GeminiPanel } from '@/components/Gemini'
 import { ModelCost, UnpricedNote, modelCostState, modelCostText } from '@/components/Unpriced'
@@ -94,7 +92,7 @@ export function CostScreen({ section }: { section?: string } = {}) {
       {across && <CostAcrossPanel summary={s} range={range} />}
       {summary.error && !s && <Empty title="Cannot reach the daemon">{summary.error.message}</Empty>}
       {/* Not on `today`: one day of one machine is too thin a fact to open
-        * an offer with. Teams, not Premium, on this screen: it is the screen
+        * an offer with. Teams on this screen: it is the screen
         * about where the money went per project — the question the team
         * version answers across machines (see TeamsBanner). */}
       {range !== 'today' && s && (
@@ -107,10 +105,6 @@ export function CostScreen({ section }: { section?: string } = {}) {
           now={now}
         />
       )}
-      {/* Premium's daily cap, only on a day in the top quarter of this
-        * machine's own days (lib/nudges.ts capNudge). One offer at a time:
-        * if the team card holds the slot, this waits. */}
-      <CapNudge daily={daily.data} now={now} />
 
       {/* Limits first: what is left of the plan, and the cap on the day, are
         * what this screen is opened to check (owner, 2026-10-11, translated:
@@ -127,25 +121,17 @@ export function CostScreen({ section }: { section?: string } = {}) {
           </div>
         } />
       )}
-      {s && <PlanLimitNudge limits={s.rate_limits} now={now} />}
       {/* Rendered even with no data. The panel used to vanish when Claude Code
         * was not feeding the status line, so the one screen that could have
         * explained why there are no limits showed nothing at all — the same
         * shape as the spawn button that hid the dialog explaining itself. */}
       {/* The cap sits beside the limits it complements: one is Anthropic's
-        * ceiling, the other is yours. Showing it here, locked, is the whole
-        * pitch — the panel is where it will be, with real figures behind it. */}
-      {/* The cap sits beside the limits it complements: one is Anthropic's
-        * ceiling, the other is yours. Locked, the panel is the pitch — it is
-        * where the feature will be, with real figures behind it. Unlocked,
-        * Locked renders its children live and this becomes the real control. */}
+        * ceiling, the other is yours. Free, live for everyone (2026-11-27). */}
       {/* Both panels are controls — one stops sessions, one spends on a key —
         * and a paired device reads (ADR-029). */}
       {!isPairedDevice() && (
         <div id="spend-cap">
-          <Locked feature="cap" title="Stop the day at a number you choose">
-            <SpendCap suggestion={capSuggestion} />
-          </Locked>
+          <SpendCap suggestion={capSuggestion} />
         </div>
       )}
 
@@ -317,15 +303,8 @@ export function CostScreen({ section }: { section?: string } = {}) {
             ))}
         </Panel>
       {/* Gemini sits on the money screen because that is what it is about
-        * here: a second model whose cost lands in the same totals above. The
-        * lock is over the panel, never over a figure — the spend it produces
-        * is counted for free users too, and hiding a number this page already
-        * computed is the move Paywall.test.tsx forbids. */}
-      {!isPairedDevice() && (
-        <Locked feature="gemini" title="Ask a second model, on your own key">
-          <GeminiPanel />
-        </Locked>
-      )}
+        * here: a second model whose cost lands in the same totals above. */}
+      {!isPairedDevice() && <GeminiPanel />}
 
       </div>
       <div className="text-[11px] text-fg-faint">

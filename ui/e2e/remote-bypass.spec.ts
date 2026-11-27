@@ -40,7 +40,7 @@ test('New agent on another computer shows its bypass warning on the first try, a
     if (p === '/v1/status') return r.fulfill(json({ version: '0.198.0', claude_bypass_accepted: false }))
     if (p === '/v1/projects') return r.fulfill(json({ projects: [{ id: 1, root: 'C:\\Users\\me\\dev\\api', name: 'api', kind: 'repo' }] }))
     if (p === '/v1/recent-dirs') return r.fulfill(json([]))
-    if (p === '/v1/agents/catalog') return r.fulfill(json({ licensed: true, home: 'C:\\Users\\me', agents: [{ id: 'claude', label: 'Claude Code', installed: true, ready: true, models: [], observed: true, prompt: true }] }))
+    if (p === '/v1/agents/catalog') return r.fulfill(json({ home: 'C:\\Users\\me', agents: [{ id: 'claude', label: 'Claude Code', installed: true, ready: true, models: [], observed: true, prompt: true }] }))
     if (p === '/v1/browse/stat') return r.fulfill(json({ path: 'C:\\Users\\me\\dev\\api', exists: true, is_dir: true }))
     if (p === '/v1/browse') return r.fulfill(json({ root: 'C:\\Users\\me', dir: 'C:\\Users\\me\\dev', parent: 'C:\\Users\\me', entries: [] }))
     if (p === '/v1/claude/bypass-consent' && method === 'POST') return r.fulfill(json({ accepted: true }))

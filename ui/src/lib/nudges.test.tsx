@@ -5,7 +5,7 @@
 import { useState } from 'react'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { capNudge, limitNudge, pickNudge, resetNudgeSlots, starEligible, teamEligible, useNudgeSlot, type NudgeId } from './nudges'
+import { pickNudge, resetNudgeSlots, starEligible, teamEligible, useNudgeSlot, type NudgeId } from './nudges'
 import { hydratePrompts, isDue, markAnswered, resetPrompts } from './prompts'
 import { findMoment, weekClosedAt, weekClosedDue } from './shareprompt'
 
@@ -32,12 +32,8 @@ describe('star strip eligibility', () => {
 })
 
 describe('snooze', () => {
-  it('Premium nudges come back after two weeks, the team card too', () => {
-    markAnswered('premium-limit', T0)
-    markAnswered('premium-cap', T0)
+  it('the team card comes back after two weeks', () => {
     markAnswered('teams-nudge', T0)
-    expect(isDue('premium-limit', T0 + 13 * DAY)).toBe(false)
-    expect(isDue('premium-cap', T0 + 14 * DAY)).toBe(true)
     expect(isDue('teams-nudge', T0 + 13 * DAY)).toBe(false)
     expect(isDue('teams-nudge', T0 + 14 * DAY)).toBe(true)
   })
@@ -47,23 +43,6 @@ describe('snooze', () => {
     hydratePrompts({ 'star-dismissed': T0 - DAY, 'star-done': T0, 'not-a-prompt': T0 })
     expect(isDue('star-done', T0 + 1000 * DAY)).toBe(false)
     expect(isDue('star-dismissed', T0 + 29 * DAY)).toBe(false)
-  })
-})
-
-describe('premium rules', () => {
-  it('a plan window at 80% or more, the fuller one named', () => {
-    expect(limitNudge(undefined)).toBeNull()
-    expect(limitNudge({ five_hour: { used_percentage: 79, resets_at: 0 } })).toBeNull()
-    expect(limitNudge({ five_hour: { used_percentage: 81, resets_at: 0 }, seven_day: { used_percentage: 92, resets_at: 0 } }))
-      .toEqual({ name: 'weekly', pct: 92 })
-  })
-
-  it("a daily cap only in the top quarter of the machine's own days", () => {
-    const past = Array.from({ length: 8 }, (_, i) => ({ day: `2026-09-0${i + 1}`, cost_usd: (i + 1) * 10 }))
-    expect(capNudge(past.slice(0, 7), '2026-10-07', 500)).toBe(false) // too few days to judge
-    expect(capNudge(past, '2026-10-07', 0)).toBe(false)
-    expect(capNudge(past, '2026-10-07', 60)).toBe(false)
-    expect(capNudge(past, '2026-10-07', 70)).toBe(true)
   })
 })
 
@@ -127,12 +106,12 @@ describe('one offer at a time', () => {
     expect(pickNudge([])).toBeNull()
     expect(pickNudge([
       { key: 'a', id: 'star', order: 0 },
-      { key: 'b', id: 'premium-limit', order: 1 },
-      { key: 'c', id: 'teams-nudge', order: 2 },
+      { key: 'b', id: 'teams-nudge', order: 1 },
+      { key: 'c', id: 'mail', order: 2 },
     ])).toBe('b')
     expect(pickNudge([
-      { key: 'a', id: 'premium-hint', order: 3 },
-      { key: 'b', id: 'premium-hint', order: 1 },
+      { key: 'a', id: 'mail', order: 3 },
+      { key: 'b', id: 'mail', order: 1 },
     ])).toBe('b')
   })
 
@@ -151,7 +130,7 @@ describe('one offer at a time', () => {
   it('a dismissed offer gives the slot back', () => {
     function Dismissable() {
       const [gone, setGone] = useState(false)
-      return useNudgeSlot('premium-cap', !gone) ? <button onClick={() => setGone(true)}>cap</button> : null
+      return useNudgeSlot('teams-nudge', !gone) ? <button onClick={() => setGone(true)}>cap</button> : null
     }
     render(<><Dismissable /><Offer id="star" /></>)
     expect(screen.queryByText('star')).toBeNull()

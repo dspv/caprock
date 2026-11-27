@@ -87,9 +87,9 @@ func (s *sender) act(t *testing.T) []telegram.HubPress {
 // outcome.
 func TestAnotherComputersQuestionIsAnsweredWhereItWasAsked(t *testing.T) {
 	holder := paired(t, nil) // the holder needs no licence: the asker decides
-	s := newSender(t, holder, func(h *host) { h.licensed, h.chatOn = true, true })
+	s := newSender(t, holder, func(h *host) { h.chatOn = true })
 	if !s.b.Active() {
-		t.Fatal("a licensed computer sending through a holder should count as two-way")
+		t.Fatal("a computer with two-way chat on sending through a holder should count as two-way")
 	}
 	s.ask(t, "p1")
 	m := holder.message(1)
@@ -127,11 +127,11 @@ func TestAnotherComputersQuestionIsAnsweredWhereItWasAsked(t *testing.T) {
 	})
 }
 
-// The asking computer's licence and switch decide, not the holder's: an
-// unlicensed computer's press is answered with a line, and nothing is
-// approved anywhere. Mute is free.
-func TestAnAnswerNeedsTheAskingComputersLicence(t *testing.T) {
-	holder := paired(t, func(h *host) { h.licensed, h.chatOn = true, true })
+// The asking computer's switch decides, not the holder's: a press for a
+// computer with two-way chat off is answered with a line, and nothing is
+// approved anywhere. Mute works either way.
+func TestAnAnswerNeedsTheAskingComputersSwitch(t *testing.T) {
+	holder := paired(t, func(h *host) { h.chatOn = true })
 	s := newSender(t, holder, nil)
 	s.ask(t, "p1")
 	m := holder.message(1)
@@ -139,10 +139,10 @@ func TestAnAnswerNeedsTheAskingComputersLicence(t *testing.T) {
 	eventually(t, "the toast", func() bool { return len(holder.bot.Answers()) > 0 })
 	s.act(t)
 	if len(s.h.answered) != 0 || len(holder.h.answered) != 0 {
-		t.Fatal("an unlicensed computer's prompt was answered")
+		t.Fatal("a switched-off computer's prompt was answered")
 	}
 	say := holder.message(2)
-	if say.ReplyTo != m.MessageID || !strings.Contains(say.Text, "Premium") {
+	if say.ReplyTo != m.MessageID || !strings.Contains(say.Text, "Two-way chat is off") {
 		t.Fatalf("say = %+v", say)
 	}
 	holder.bot.Press(owner, m.MessageID, "h:2")
@@ -160,7 +160,7 @@ func TestAnAnswerNeedsTheAskingComputersLicence(t *testing.T) {
 // there, and the reply gets a 👍.
 func TestAReplyGoesToTheComputerThatAsked(t *testing.T) {
 	holder := paired(t, nil)
-	s := newSender(t, holder, func(h *host) { h.licensed, h.chatOn = true, true })
+	s := newSender(t, holder, func(h *host) { h.chatOn = true })
 	s.ask(t, "")
 	m := holder.message(1)
 	holder.bot.Reply(owner, m.MessageID, "run it with -race")
@@ -282,7 +282,7 @@ func TestTheBotMovesWithoutANewPairing(t *testing.T) {
 // another computer, is not handed to it.
 func TestPressesGoOnlyToTheirComputer(t *testing.T) {
 	holder := paired(t, nil)
-	s := newSender(t, holder, func(h *host) { h.licensed, h.chatOn = true, true })
+	s := newSender(t, holder, func(h *host) { h.chatOn = true })
 	s.ask(t, "p1")
 	m := holder.message(1)
 	holder.bot.Press(owner, m.MessageID, "h:0")

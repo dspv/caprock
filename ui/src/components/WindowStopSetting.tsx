@@ -1,7 +1,7 @@
 /**
  * The plan-window stop's one control: off, or the share of Claude's plan
- * window at which Caprock pauses the sessions it started (Premium; owner
- * decision, 2026-10-08; internal/cap/window.go).
+ * window at which Caprock pauses the sessions it started (owner decision,
+ * 2026-10-08; free since 2026-11-27; internal/cap/window.go).
  *
  * Three things the panel has to say, because each is a promise or a limit:
  *
@@ -37,11 +37,9 @@ export function WindowStopSetting({ now = Date.now() }: { now?: number }) {
   return (
     <Section
       title="Pause at the plan limit"
-      // "on" only when it can act: without a licence the share is kept but
-      // nothing is paused, and the header must not say otherwise.
       aside={
-        <span className={`text-[12px] ${pct && ws.data?.licensed !== false ? 'text-premium-strong' : 'text-fg-faint'}`}>
-          {!pct ? 'off' : ws.data?.licensed === false ? 'not active' : `on · ${pct}%`}
+        <span className={`text-[12px] ${pct ? 'text-accent' : 'text-fg-faint'}`}>
+          {!pct ? 'off' : `on · ${pct}%`}
         </span>
       }
     >

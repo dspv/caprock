@@ -85,10 +85,8 @@ type Entry struct {
 	TypedModel bool `json:"typed_model,omitempty"`
 	// Observed is true when Caprock reads the sessions' turns and cost.
 	Observed bool `json:"observed"`
-	// Custom marks an agent the user added (ADR-046); Locked one that the
-	// licence no longer covers, listed so its owner can see why it is gone.
+	// Custom marks an agent the user added (ADR-046).
 	Custom bool `json:"custom,omitempty"`
-	Locked bool `json:"locked,omitempty"`
 	// Prompt is false for a custom agent whose args have no {prompt}: a
 	// first message would be dropped, so the page says so.
 	Prompt bool   `json:"prompt"`

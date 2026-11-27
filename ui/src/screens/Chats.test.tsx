@@ -29,7 +29,7 @@ beforeEach(() => {
   vi.restoreAllMocks()
   localStorage.clear()
   location.hash = '#/chats'
-  vi.spyOn(api, 'agentCatalog').mockResolvedValue({ agents: [claude], licensed: false } as unknown as Awaited<ReturnType<typeof api.agentCatalog>>)
+  vi.spyOn(api, 'agentCatalog').mockResolvedValue({ agents: [claude] } as unknown as Awaited<ReturnType<typeof api.agentCatalog>>)
 })
 
 describe('ChatsScreen', () => {
@@ -121,7 +121,7 @@ describe('New chat in a folder (ADR-091)', () => {
       ] },
       { agent: 'codex', label: 'Codex', installed: false, subscriptions: [] },
     ],
-    licensed: false, free_per_agent: 3, home: '/h',
+    home: '/h',
   } as unknown as Awaited<ReturnType<typeof api.subscriptions>>
 
   afterEach(() => { vi.unstubAllGlobals() })
@@ -185,7 +185,7 @@ describe('New chat in a folder (ADR-091)', () => {
 
   it('says nothing about subscriptions when no agent that has them is offered', async () => {
     phoneScreen()
-    vi.mocked(api.agentCatalog).mockResolvedValue({ agents: [{ ...claude, id: 'gemini', label: 'Gemini CLI' }], licensed: false } as unknown as Awaited<ReturnType<typeof api.agentCatalog>>)
+    vi.mocked(api.agentCatalog).mockResolvedValue({ agents: [{ ...claude, id: 'gemini', label: 'Gemini CLI' }] } as unknown as Awaited<ReturnType<typeof api.agentCatalog>>)
     vi.spyOn(api, 'chats').mockResolvedValue({ items: [], total: 0, chats: 0, archived: 0 })
     vi.spyOn(api, 'subscriptions').mockResolvedValue(subsResponse)
     render(<ChatsScreen />)
@@ -212,7 +212,7 @@ describe('New chat in a folder (ADR-091)', () => {
     vi.spyOn(api, 'session').mockResolvedValue({ ...chat('c1', { cwd: '/h/dev/acme' }), events: [], files: [], prs: [] } as unknown as SessionDetail)
     vi.spyOn(api, 'chatFiles').mockResolvedValue({ files: [] })
     vi.spyOn(api, 'recentEvents').mockResolvedValue([])
-    vi.spyOn(api, 'agentCatalog').mockResolvedValue({ agents: [claude], licensed: false, home: '/h' } as unknown as Awaited<ReturnType<typeof api.agentCatalog>>)
+    vi.spyOn(api, 'agentCatalog').mockResolvedValue({ agents: [claude], home: '/h' } as unknown as Awaited<ReturnType<typeof api.agentCatalog>>)
     render(<ChatScreen id="c1" />)
     await waitFor(() => expect(document.querySelector('[data-chat-context]')?.textContent).toBe('Sees ~/dev/acme · only Anthropic gets what it reads'))
   })

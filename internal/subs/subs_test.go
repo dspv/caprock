@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dspv/caprock/internal/config"
 	"github.com/dspv/caprock/internal/hooks"
 )
 
@@ -42,16 +41,6 @@ func TestValidIDKeepsRequestsInsideProfiles(t *testing.T) {
 	}
 	if err := Remove(t.TempDir(), "../etc"); err == nil {
 		t.Fatal("Remove accepted a path")
-	}
-}
-
-func TestCountIncludesDefault(t *testing.T) {
-	list := []config.Subscription{{ID: "a", Agent: "claude"}, {ID: "b", Agent: "codex"}, {ID: "c", Agent: "claude"}}
-	if got := Count(list, "claude"); got != 3 {
-		t.Fatalf("claude count = %d", got)
-	}
-	if got := Count(list, "codex"); got != 2 {
-		t.Fatalf("codex count = %d", got)
 	}
 }
 

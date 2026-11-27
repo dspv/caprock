@@ -4,12 +4,12 @@
 
 Caprock is a local, open-source mission control for Claude Code: a single static Go binary runs a loopback daemon that captures every `claude` session on the machine (Claude Code hooks via a tiny shim + transcript tailing), normalizes it into one event stream in SQLite, and serves a dense React dashboard — live activity, per-repo cost, token burn, loop alerts, the prose Claude actually wrote (searchable across sessions), spawning/typing into sessions, and a verified multi-agent orchestrator. Local-first, zero servers, Apache-2.0, free for solo use.
 
-**Status: released, and taking money.** All three phases are built and green on
+**Status: released.** All three phases are built and green on
 the 3-OS CI matrix; Orchestrate = hive, tasks board, Stop-loop, orchestrator
 agent, verification-before-done, approvals. The Phase 2 tag gate — a
-real-`claude` unattended run with hooks — passed. Paid plans are live: free,
-$30/year or $100 once (the $5/month price is no longer sold), unlocked by an offline licence key
-([ADR-022](.ai/08-decisions.md)). Which version is current is what `git
+real-`claude` unattended run with hooks — passed. Caprock is free for one
+person, all of it, with no licence key; the team tier is the only paid product
+([ADR-022](.ai/08-decisions.md), amended 2026-11-27). Which version is current is what `git
 describe`, the releases page and `CHANGELOG.md` answer — rule 9 below is why
 this line does not. See `.ai/14-build-status.md`.
 

@@ -11,9 +11,8 @@ import (
 )
 
 // Custom agents (ADR-046): a coding agent the user adds by name, command and
-// an argument template, started in a Caprock terminal like the built-ins. A
-// Premium feature: the list is kept whatever the licence says, and offered
-// and started only while it is active.
+// an argument template, started in a Caprock terminal like the built-ins.
+// Free, with no licence (owner decision, 2026-11-27: parity with Orca).
 
 // CustomPrefix is how a custom agent is named in a spawn request and on its
 // sessions: "custom:aider".
@@ -210,17 +209,16 @@ func HasAnyPlaceholder(s string) bool {
 }
 
 // CustomEntries lists the custom agents for the picker. resolve finds a
-// command's binary ("" when absent); licensed says whether the licence
-// covers them.
-func CustomEntries(list []config.CustomAgent, resolve func(string) string, licensed bool) []Entry {
+// command's binary ("" when absent).
+func CustomEntries(list []config.CustomAgent, resolve func(string) string) []Entry {
 	out := make([]Entry, 0, len(list))
 	for _, a := range list {
-		e := Entry{ID: CustomPrefix + a.ID, Label: a.Name, Custom: true, Locked: !licensed, Models: []Model{}, Prompt: HasPlaceholder(a.Args, "prompt")}
+		e := Entry{ID: CustomPrefix + a.ID, Label: a.Name, Custom: true, Models: []Model{}, Prompt: HasPlaceholder(a.Args, "prompt")}
 		for _, m := range a.Models {
 			e.Models = append(e.Models, Model{ID: m, Label: m})
 		}
 		e.Installed = resolve(a.Command) != ""
-		e.Ready = e.Installed && licensed
+		e.Ready = e.Installed
 		if !e.Installed {
 			e.Setup = &Setup{Reason: "not_installed", Text: fmt.Sprintf("%q was not found on this machine.", a.Command)}
 		}

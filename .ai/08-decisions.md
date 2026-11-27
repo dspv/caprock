@@ -437,6 +437,33 @@ the weekly report's delivery — is enforced by that infrastructure and needs no
 key at all, which is the tier boundary [ADR-021](#adr-021--the-team-tier-is-self-hosted-and-the-free-product-is-not-carved-up)
 already draws.
 
+**Amended 2026-11-27: no paid plan for individuals.** The owner (translated):
+"nobody paid, I gave everyone keys free; good time." Caprock is free for one
+person, all of it: the daily spend cap, the plan-window pause, the weekly
+report, Ask Gemini and the tool drill-down join subscriptions, custom
+agents, Telegram and Second Brain (ADR-046, ADR-047, ADR-048 and ADR-063,
+amended the same day for parity with Orca). Paid is the team tier
+([ADR-021](#adr-021--the-team-tier-is-self-hosted-and-the-free-product-is-not-carved-up))
+only. What changes:
+
+- **Every gate goes.** `POST /v1/gemini/ask` never answers `402`, the weekly
+  report sends without a key, the plan-window stop pauses without one, and
+  `GET /v1/tools/drill` sends the whole drill (`locked` and `teaser` are
+  gone). `GET /v1/gemini` and `GET /v1/window-stop` drop `licensed`.
+- **Nothing is sold in the dashboard.** No lock, no Premium dialog, no *Get
+  premium* chip in the header or the status strip, no Premium banner, hint
+  or nudge, and no licence field in Settings (renamed *Plan*); an admin key
+  for private modules (ADR-076) is set with `caprock license set` and only
+  its state is shown. `Paywall.test.tsx` now fails if any of it comes back.
+- **The licence code is kept for teams.** `internal/license`, `caprock
+  license` and `GET /v1/premium` (with `internal/premium` and
+  `TestPricingMatchesTheSite`) stay, unused by the dashboard, so a team
+  licence can reuse the same offline key. A key already issued keeps
+  working; it unlocks nothing that is not already free.
+
+The rules above about the key itself — offline, no cryptography, seven days
+of grace — stand for the team licence.
+
 ---
 
 ## ADR-023 — Gemini runs on a key Caprock never holds, read from the environment
@@ -2566,7 +2593,7 @@ so).
 daemon as an `SMAppService` helper may change who is responsible), or an
 agent needs another device.
 
-## ADR-046 — The agent pickers list every agent with what it lacks; Grok Build is a sixth agent; custom agents are Premium
+## ADR-046 — The agent pickers list every agent with what it lacks; Grok Build is a sixth agent; custom agents are free
 
 **Date:** 2026-10-10 · **Status:** accepted
 
@@ -2627,7 +2654,8 @@ and tab are there; turns and cost are not, and the pickers say so. Details and
 traps in [23-grok.md](23-grok.md). Its glyph is a neutral one of ours: no
 xAI mark is licensed for use here.
 
-**Custom agents (Premium).** In Settings → Custom agents a licensed user adds
+**Custom agents (Premium until 2026-11-27; free since, see the amendment
+below).** In Settings → Custom agents a licensed user adds
 an agent by name, command, arguments (one per line; `{prompt}` is the first
 message, `{model}` the model; an argument whose placeholder has no value is
 left out with the flag before it) and optional models. It is stored in
@@ -2657,6 +2685,19 @@ custom agents as a shell string; letting a request carry a custom command.
 **Revisit if** Grok's session files are priced (a Grok entry in
 `pricing.json` with a source), which would make Grok observed like Codex; or
 OpenCode moves its credentials out of `auth.json`.
+
+**Amended 2026-11-27 (owner: parity with Orca): custom agents are free.**
+The owner (translated): "we must be no worse than Orca: if Orca has no limits, we
+have none; whatever Orca gives free, we give free." Orca (orca.dev, MIT, no
+paid tier) gives free with no cap: any number of Claude and Codex accounts
+with usage per account, any CLI agent, agent memory, and bots from Slack,
+Linear and GitHub. So custom agents
+need no licence: `PUT /v1/agents/custom` never answers `402`, a spawn of
+`custom:<id>` is not refused for a licence, the catalog drops `licensed` and
+each entry's `locked`, and Settings shows the section live, with no Premium
+lock. Everything else above — the command from the config, one argument per
+argument, no observation — is unchanged. `agents` is no longer a
+`PaidFeature`.
 
 ---
 
@@ -2704,7 +2745,8 @@ the same directory, also `0600`. **Keychain and Credential Manager later:**
 once the app is Developer-ID signed, the token moves to the OS store; with
 ad-hoc signing every update would ask for access again.
 
-**Free and Premium.** Alerts stay free, as ADR-036 decided, and gain two
+**Free and Premium** (until 2026-11-27; all free since, see the amendment
+at the end). Alerts stay free, as ADR-036 decided, and gain two
 buttons that need no licence: *Mute this session* and *Open on phone* (when
 phone access is on). Talking back is Premium, checked on the server with the
 offline licence of ADR-022 — it reaches the network and controls sessions, the
@@ -2846,9 +2888,24 @@ The wire, the queue's bounds and the status fields are in
 [03-contracts.md § One bot for all computers](03-contracts.md); the screens
 in [04-ui.md § Settings](04-ui.md).
 
+**Amended 2026-11-27 (owner: parity with Orca): talking back is free.**
+The owner (translated): "we must be no worse than Orca: if Orca has no limits, we
+have none; whatever Orca gives free, we give free." Orca (orca.dev, MIT, no
+paid tier) gives free with no cap: any number of Claude and Codex accounts
+with usage per account, any CLI agent, agent memory, and bots from Slack,
+Linear and GitHub. So the
+two-way half of the bridge needs no licence: a reply, `/sessions`, `/new`,
+`/stop`, Approve and Deny, and forwards (ADR-081) work for anyone who ticks
+*Let my paired chat talk to sessions*, which stays off until ticked, because
+it is still control of the machine from outside it. With the switch off the
+chat hears where it is, at most once a day. The host interface drops
+`Licensed()`, a computer sending through a holder acts on its own switch
+alone, and `telegram` is no longer a `PaidFeature`. The weekly report sent
+through the same bot stays Premium.
+
 ---
 
-## ADR-048 — Several sign-ins per agent, each in a config directory of Caprock's; three per agent are free
+## ADR-048 — Several sign-ins per agent, each in a config directory of Caprock's; as many as you use, free
 
 **Date:** 2026-10-10 · **Status:** accepted
 
@@ -2912,8 +2969,9 @@ Keychain, and that is the owner's to do.
   says "you choose which subscription this session uses", nothing about
   avoiding limits. The plan-window stop watches and pauses the Default
   sign-in's sessions only.
-- **Three per agent free, the Default one included**; the daemon refuses a
-  fourth without a licence (402) and the page opens the Premium dialog.
+- **Three per agent free, the Default one included** (until 2026-11-27; no
+  cap since, see the amendment at the end); the daemon refused a fourth
+  without a licence (402) and the page opened the Premium dialog.
 
 **Rejected.** Copying `~/.claude` into each directory (it would copy the
 user's credentials file on Linux and Windows, and settings drift apart from
@@ -3041,6 +3099,19 @@ change how a user's existing sessions authenticate); deleting the Keychain
 item on Remove (the Keychain is never Caprock's to touch); a check that
 runs `claude auth status` per profile (a process reading the Keychain, from
 the daemon, as rejected above).
+
+**Amended 2026-11-27 (owner: parity with Orca): no cap, free.** The owner
+(translated): "we must be no worse than Orca: if Orca has no limits, we
+have none; whatever Orca gives free, we give free." Orca (orca.dev, MIT, no
+paid tier) gives free with no cap: any number of Claude and Codex accounts
+with usage per account, any CLI agent, agent memory, and bots from Slack,
+Linear and GitHub. So the three-per-agent
+limit is gone: `POST /v1/subscriptions` never answers `402`, the list drops
+`licensed` and `free_per_agent`, `subs.FreePerAgent` is removed, and the add
+form (Settings and the one in New agent and Quick chat) adds a fourth and a
+tenth like the first. `subscriptions` is no longer a `PaidFeature`.
+Everything else here — a folder per sign-in, the user's own choice per
+session, never an automatic switch — is unchanged.
 
 ## ADR-049 — Caprock keeps the computer awake while agents work; on by default
 
@@ -4574,6 +4645,17 @@ kept.
 read returns at most 5,000 and the screen would need clustering on the
 daemon); or the brain's cost to the machine — the database, the reads —
 turns out to need a limit of its own.
+
+**Reaffirmed 2026-11-27 (owner: parity with Orca).** The owner
+(translated): "we must be no worse than Orca: if Orca has no limits, we
+have none; whatever Orca gives free, we give free." Orca (orca.dev, MIT, no
+paid tier) gives free with no cap: any number of Claude and Codex accounts
+with usage per account, any CLI agent, agent memory, and bots from Slack,
+Linear and GitHub. Second Brain was
+already free with no cap (§ Free, above, 2026-10-14); the check confirmed no
+route answers `402`, no `PaidFeature` names it, and the drop and capture
+open no Premium dialog. A test in `Paywall.test.tsx` now fails if any of
+subscriptions, custom agents, Telegram or Second Brain is sold again.
 
 ---
 
@@ -6700,7 +6782,7 @@ again.
 ## ADR-084 — A cost also says what it was of the plan: plan dollars and a share of the week, per sign-in
 
 **Date:** 2026-10-25 · **Status:** accepted (owner's request, 2026-10-25).
-Builds on [ADR-048](#adr-048--several-sign-ins-per-agent-each-in-a-config-directory-of-caprocks-three-per-agent-are-free)
+Builds on [ADR-048](#adr-048--several-sign-ins-per-agent-each-in-a-config-directory-of-caprocks-as-many-as-you-use-free)
 (subscriptions and their plans) and rule 6.
 
 **Context.** Every cost Caprock shows is the API-list-price equivalent of
@@ -7782,7 +7864,7 @@ shown to the owner on a live screen before it ships.
 **Date:** 2026-11-20 · **Status:** accepted (owner, 2026-11-20, variant A of
 the mockup, with the scope widened the same day to computers reached over
 SSH). Builds on [ADR-067](#adr-067--your-computers-reach-each-other-through-the-same-relay-the-local-daemon-speaks-for-the-others)
-(other computers) and [ADR-046](#adr-046--the-agent-pickers-list-every-agent-with-what-it-lacks-grok-build-is-a-sixth-agent-custom-agents-are-premium)
+(other computers) and [ADR-046](#adr-046--the-agent-pickers-list-every-agent-with-what-it-lacks-grok-build-is-a-sixth-agent-custom-agents-are-free)
 (the fix is typed, never run). Contract: [03-contracts.md § Setup
 checklist](03-contracts.md#setup-checklist); screens:
 [04-ui.md § Other computers](04-ui.md#other-computers).

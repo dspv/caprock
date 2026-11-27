@@ -22,7 +22,6 @@ vi.mock('@/lib/api', async (orig) => {
       ...actual.api,
       status: async () => ({ version: 'v0.0.0', claude_available: true, claude_bypass_accepted: status.accepted, opencode_available: status.opencode !== undefined, opencode_version: status.opencode || undefined }),
       agentCatalog: async () => ({
-        licensed: false,
         home: '/h',
         agents: [
           { id: 'claude', label: 'Claude Code', installed: true, ready: true, models: [], observed: true, prompt: true },
@@ -507,7 +506,7 @@ describe('the subscription picker', () => {
     sessions_7d: 0, cost_7d_usd: 0, running: 0,
   })
   const withSubs = () => {
-    subsState.value = { licensed: false, free_per_agent: 3, agents: [{ agent: 'claude', label: 'Claude Code', installed: true, subscriptions: [sub('default', 'Default', 95), sub('ab12', 'Personal', 10)] }] }
+    subsState.value = { agents: [{ agent: 'claude', label: 'Claude Code', installed: true, subscriptions: [sub('default', 'Default', 95), sub('ab12', 'Personal', 10)] }] }
   }
 
   it('is not there with one sign-in', async () => {
@@ -536,7 +535,7 @@ describe('the subscription picker', () => {
 
   // A tester, 2026-10-12: "I can't change the default account."
   it('starts on the one made the default, and names the own sign-in when picked', async () => {
-    subsState.value = { licensed: false, free_per_agent: 3, agents: [{ agent: 'claude', label: 'Claude Code', installed: true, subscriptions: [sub('default', 'Own sign-in', 10), { ...sub('ab12', 'Work', 10), preferred: true }] }] }
+    subsState.value = { agents: [{ agent: 'claude', label: 'Claude Code', installed: true, subscriptions: [sub('default', 'Own sign-in', 10), { ...sub('ab12', 'Work', 10), preferred: true }] }] }
     try {
       open()
       const select = await screen.findByLabelText<HTMLSelectElement>('Subscription')
@@ -556,10 +555,10 @@ describe('the subscription picker', () => {
   // Owner, 2026-11-18 (translated): he "didn't find it under my hand".
   it('offers Add subscription beside the agent with one sign-in, and adds and picks it in place', async () => {
     const own = sub('default', 'Own sign-in', 10)
-    subsState.value = { licensed: false, free_per_agent: 3, home: '/h', agents: [{ agent: 'claude', label: 'Claude Code', installed: true, subscriptions: [own] }] }
+    subsState.value = { home: '/h', agents: [{ agent: 'claude', label: 'Claude Code', installed: true, subscriptions: [own] }] }
     const work = { ...sub('w1', 'Work', 0), signed_in: false, windows: [], login_command: 'CLAUDE_CONFIG_DIR=/d/w1 claude auth login' }
     addSubscription.mockImplementation(async (agent: string, label: string) => {
-      subsState.value = { licensed: false, free_per_agent: 3, home: '/h', agents: [{ agent, label: 'Claude Code', installed: true, subscriptions: [own, { ...work, label }] }] }
+      subsState.value = { home: '/h', agents: [{ agent, label: 'Claude Code', installed: true, subscriptions: [own, { ...work, label }] }] }
       return { ...work, label }
     })
     const onSetup = vi.fn()
@@ -608,13 +607,16 @@ describe('the subscription picker', () => {
     }
   })
 
-  it('opens the Premium path from the dialog at the free number', async () => {
+  // No cap (owner decision, 2026-11-27: parity with Orca): with three the
+  // dialog opens the add form, not a Premium path.
+  it('opens the add form from the dialog with three sign-ins already', async () => {
     const three = [sub('default', 'Own', 10), sub('a', 'A', 10), sub('b', 'B', 10)]
-    subsState.value = { licensed: false, free_per_agent: 3, agents: [{ agent: 'claude', label: 'Claude Code', installed: true, subscriptions: three }] }
+    subsState.value = { agents: [{ agent: 'claude', label: 'Claude Code', installed: true, subscriptions: three }] }
     try {
       open()
       fireEvent.change(await screen.findByLabelText<HTMLSelectElement>('Subscription'), { target: { value: '__add__' } })
-      expect(await screen.findByText(/has 3 subscriptions, the free number/)).toBeInTheDocument()
+      expect(await screen.findByPlaceholderText('Work Max')).toBeInTheDocument()
+      expect(screen.queryByText(/the free number|Premium/)).toBeNull()
       expect(addSubscription).not.toHaveBeenCalled()
     } finally {
       subsState.value = undefined
@@ -733,7 +735,7 @@ describe('the New agent sheet on one screen', () => {
 
   it('puts Model beside Effort, and Add subscription at the end of the Agent label row, outside its name', async () => {
     catalogExtra.agents = [{ id: 'codex', label: 'Codex', installed: true, ready: true, observed: true, prompt: true, default: 'gpt-6-astra', models: [{ id: 'gpt-6-astra', label: 'GPT-6-Astra' }, { id: 'gpt-6-sol', label: 'GPT-6-Sol' }], efforts: ['low', 'medium', 'high'] }]
-    subsState.value = { licensed: false, free_per_agent: 3, agents: [{ agent: 'claude', label: 'Claude Code', installed: true, subscriptions: [{ id: 'default', agent: 'claude', label: 'Own', default: true, dir: '/d', signed_in: true, login_command: '', windows: [], sessions_7d: 0, cost_7d_usd: 0, running: 0 }] }] }
+    subsState.value = { agents: [{ agent: 'claude', label: 'Claude Code', installed: true, subscriptions: [{ id: 'default', agent: 'claude', label: 'Own', default: true, dir: '/d', signed_in: true, login_command: '', windows: [], sessions_7d: 0, cost_7d_usd: 0, running: 0 }] }] }
     try {
       open()
       const agentSelect = await screen.findByRole('combobox', { name: 'Agent' })

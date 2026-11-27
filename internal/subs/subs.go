@@ -67,7 +67,7 @@ const DefaultID = "default"
 // recorded on its sessions like one, so their plan windows, if any arrive,
 // are filed under its own prefix and never over the Default sign-in's, and
 // the plan-window stop leaves them alone. It is not a directory and not a
-// sign-in, so it never counts toward FreePerAgent. NewID's hex ids can never
+// sign-in, so it never counts as a subscription. NewID's hex ids can never
 // spell it.
 const DeepSeekID = "deepseek"
 
@@ -79,10 +79,6 @@ const KimiID = "kimi"
 // IsProvider reports whether id is one of the entries that are an API key
 // rather than a sign-in (DeepSeekID, KimiID).
 func IsProvider(id string) bool { return id == DeepSeekID || id == KimiID }
-
-// FreePerAgent is how many subscriptions per agent are free, the Default one
-// included; a fourth and more need a licence (owner decision, 2026-10-10).
-const FreePerAgent = 3
 
 // MaxLabel bounds a label.
 const MaxLabel = 40
@@ -210,17 +206,6 @@ func Find(list []config.Subscription, id string) (config.Subscription, bool) {
 		}
 	}
 	return config.Subscription{}, false
-}
-
-// Count is how many subscriptions agent has, the Default one included.
-func Count(list []config.Subscription, agent string) int {
-	n := 1
-	for _, s := range list {
-		if s.Agent == agent {
-			n++
-		}
-	}
-	return n
 }
 
 // LoginCommand is the agent's own sign-in, pointed at dir, for a shell tab:

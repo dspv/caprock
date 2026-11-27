@@ -18,13 +18,8 @@ const DAY = 24 * 60 * 60 * 1000
 const USED = { days: 5 }
 const settle = () => act(() => new Promise((r) => setTimeout(r, 30)))
 
-function given(days: number, licensed = false) {
+function given(days: number) {
   vi.spyOn(api, 'history').mockResolvedValue({ totals: { days, sessions: days * 3 } } as unknown as Awaited<ReturnType<typeof api.history>>)
-  vi.spyOn(api, 'premium').mockResolvedValue({
-    license: { active: licensed },
-    yearly: { url: 'https://buy.example/y', charged_usd: 30 },
-    lifetime: { url: 'https://buy.example/l', charged_usd: 100 },
-  } as unknown as Awaited<ReturnType<typeof api.premium>>)
   return vi.spyOn(api, 'sendOffer').mockResolvedValue({ status: 'sent' })
 }
 

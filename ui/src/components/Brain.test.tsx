@@ -6,7 +6,6 @@ const m = vi.hoisted(() => ({
   status: vi.fn(),
   brain: vi.fn(),
   node: vi.fn(),
-  premium: vi.fn(),
   settings: vi.fn(),
   backfill: vi.fn(),
   handoff: vi.fn(async (project: string) => ({ project, memories: [], max: 5, budget: 700 })),
@@ -16,7 +15,7 @@ vi.mock('@/lib/api', async (orig) => {
   const actual = await orig<typeof import('@/lib/api')>()
   return {
     ...actual,
-    api: { ...actual.api, dropBrain: m.drop, brainStatus: m.status, brain: m.brain, brainNode: m.node, premium: m.premium, brainSettings: m.settings, brainBackfill: m.backfill, brainHandoff: m.handoff, glance: m.glance },
+    api: { ...actual.api, dropBrain: m.drop, brainStatus: m.status, brain: m.brain, brainNode: m.node, brainSettings: m.settings, brainBackfill: m.backfill, brainHandoff: m.handoff, glance: m.glance },
   }
 })
 

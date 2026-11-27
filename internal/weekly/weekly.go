@@ -1,7 +1,7 @@
 // Package weekly builds the report that says what moved — and, more often,
 // that nothing did.
 //
-// The premium page promises "the repository that cost 3× its usual week", and
+// The report promises "the repository that cost 3× its usual week", and
 // the whole difficulty is in the word *usual*. Comparing this week with last
 // week gives a ratio, not a finding: a repository that cost $2 and then $6 has
 // tripled and means nothing. So "usual" here is the median of the four weeks

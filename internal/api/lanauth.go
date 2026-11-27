@@ -346,7 +346,7 @@ var pairedDeviceRoutes = map[string]bool{
 	"GET /v1/folder-labels":                   true, // Work / Personal tags on the Chats list (ADR-091)
 	"GET /v1/glance":                          true, // Now's At a glance
 	"GET /v1/week":                            true, // the Week screen
-	"GET /v1/tools/drill":                     true, // the tool drill-down; its Premium half is gated in the handler
+	"GET /v1/tools/drill":                     true, // the tool drill-down, whole (free since 2026-11-27)
 	"GET /v1/saved-prompts":                   true, // the phone's chips (ADR-051); changing them is the machine's
 	"GET /v1/attempts/{group}":                true, // Compare attempts (ADR-052): what each changed and cost, a read
 	"GET /v1/tabs":                            true, // the computer's open tabs in order: the phone home's Continue mirrors them

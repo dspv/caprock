@@ -65,14 +65,14 @@ export function entriesFromStatus(s?: Partial<Status>): CatalogEntry[] {
   }))
 }
 
-/** The agents a session can start on: installed, and not locked. */
+/** The agents a session can start on: the installed ones. */
 export function startable(entries: readonly CatalogEntry[]): SpawnAgent[] {
-  return entries.filter((e) => e.installed && !e.locked).map((e) => e.id as SpawnAgent)
+  return entries.filter((e) => e.installed).map((e) => e.id as SpawnAgent)
 }
 
 /** The daemon's catalog, fetched once; the status stands in on a daemon
  *  that predates it. */
-export function useAgentCatalog(): { entries: CatalogEntry[]; loaded: boolean; home?: string; licensed: boolean; refresh: () => void } {
+export function useAgentCatalog(): { entries: CatalogEntry[]; loaded: boolean; home?: string; refresh: () => void } {
   const catalog = useApi(() => api.agentCatalog(), [], { live: false })
   const status = useApi(() => (catalog.error ? api.status() : Promise.resolve(undefined)), [!!catalog.error], { live: false })
   const entries = useMemo(
@@ -83,7 +83,6 @@ export function useAgentCatalog(): { entries: CatalogEntry[]; loaded: boolean; h
     entries,
     loaded: !!catalog.data || (!!catalog.error && (!!status.data || !!status.error)),
     home: catalog.data?.home,
-    licensed: !!catalog.data?.licensed,
     refresh: () => catalog.refresh?.(),
   }
 }
@@ -187,7 +186,7 @@ export function AgentPicker({
   const options: { key: string; label: string }[] = entries
     ? [
         ...entries.filter((e) => agents.includes(e.id as SpawnAgent)).map((e) => ({ key: e.id, label: e.label })),
-        ...entries.filter((e) => !agents.includes(e.id as SpawnAgent)).map((e) => ({ key: e.id, label: `${e.label} · ${e.locked ? 'Premium' : 'not installed'}` })),
+        ...entries.filter((e) => !agents.includes(e.id as SpawnAgent)).map((e) => ({ key: e.id, label: `${e.label} · not installed` })),
       ]
     : SPAWN_AGENTS.filter((a) => agents.includes(a.key))
   if (options.length < 2) return null

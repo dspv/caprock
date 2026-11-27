@@ -1,18 +1,15 @@
 /**
- * Settings → Agents: coding agents the user adds by command (ADR-046,
- * Premium).
+ * Settings → Agents: coding agents the user adds by command (ADR-046).
  *
  * The owner, 2026-10-10 (translated): "I'd also let people add new agents
- * themselves, but in Premium." An agent is a name, a program, its arguments —
+ * themselves." Free, with no licence, since 2026-11-27 (owner decision:
+ * parity with Orca; it was Premium until then). An agent is a name, a
+ * program, its arguments —
  * one per line, with `{prompt}` where the first message goes and `{model}`
  * where the model goes — and, optionally, the models to offer. It then appears
  * in New agent and Quick chat and opens in a Caprock tab like the built-ins.
  * Caprock does not read its turns or cost unless it is an agent Caprock
  * already reads, and the section says so.
- *
- * Without a licence the section is shown behind glass with the upgrade path
- * (Locked, in Status.tsx), and the daemon refuses the save (402) whatever the
- * page does.
  */
 import { useEffect, useState } from 'react'
 import { api, errText, type CustomAgent } from '@/lib/api'
@@ -124,7 +121,7 @@ export function CustomAgentsEditor() {
   )
 }
 
-/** The section; Settings puts it behind the Premium lock (Status.tsx). */
+/** The section, as Settings shows it (Status.tsx). */
 export function CustomAgentsSetting() {
   return (
     <Section title="Custom agents">

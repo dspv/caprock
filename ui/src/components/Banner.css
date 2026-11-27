@@ -5,7 +5,7 @@
  *
  * Colours are theme tokens only, so it holds in every palette (lib/themes.ts)
  * without a rule per palette. `--bn-tone` is the banner's one colour:
- * the accent, ultramarine for Premium, amber-warn or green for a notice.
+ * the accent, or amber-warn or green for a notice.
  */
 .bn-wrap { container-type: inline-size; }
 
@@ -29,8 +29,6 @@
 }
 [data-theme="light"] .bn { --character-outline: var(--color-border-strong); }
 
-.bn[data-tone="premium"] { --bn-tone: var(--color-premium); --bn-ink: var(--color-premium-strong); --bn-on: #fff; }
-[data-theme="light"] .bn[data-tone="premium"] { --bn-ink: var(--color-premium); }
 .bn[data-tone="warn"] { --bn-tone: var(--color-warn); --bn-ink: var(--color-warn); }
 .bn[data-tone="ok"] { --bn-tone: var(--color-ok); --bn-ink: var(--color-ok); }
 
@@ -88,7 +86,6 @@
 }
 .bn-btn:hover { filter: brightness(1.08); }
 .bn-btn:disabled { opacity: 0.6; }
-.bn-btn[data-kind="premium"] { background: var(--color-premium); color: #fff; }
 .bn-btn[data-kind="ghost"] {
   border: 1px solid color-mix(in srgb, var(--bn-tone) 45%, var(--color-border));
   color: var(--color-fg);

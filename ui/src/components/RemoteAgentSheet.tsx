@@ -197,7 +197,7 @@ export function RemoteAgentSheet({ machines, machine, onMachine, prompt: initial
   // What the Folder field shows under it: the lists, the empty state, or the clone.
   const [view, setView] = useState<'lists' | 'clone' | null>(null)
   const shown = view ?? (noProjects ? 'empty' : 'lists')
-  const agents = useMemo(() => (catalog.data?.agents ?? []).filter((a) => a.installed && !a.locked), [catalog.data])
+  const agents = useMemo(() => (catalog.data?.agents ?? []).filter((a) => a.installed), [catalog.data])
   // Its catalog answered and nothing in it is installed: said in words, since
   // the field's "reading…" then never ends (owner, 2026-11-20, on a Windows
   // PC with Caprock and no Claude Code yet).

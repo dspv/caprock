@@ -52,16 +52,10 @@
   --color-selection: rgba(254, 177, 87, 0.2);
   --color-accent-strong: #ffcb85;
 
-  /* Premium — ultramarine, and the ONE place the amber rule is broken.
-   *
-   * Everything interactive in this product is amber, which is what makes the
-   * paid surfaces indistinguishable from the free ones: a subscribe button
-   * looked exactly like a range filter. Paid is a different kind of thing, so
-   * it gets a different hue — deliberately cool against a warm interface, so
-   * it reads as separate rather than as another control.
-   *
-   * Use it ONLY where money is involved. An ultramarine that spreads to
-   * ordinary controls is just a second accent, and then nothing is marked. */
+  /* Ultramarine, a cool second hue against the warm accent. Its name is from
+   * the Premium surfaces it marked until 2026-11-27, when nothing for one
+   * person was sold any more; it stays as a palette hue (the cockpit's
+   * subagent chips use it) and is never used for an interactive control. */
   --color-premium: #4d5cf0;
   --color-premium-strong: #6f7bff;
 
@@ -529,26 +523,6 @@ body {
   background-color: #f2a955;
 }
 
-/* Get premium in the header (components/PremiumChip.tsx): a quiet tinted
- * button, not a bright block (owner, 2026-10-15: the solid violet fill was
- * "too bright", translated). The premium colour at an eighth of its strength
- * behind, a hairline of it around, and the label in the premium ink pulled
- * two fifths towards the palette's own text: premium-strong alone is 4.1:1
- * on this tint in Dark Warm and Dark Cold, under 4.5:1. The price is the
- * label at 85%, a step fainter. Measured on every palette: label 5.8:1 or
- * more, price 4.6:1 or more, at rest and on hover. */
-.premium-cta {
-  --premium-ink: color-mix(in srgb, var(--color-premium-strong) 60%, var(--color-fg));
-  background: color-mix(in srgb, var(--color-premium) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-premium) 45%, transparent);
-  color: var(--premium-ink);
-}
-.premium-cta:hover, .premium-cta:focus-visible {
-  background: color-mix(in srgb, var(--color-premium) 20%, transparent);
-  border-color: color-mix(in srgb, var(--color-premium) 70%, transparent);
-}
-.premium-cta:focus-visible { outline: 2px solid color-mix(in srgb, var(--color-premium) 70%, transparent); outline-offset: 1px; }
-.premium-cta [data-price] { color: color-mix(in srgb, var(--premium-ink) 85%, transparent); }
 
 /* Every number, cost, id, and terminal string is monospace with tabular numerals. */
 .num, .mono {
@@ -1546,7 +1520,7 @@ html[data-app][data-vibrancy], html[data-app][data-vibrancy] body { background: 
  * marked through the CSS Custom Highlight API so the page's text is never
  * rewritten, and the control a jump lands on, lit for a moment. */
 /* While a query is typed, whatever on the page is not a section and holds no
- * section it finds (a Premium panel's glass and banner) steps aside too. */
+ * section it finds steps aside too. */
 [data-settings-filtering] > :not([data-settings-section]):not([data-settings-keep]):not(:has([data-settings-section]:not([hidden]))) {
   display: none;
 }

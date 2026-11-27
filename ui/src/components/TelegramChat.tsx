@@ -1,16 +1,14 @@
 /**
- * Talking to the agents from Telegram (Premium, ADR-047): the paired chat
+ * Talking to the agents from Telegram (ADR-047; free since 2026-11-27, owner
+ * decision: parity with Orca): the paired chat
  * may reply to a session's message to type into it, list the live sessions,
  * start Claude Code in a project, stop a session, and answer a question with
  * Approve or Deny.
  *
- * Off until switched on, even with a licence: it is control of this computer
+ * Off until switched on: it is control of this computer
  * from outside it, and nobody should find it on by surprise. Rule 7 is said
  * on the screen because it is the first thing a reader asks — what about the
  * session in my own terminal? It is watched, never typed into.
- *
- * Status.tsx wraps this in <Locked feature="telegram">: without a licence it
- * shows behind glass, inert, where it will be.
  */
 import { useState } from 'react'
 import { api, errText, type Settings } from '@/lib/api'
@@ -30,7 +28,7 @@ export function TelegramChat() {
   }
 
   return (
-    <Section title="Talk to your agents from Telegram" aside={<span className="text-[12px] text-fg-muted">Premium</span>}>
+    <Section title="Talk to your agents from Telegram">
       <p className="text-[12px] leading-relaxed text-fg-muted">
         Reply to a session's message in Telegram and Caprock types it in and presses Enter; the answer comes back in the
         same chat as soon as the turn ends. Approve and Deny appear under a question, read off the session's own screen

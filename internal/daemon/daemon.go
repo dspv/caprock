@@ -52,7 +52,6 @@ import (
 	"github.com/dspv/caprock/internal/ingest"
 	"github.com/dspv/caprock/internal/keepawake"
 	"github.com/dspv/caprock/internal/lan"
-	"github.com/dspv/caprock/internal/license"
 	"github.com/dspv/caprock/internal/logcap"
 	"github.com/dspv/caprock/internal/loop"
 	"github.com/dspv/caprock/internal/mail"
@@ -299,7 +298,7 @@ type Daemon struct {
 	// cap is the daily spend guard. Nil until run() builds it, because it needs
 	// the owned-session manager.
 	cap *cap.Guard
-	// winStop is the plan-window stop (Premium), built beside the cap.
+	// winStop is the plan-window stop, built beside the cap.
 	winStop *cap.WindowGuard
 	// awake keeps the computer from idle-sleeping while agents work
 	// (keepawake.go); never nil once run() has started.
@@ -2180,15 +2179,11 @@ type agentAdapter struct {
 }
 
 // customLaunch turns a request for a custom agent (ADR-046) into the command
-// and arguments to start: refused without an active licence, or when the
-// agent is not in the config or its command is not on this machine. The
+// and arguments to start: refused when the agent is not in the config or its command is not on this machine. The
 // browser names the agent only; the command comes from the config the owner
 // wrote at this machine, never from the request.
 func (a *agentAdapter) customLaunch(sr *agents.SpawnRequest) error {
 	cfg := a.d.config()
-	if !license.Parse(cfg.LicenseKey, time.Now()).Active {
-		return errors.New("custom agents are a Premium feature; add a licence key in Settings to start one")
-	}
 	ca, ok := agentcat.FindCustom(cfg.CustomAgents, sr.Agent)
 	if !ok {
 		return fmt.Errorf("no custom agent called %q; add it in Settings → Agents", strings.TrimPrefix(sr.Agent, agentcat.CustomPrefix))
@@ -2214,10 +2209,9 @@ type catalogAdapter struct{ d *Daemon }
 func (c *catalogAdapter) Catalog() api.CatalogResponse {
 	cfg := c.d.config()
 	env := agentcat.DefaultEnv(userenv.Cached())
-	licensed := license.Parse(cfg.LicenseKey, time.Now()).Active
 	out := agentcat.Builtins(env, c.d.mgr.AgentAvailable)
-	out = append(out, agentcat.CustomEntries(cfg.CustomAgents, agents.FindBinary, licensed)...)
-	return api.CatalogResponse{Agents: out, Licensed: licensed, Home: env.Home}
+	out = append(out, agentcat.CustomEntries(cfg.CustomAgents, agents.FindBinary)...)
+	return api.CatalogResponse{Agents: out, Home: env.Home}
 }
 
 func (c *catalogAdapter) Custom() []config.CustomAgent {

@@ -7,24 +7,18 @@ import (
 	"os"
 	"time"
 
-	"github.com/dspv/caprock/internal/license"
 	"github.com/dspv/caprock/internal/store"
 )
 
 // ToolDrillResponse is GET /v1/tools/drill: one tool's calls grouped by what
 // they were about. Contract: .ai/03-contracts.md.
 //
-// The groups and their call counts are free. What came back — bytes, failure
-// rates, the per-group trend and the hints — is Premium (ADR-022), and is
-// removed here, on the server, when the licence is not active: a gate the page
-// enforces alone is a gate anyone can open from the console. One hint, the
-// strongest, is sent in full either way as Teaser, so a reader without a
-// licence sees the kind of thing they would get rather than a blur.
+// All of it — the groups, their call counts, what came back, failure rates,
+// the per-group trend and the hints — is free (2026-11-27, ADR-022 amended:
+// Caprock is free for one person).
 type ToolDrillResponse struct {
 	store.ToolDrill
-	Range  string           `json:"range"`
-	Locked bool             `json:"locked"`
-	Teaser *store.DrillHint `json:"teaser,omitempty"`
+	Range string `json:"range"`
 }
 
 // drillTTL is how long a drill may be reused: a tool's all-time breakdown
@@ -55,32 +49,5 @@ func (s *Server) handleToolDrill(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, s.gateDrill(v.(store.ToolDrill), label))
-}
-
-// gateDrill strips the Premium half of a drill without a licence. The cached
-// value is shared, so it is copied, never edited.
-func (s *Server) gateDrill(d store.ToolDrill, label string) ToolDrillResponse {
-	licensed := false
-	if s.d.Settings != nil {
-		licensed = license.Parse(s.d.Settings.Get().LicenseKey, s.d.Now()).Active
-	}
-	resp := ToolDrillResponse{ToolDrill: d, Range: label}
-	if licensed {
-		return resp
-	}
-	resp.Locked = true
-	if len(d.Hints) > 0 {
-		h := d.Hints[0]
-		resp.Teaser = &h
-	}
-	resp.Hints = nil
-	resp.Results, resp.Failures, resp.Bytes = 0, 0, 0
-	resp.TrendFromMs, resp.TrendWidthMs = 0, 0
-	rows := make([]store.DrillRow, len(d.Rows))
-	for i, r := range d.Rows {
-		rows[i] = store.DrillRow{Key: r.Key, Calls: r.Calls}
-	}
-	resp.Rows = rows
-	return resp
+	writeJSON(w, http.StatusOK, ToolDrillResponse{ToolDrill: v.(store.ToolDrill), Range: label})
 }

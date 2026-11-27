@@ -1855,7 +1855,7 @@ GET  /v1/storage                       → what the data directory holds; see §
 GET  /v1/storage/pack                  → the compression job and the pack (offered, running, last); see § Storage, "Packing"
 POST /v1/storage/pack                  → packs the database now → 202 and the same report; 409 while one runs, 507 without disk room (§ Storage, "Packing")
 GET  /v1/pricing                       → the pricing table in force
-GET  /v1/premium                       → what the paid plan costs and where to buy it
+GET  /v1/premium                       → the licence state and the old Premium prices (kept for the team licence; the dashboard no longer reads it)
 GET  /v1/window-stop                   → the plan-window stop's state (§ Pricing table, "The plan-window stop"); 501 when the daemon has no guard
 GET  /v1/keepawake                     → whether the computer is kept awake now (§ Keep awake); 501 when the daemon has no keeper
 POST /v1/report/test                   → sends this week's report now → {sent:"ok"}; 502 with Telegram's error, 501 when reporting is unavailable
@@ -2982,9 +2982,10 @@ existed; it keeps working.
   from 1 s to a minute; a refused token stops reading until a new one is
   saved. A message from any other chat is dropped unanswered; one dated more
   than two minutes before reading began is skipped.
-- **Free** (no licence): `/help`, `/start`, `/mute` (as a reply, `/mute <n>`,
-  `/mute all` or bare), `/unmute`, and the Mute button.
-- **Premium** — an active licence **and** `telegram_chat` on: a reply to one
+- **Always on** once a chat is paired: `/help`, `/start`, `/mute` (as a
+  reply, `/mute <n>`, `/mute all` or bare), `/unmute`, and the Mute button.
+- **Two-way** — `telegram_chat` on, no licence (free since 2026-11-27,
+  [ADR-047](08-decisions.md) amended): a reply to one
   of the bot's messages types its text into that session and presses Enter
   as the message queue does (§ Queued messages: a paste where the session
   takes one, the Enter on its own after a pause, once more if the prompt
@@ -3000,9 +3001,10 @@ existed; it keeps working.
   `/stop <n>` (or as a reply) asks, then kills a session Caprock started.
   Approve and Deny call the same answer path as the card (`AnswerPermission`:
   the key read off the screen, `422` cases toasted, nothing typed blind); the
-  buttons are replaced by the outcome. Without a licence or with the switch
-  off, the chat gets one line saying so at most once a day; a button gets a
-  toast.
+  buttons are replaced by the outcome. With the switch off, the chat gets
+  one line saying where it is at most once a day (kept as `premium_note_at`
+  in `telegram.json`, its name from when the line was about a licence); a
+  button gets a toast.
 - **Conversations.** A session typed into from Telegram, or started there,
   answers there for an hour after: its permission prompts are sent at once
   (with Approve and Deny), and its reply the moment its turn ends — the Stop
@@ -3010,7 +3012,7 @@ existed; it keeps working.
   `**bold**` kept, each fenced block replaced by `[<lang>, N lines]` unless
   `telegram_code` is on (then `<pre>`). The rules' own alerts skip it meanwhile.
   With two-way chat active, finished alerts carry the reply the same way.
-- **Forwards** (Premium, [ADR-081](08-decisions.md)). A forwarded message
+- **Forwards** (two-way, [ADR-081](08-decisions.md)). A forwarded message
   (`forward_origin`), or a photo, document, voice note, audio or video sent
   in the paired chat, is gathered until the chat has been quiet for 2 s
   (`media_group_id` albums arrive the same way); plain text typed during
@@ -3090,11 +3092,11 @@ POST /v1/telegram/hub/handover   → {token, chat_id, chat_name?, bot_id?, bot_u
   switches say.
 - **A press** toasts *Sent to <name>.* and waits for that computer, in
   memory, at most 100 per computer; each is handed over once (a press lost
-  on the way is lost, never acted on twice). The holder asks no licence:
-  the sender acts by its own — Approve and Deny need an active licence and
-  `telegram_chat` **there**, and go through `AnswerPermission` there; Mute
-  mutes the session there; a reply is typed there as § Telegram bridge's
-  Premium reply is, rule 7 included. The result replaces the buttons with
+  on the way is lost, never acted on twice). The holder asks nothing: the
+  sender acts by its own switch — Approve and Deny need `telegram_chat`
+  **there**, and go through `AnswerPermission` there; Mute mutes the session
+  there; a reply is typed there as § Telegram bridge's two-way reply is,
+  rule 7 included. The result replaces the buttons with
   `label` (*✅ Approved from Telegram*, *🔕 Muted*), threads `say` under
   the reply or the message, and puts 👍 on the reply when `react`.
 - **The sender's queue.** Every message the sender would send (alerts,
@@ -3175,7 +3177,7 @@ went, written before the send), `morning_last_sent` (unix ms) and
   is on, else the LAN or Tailscale address while phone access is on, else
   there are no buttons.
 
-`GET /v1/gemini` reports whether asking Gemini is possible here: `{available, env_var, licensed, model}`. It performs **no network I/O** and **never returns the key** — `available` says only that one is present. `POST /v1/gemini/ask` takes `{prompt, model?}` and answers `{text, model, usage}`, where `usage` carries the response's own `promptTokenCount` / `candidatesTokenCount` / `cachedContentTokenCount` / `thoughtsTokenCount`. It is the one endpoint in the product that checks the licence **server-side** (402 without an active key) rather than leaving the paywall to the UI, because the call spends the user's Gemini quota and opens an outbound connection — the reasoning and its limits are in [ADR-023](08-decisions.md). With no key set it answers 412 with the variable to set, which is a different problem from 402 and is reported separately so the screen can say which. The key is read from `GEMINI_API_KEY` in the daemon's environment at call time; it is never stored, never accepted by `PUT /v1/settings`, and never present in `GET /v1/settings`.
+`GET /v1/gemini` reports whether asking Gemini is possible here: `{available, from_env, env_var, model, models}`. It performs **no network I/O** and **never returns the key** — `available` says only that one is present. `POST /v1/gemini/ask` takes `{prompt, model?}` and answers `{text, model, usage}`, where `usage` carries the response's own `promptTokenCount` / `candidatesTokenCount` / `cachedContentTokenCount` / `thoughtsTokenCount`. No licence is checked (until 2026-11-27 it answered 402 without one; [ADR-022](08-decisions.md) amended: Caprock is free for one person). With no key set it answers 412 with the variable to set. The key is read from `GEMINI_API_KEY` in the daemon's environment at call time; it is never stored, never accepted by `PUT /v1/settings`, and never present in `GET /v1/settings`.
 
 `POST /v1/claude/bypass-consent` writes `skipDangerousModePermissionPrompt: true` into the settings file `/v1/status.hooks.settings_path` names — the key Claude Code itself writes when its one-time bypass warning is answered *Yes, I accept* — backing the file up once and keeping every other key in place and order; an unparsable file is refused, never overwritten. A mutating route: cross-site requests and phones are refused, so the consent is given at the machine — or, since 2026-11-26, from another computer of the owner's (`computerRoutes`, ADR-067), whose New agent shows the same warning before a bypass start there (#1086). `/v1/status.claude_bypass_accepted` reports the key. `POST /v1/agents` for a Claude Code session in `bypassPermissions` (asked for, or filled in from the preference or a continued session's mode) on a machine where it is false answers **409** `{error, code: "bypass_consent"}` and starts nothing: the session would open on Claude Code's warning, whose default answer is *No, exit*. Another agent, another mode and a terminal `command` are never refused; an unreadable settings file is not a refusal (ADR-041). The agent manager checks again at every start, whatever asked for it — a continue-on, the orchestrator, N attempts, a queued message's resend — against the settings that session reads (a subscription's own directory), and refuses before anything is made (`agents.ErrBypassConsent`); a start route answers that as the same 409 `bypass_consent`, so a start in Bypass on a linked computer never sits on the warning until the first typed Enter ends it (#1095).
 
@@ -3259,8 +3261,9 @@ GET  /v1/tools/drill?tool=Bash&range=today|7d|30d|all&agent=   → ToolDrill —
 
 `tool` is required (400 without it, or longer than 200 bytes); `range` and
 `agent` mean what they mean on `/v1/stats`. The response is
-`{tool, kind, group_by, calls, rows[], other, range, locked}` plus the
-Premium fields below:
+`{tool, kind, group_by, calls, rows[], other, range}` plus the fields
+below (all free; `locked` and `teaser` were dropped on 2026-11-27, when
+the drill stopped being Premium):
 
 - **Grouping** (`kind`, `group_by`): a shell tool (Bash, Codex's `exec`,
   `shell`, `exec_command`) by the command's head — the program, plus the
@@ -3277,8 +3280,8 @@ Premium fields below:
   groupable as `(no detail)`; neither gets a hint. Counts in hint text are
   written with thousands separators.
 - **`rows[]`** are the top 12 groups by calls, each `{key, calls}`;
-  **`other`** is the calls in every smaller group. Free.
-- **Premium** (left out without an active licence, [ADR-022](08-decisions.md)):
+  **`other`** is the calls in every smaller group.
+- **What came back:**
   `results`, `failures` and `bytes` for the tool and per row — a result is a
   `tool.post` matched to its `tool.pre` by `key` through the unique
   `(session_id, key)` index, a failure is one whose `is_error` is set
@@ -3290,10 +3293,6 @@ Premium fields below:
   from those counts: a group failing at least 10% and twice the tool's own
   rate (≥20 results, ≥5 failures), a group returning ≥25% of the tool's
   output when there is more than one, a group holding ≥30% of ≥50 calls.
-- **Without a licence** `locked` is true, every Premium field is absent, and
-  **`teaser`** carries the strongest hint in full — the one place a Premium
-  figure is sent unpaid, on purpose, so the offer shows a real finding
-  rather than a blur.
 
 Every figure is counted from stored events; nothing is estimated. No new
 index or migration: the pres are read by `idx_events_kind_ts`, the posts by
@@ -3347,11 +3346,11 @@ machine, never from a forge's API (rule 4):
 POST   /v1/agents                    {cwd?, chat?, create?, worktree?, worktree_base?, worktree_pull?, worktree_pr?, agent?, subscription?, model?, permission_mode?, effort?, subagent_model?, resume?, fork?, command?, args?, attempts?, prompt?, relay_from?, end_when_done?, automation?} → {session_id, cwd, session_ids?, attempt_group?, error?}
 GET    /v1/attempts/{group}          → {group, base?, attempts: [AttemptView]}; 404 for an unknown group
 GET    /v1/agents/models?agent=      {agent, default?, models:[{id,label}]}
-GET    /v1/agents/catalog            → {agents: [CatalogEntry], licensed, home?}
-GET    /v1/agents/custom             → {agents: [CustomAgent], licensed}
-PUT    /v1/agents/custom             {agents: [CustomAgent]} → {agents, licensed}; 402 without an active licence
-GET    /v1/subscriptions             → {agents: [{agent, label, installed, subscriptions: [Subscription]}], licensed, free_per_agent, home?}
-POST   /v1/subscriptions             {agent: claude|codex, label} → Subscription; 402 at the free number without a licence
+GET    /v1/agents/catalog            → {agents: [CatalogEntry], home?}
+GET    /v1/agents/custom             → {agents: [CustomAgent]}
+PUT    /v1/agents/custom             {agents: [CustomAgent]} → {agents}
+GET    /v1/subscriptions             → {agents: [{agent, label, installed, subscriptions: [Subscription]}], home?}
+POST   /v1/subscriptions             {agent: claude|codex, label} → Subscription; no cap, no licence
 PATCH  /v1/subscriptions/{id}        {label?, make_default?, plan?: {kind, label?, usd_per_month?} | null, agent?} → Subscription
 DELETE /v1/subscriptions/{id}        → 204; 409 while a session Caprock started runs on it
 POST   /v1/agents/{id}/input         {data?, paths?}   → 204   (owned PTYs only); paths are saved files (POST /v1/paste) typed in before data as the terminal types a dropped file: each image its own bracketed paste when the session turned paste on, 150 ms after it; anything else quoted with a space
@@ -4360,8 +4359,7 @@ and read back on the first tick after a start, so a daemon restart keeps
 it; one due more than an hour before that start (a stale plan), or whose
 session has ended, is dropped there and the session stays where it is.
 `"ask"` and `"wait"` move nothing: the session shows `limit_hit` and the
-app offers the choices. `"wait"` does not use the plan-window stop
-(Premium): that pauses at a share below 100% so a turn survives, while at
+app offers the choices. `"wait"` does not use the plan-window stop: that pauses at a share below 100% so a turn survives, while at
 the limit Claude Code has already ended the turn and there is nothing to
 pause.
 
@@ -4390,7 +4388,7 @@ and `typed_model: true`; when its `config.yaml` (under `$HERMES_HOME`, else
 command `hermes model` — only whether the key is set is read, never its
 value ([ADR-069](08-decisions.md)). A `CatalogEntry` is `{id, label,
 installed, ready, default?, models: [{id, label, refused?}], efforts?,
-effort_default?, model_efforts?, typed_model?, observed, custom?, locked?,
+effort_default?, model_efforts?, typed_model?, observed, custom?,
 prompt, setup?: {reason, text, command?, docs?}}` (the three effort fields:
 § Effort at start):
 `installed` is the binary found (the rule under `/v1/status` below); `ready`
@@ -4407,15 +4405,15 @@ checked lists the page keeps. `observed` is false for Grok and custom agents
 whose arguments have no `{prompt}`. `setup.reason` is `not_installed` (with
 the official install command and docs page), `no_provider` (OpenCode, `opencode
 auth login`) or `signin` (Grok without `auth.json` or `XAI_API_KEY`, `grok
-login`; a hint — the session still starts). `locked` marks a custom agent the
-licence no longer covers. `licensed` is the licence state; `home` the folder a
-setup shell opens in. Reads files and the login environment only: nothing is
+login`; a hint — the session still starts). `home` is the folder a setup
+shell opens in. (`locked` and `licensed` were dropped on 2026-11-27, when
+custom agents became free.) Reads files and the login environment only: nothing is
 run and nothing goes over the network. Open to a controller phone (read-only,
 like the model list).
 
-**Custom agents** (Premium, ADR-046). A `CustomAgent` is `{id, name,
-command, args?, models?}`, stored as `custom_agents` in `config.json`.
-`PUT /v1/agents/custom` replaces the list: `402` without an active licence,
+**Custom agents** (ADR-046; free, no licence, since 2026-11-27). A
+`CustomAgent` is `{id, name, command, args?, models?}`, stored as
+`custom_agents` in `config.json`. `PUT /v1/agents/custom` replaces the list:
 `403` from any paired device, `400` with the reason when a name or command is
 missing, the command holds a space but no path separator (arguments belong in
 `args`), a field holds a line break or control character or is over 512
@@ -4425,14 +4423,13 @@ letters, digits and dashes, at most 32; one that names a built-in agent gets
 `-custom`. `args` is a template: `{prompt}` is the first message and
 `{model}` the model; an argument whose placeholder has no value is left out,
 and so is the flag right before it when the argument was the placeholder
-alone. A spawn with `agent: "custom:<id>"` is refused without an active
-licence, for an id not in the config, for a command not found (resolved like
+alone. A spawn with `agent: "custom:<id>"` is refused for an id not in the
+config, for a command not found (resolved like
 an agent's binary), and from any paired device; otherwise the daemon starts
 the configured command with the filled arguments — the request never carries
 the command — and drops `model`, `permission_mode` and `fork`, which it cannot
 map. A custom session is recorded with `agent = "custom:<id>"`; resume is not
-offered. `GET /v1/agents/custom` lists the stored agents whatever the licence
-says, so a renewed licence restores them.
+offered. `GET /v1/agents/custom` lists the stored agents.
 
 **Subscriptions** ([ADR-048](08-decisions.md)). A subscription is a sign-in
 to Claude Code or Codex kept in `<data dir>/profiles/<id>/` (0700), stored as
@@ -4458,8 +4455,8 @@ while agents work; every other field is read on each request.
   It has `signed_in: true`, `account: "your DeepSeek API key"`, `plan:
   {kind: "metered", label: "DeepSeek API"}`, an empty `dir` and
   `login_command`, no `windows`, and its own `sessions_7d`, `cost_7d_usd`
-  and `running`. It is not in `config.json`'s `subscriptions`: it never
-  counts toward `free_per_agent`, and `PATCH` and `DELETE` on it are `404`
+  and `running`. It is not in `config.json`'s `subscriptions`, and `PATCH`
+  and `DELETE` on it are `404`
   (the key is removed in `PUT /v1/settings`). The id cannot collide with a
   real one, which is hex.
 - **`provider: "kimi"`** is the same entry for Claude Code on Kimi: `id:
@@ -4475,7 +4472,7 @@ while agents work; every other field is read on each request.
   credentials and the Keychain are never moved, rewritten or read, and a
   running session never changes account.
 - **`plan`** is how that sign-in is paid for, as the user stated it in
-  Settings → Plan & licence: `kind` `flat` or `metered`, the user's words,
+  Settings → Plan: `kind` `flat` or `metered`, the user's words,
   a monthly price (0 = not stated). Absent: the main plan (`plan_kind`,
   `plan_label`, `plan_usd_per_month` in `/v1/settings`) stands for it. The
   own sign-in has no `plan` of its own — the main plan is its plan, and the
@@ -4513,10 +4510,12 @@ while agents work; every other field is read on each request.
   same again at every start and before every spawn on it, so a moved shim
   follows. `400` for an agent other than `claude` or `codex`, an empty or
   over-40-character label, `Default`, or a label the agent already has;
-  `402` when the agent already has `free_per_agent` (3, the Default one
-  included) and the licence is not active; `403` from a paired device.
+  `403` from a paired device. There is no cap and no licence check (free
+  since 2026-11-27, [ADR-048](08-decisions.md) amended; until then the
+  fourth per agent was `402` without a licence, and the list carried
+  `licensed` and `free_per_agent`).
 - **`PATCH`** changes what its body names: `label` (the same rules as
-  `POST`, minus the free number; the own sign-in can be renamed too),
+  `POST`; the own sign-in can be renamed too),
   `make_default: true`, and `plan` — an object sets it, held to what `PUT
   /v1/settings` holds the main plan to (`400` for another `kind` or a
   negative or non-finite price; the label is cut at 64 bytes), `null` or
@@ -8175,7 +8174,7 @@ measured and is quietly skewed is worse than one that is not there;
 
 **`GET /v1/premium` also reports the licence state.** The response carries `license` — `{active, in_grace, expires_at, reason}` — decided from `settings.license_key` and the expiry inside it, locally. No signature, no network call: the binary is Apache-2.0 so a check is deletable in five minutes either way, and [rule 4](../CLAUDE.md) is the product's argument rather than a feature of it ([ADR-022](08-decisions.md)). A key is `CR-YYYY-MM-DD-XXXXXXXX`, where the date is the last day covered; features continue for seven days past it so a late renewal does not interrupt work. `PUT /v1/settings` accepts `license_key` and trims it — a key pasted with a newline is the likeliest way the one interaction that turns a payment into a working feature goes wrong.
 
-**`GET /v1/premium` is what the paid plan costs**, so the dashboard can state a price without an outbound call and without a second copy of the figure. It is compiled in — rule 4 forbids fetching it — but it lives once, in `internal/premium`, and `TestPricingMatchesTheSite` reads the site's `src/content/pricing.ts` and fails when the two disagree. A price copied into the UI eventually contradicts the one that charges the card; this makes that a red build rather than a support email. The response carries `yearly` and `monthly` (`per_month_usd`, `charged_usd`, `period`, `url`) plus `info_url`. Changing a price means changing both files in the same commit.
+**`GET /v1/premium` is what the paid plan cost** (the dashboard read it until 2026-11-27, when Caprock stopped selling a plan to one person; the route and `internal/premium` stay for the licence code the team tier keeps), so the dashboard could state a price without an outbound call and without a second copy of the figure. It is compiled in — rule 4 forbids fetching it — but it lives once, in `internal/premium`, and `TestPricingMatchesTheSite` reads the site's `src/content/pricing.ts` and fails when the two disagree. A price copied into the UI eventually contradicts the one that charges the card; this makes that a red build rather than a support email. The response carries `yearly` and `monthly` (`per_month_usd`, `charged_usd`, `period`, `url`) plus `info_url`. Changing a price means changing both files in the same commit.
 
 **`chat` starts a session without a working directory**, for asking something rather than working on a repository — Caprock creates one under `<data_dir>/chats/<YYYY-MM-DD-HHMMSS>/` and spawns there. `cwd` is required unless `chat` is set; `chat` with a `cwd` runs the chat in that folder instead ([ADR-091](08-decisions.md)). One directory **per chat**, never a shared `chats/` folder: Claude Code keys a transcript by working directory, so a shared folder would collapse every conversation into one project row and one transcript. The name carries a counter when two chats start inside the same second. Chats live under the data directory rather than a second `~/.caprock` — one place holding Caprock's state is one place to back up, clean out and explain.
 
@@ -10411,21 +10410,21 @@ button: neither the daemon nor `caprock hooks install` writes it.
   rollups too.
 - **A turn with no model is stored unpriced.** The recorder prices only when it has a model id; without one the turn keeps its real token counts and carries no cost, and `caprock status` reports the count so a partial total is legible as partial ([rule 6](../CLAUDE.md) — a missing number beats an invented one). For Codex this nearly never happens, but only because the model is read from **two** places: `turn_context` (4 of 100 real transcripts) and `session_meta.base_instructions.provenance` (96). Reading the obvious one alone left 83% of tokens with no cost. Both are recorded model ids rather than inferences; where both appear they agreed, and `turn_context` wins as the per-turn value. See [19-codex.md](19-codex.md).
 - **The daily spend cap (`settings.cap_usd_per_day`) pauses sessions Caprock started, and only those.** Zero is off and is the default — a threshold nobody chose would eventually stop work for a reason its owner could not explain. The check runs after a turn is **priced**, not on a timer: the day's total only moves when a turn is priced, so a poll would either lag the crossing or ask the database for a sum it already knows is unchanged. Four rules, each with a test that was verified by breaking it: **only owned sessions** — `agents.PauseOwned` refuses any id the manager did not spawn, so [rule 7](../CLAUDE.md) is enforced at the thing holding the process handles rather than by whoever is calling; **paused, not killed** — SIGSTOP, so the conversation, directory and context survive a resume; **once a day** — a session resumed by hand must not be re-paused seconds later, and the day is claimed under a mutex *before* any signal so concurrent turns cannot both fire; **fails open** — an unreadable spend does not pause, because a missed pause costs money while a spurious one stops work that was fine, and the second is the one nobody forgives. `cap_usd_per_day` carries **no `omitempty`**: zero means "off", and omitting it makes an off cap indistinguishable from a daemon too old to have the field — the panel could then be switched on but never off. A negative or non-finite value is a 400 rather than a clamp, like every other validated field here. The suggested limit is **twice the median day, rounded** (`cap.Suggest`, mirrored in the UI): the median rather than the mean because one runaway day would drag an average up and produce a ceiling that never fires — precisely the day the feature exists for — and twice it because a cap set *at* the median fires half the time by definition. It is offered as a click, never prefilled: a number that appears in the field on its own is a number nobody chose, and this one stops work.
-- **The plan-window stop (`settings.window_stop_pct`, Premium) pauses the Claude Code sessions Caprock started when Claude's five-hour or weekly window crosses a share, and resumes them after the reset** (owner decision, 2026-10-08; `internal/cap/window.go`, wired in `internal/daemon/windowstop.go`). It reuses the cap's pause path (`agents.PauseOwned`, plus `ResumeOwned` and `OwnedRunningKind`) and the windows `caprock statusline` already records (`rate_limit_latest`). The rules, each with a test in `internal/cap/window_test.go`:
+- **The plan-window stop (`settings.window_stop_pct`, free since 2026-11-27) pauses the Claude Code sessions Caprock started when Claude's five-hour or weekly window crosses a share, and resumes them after the reset** (owner decision, 2026-10-08; `internal/cap/window.go`, wired in `internal/daemon/windowstop.go`). It reuses the cap's pause path (`agents.PauseOwned`, plus `ResumeOwned` and `OwnedRunningKind`) and the windows `caprock statusline` already records (`rate_limit_latest`). The rules, each with a test in `internal/cap/window_test.go`:
   - **The setting.** `window_stop_pct` is `0` (off) or `50`–`99`; anything else is a 400. Off until chosen, like the daily cap: a config that never chose reads `0`. The control offers 80, 90 and 95; 90 is the free alert's own line. No `omitempty` on the API field, like the cap.
-  - **Licensed only.** Without an active licence (`license.Parse`, grace included) nothing is paused; the free 90% alert on Now is unchanged. A pause already made is still undone at the reset if the licence lapses or the setting is turned off in between.
+  - **No licence.** Since 2026-11-27 ([ADR-022](08-decisions.md) amended) the stop needs none; the 90% alert on Now is unchanged. A pause already made is still undone at the reset if the setting is turned off in between.
   - **Only owned Claude Code sessions.** `OwnedRunningKind("claude")`: a Codex, Gemini or OpenCode session Caprock started does not spend Anthropic's window, and a hand-started session is never signalled (`PauseOwned` refuses it, [rule 7](../CLAUDE.md)).
   - **Never on stale figures.** A window is acted on only when its sample is at most 10 minutes old (`cap.FreshFor`), its `resets_at` is in the future, and no more than 8 days ahead. The check runs when `POST /v1/statusline` records new figures and every 30 seconds.
   - **Resume after the reset.** Each paused session waits for the latest reset among the windows over the share when it was paused (a weekly window over the share keeps it paused past the five-hour reset), plus one minute (`cap.ResumeGrace`); then the 30-second tick sends `resume` (SIGCONT, or the input hold released on Windows), and a session that ended meanwhile is dropped.
   - **Once per window.** A stop that paused something latches every window over the share by name and reset time (within 30 minutes, so a reset reported a few seconds differently is the same window). In that window nothing is paused again: not a session the user resumed by hand, not one started after the notice. A stop that found nothing to pause does not latch. Changing the share clears the latches; paused sessions keep their resume time.
   - **The user takes over.** Any `POST /v1/agents/{id}/signal` (pause, resume or kill) on a session the stop paused removes it from the stop's list, so it is not resumed behind the user's back.
   - **State survives a restart.** `{paused:[{session_id, resume_at, window, paused_at}], latched:[{window, resets_at}], last}` is kept as JSON in `meta.window_stop` (no migration); sessions in pty-hosts outlive the daemon (ADR-033) and are resumed by the next one.
-  - **The notice.** A `notify` frame of kind `window` (§ Notify frame), and `GET /v1/window-stop`: `{pct, licensed, fresh_for_s, windows:[{window, used_percentage, resets_at, observed_at, fresh, stale?}], paused:[{session_id, project, title?, window, resume_at, paused_at}], last?:{kind, at, window?, used_percentage?, threshold_pct?, resume_at?, sessions}}` — `paused` lists only sessions still owned and still paused; `stale` says why a figure will not be acted on. Now shows a `window-stop` row naming the paused sessions and the reset in place of the plan-limit row, and on an install without a licence the plan-limit row offers the feature (`PremiumModal` feature `window`). Settings → *Pause at the plan limit* is the one control, behind `Locked` without a licence.
+  - **The notice.** A `notify` frame of kind `window` (§ Notify frame), and `GET /v1/window-stop`: `{pct, fresh_for_s, windows:[{window, used_percentage, resets_at, observed_at, fresh, stale?}], paused:[{session_id, project, title?, window, resume_at, paused_at}], last?:{kind, at, window?, used_percentage?, threshold_pct?, resume_at?, sessions}}` — `paused` lists only sessions still owned and still paused; `stale` says why a figure will not be acted on. Now shows a `window-stop` row naming the paused sessions and the reset in place of the plan-limit row, and on an install without a licence the plan-limit row offers the feature (`PremiumModal` feature `window`). Settings → *Pause at the plan limit* is the one control, behind `Locked` without a licence.
 - **`GET /v1/browse` lists directories for the folder picker, and is the one endpoint that reads the filesystem on a web page's behalf.** Starting a session required typing an absolute path from memory into a dashboard already showing the reader's repositories. Four rules make this a picker rather than a filesystem-read API: **only directories and only names** (no contents, no sizes); **rooted at `settings.browse_root`** (default `$HOME`), with **symlinks resolved before the containment check** so a link inside the root pointing out of it cannot smuggle a caller past the boundary; **dotfile directories are never listed** — `.ssh` and `.aws` are precisely what a prober wants, while `.git` is reported as a *property* of its parent (`repo: true`) rather than somewhere to descend into; and **"outside the root" and "does not exist" return the identical 404**, so the endpoint cannot be used as an existence oracle for paths the caller may not see. Listings are capped at 500 entries with `X-Caprock-Truncated` set rather than silently cut. Repositories sort first because a repository is what is being looked for. `GET /v1/recent-dirs` is the other half and touches no filesystem beyond an existence check: it lists directories from the `sessions` table, newest first, grouped by repository root where one is known, and omits any that no longer exist — a picker offering a dead path spawns a session that fails. It also omits the filesystem root, the home directory itself and the temp directory itself (`store.NotAProject`): on the owner's Mac a background `claude` opened in "/" every ten minutes and held the top of the list. Since 2026-10-09 it also leaves out anything under a temp directory (`/tmp`, `/private/tmp`, `/var/folders`, `os.TempDir()`), under Caprock's data directory (quick chats live in its `chats/`) and under a `.claude/worktrees/` folder, reading up to 40 directories to fill its 8.
 - **`GET /v1/browse/stat?path=` says what a typed path is**, for the Add project sheet's line under its folder field ("exists — not empty, clone will fail", "will be created", "already in Caprock"). → `{path, exists, is_dir, empty, parent_exists, guarded?, project_id?, project_name?}`: `path` absolute, a leading `~` expanded, cleaned; `empty` counts hidden files (git refuses a folder holding a `.DS_Store`); `parent_exists` says one level can be made there; `project_id` is the listed project adding the path would return (its root, or the repository it lies in). Held to the browse rules: the same root (a device's rooted inside home), the nearest existing part of the path resolved through symlinks before the containment check, and the browse `404` for a relative path or anything outside the root, whether or not it exists there. A path in a place macOS guards (`tcc.Guarded`: Documents, Music, a volume…) is answered `{path, guarded: true}` without being read. A controller may ask it, as it may browse.
 - **`POST /v1/browse/mkdir {path}` makes one folder, and nothing else** (2026-11-22), for the New project wizard's *Create folder & continue* on a typed path that does not exist yet. → `201 {path}`, `path` absolute, a leading `~` expanded, cleaned. One level only: the parent must already be a folder, resolved through symlinks and inside the browse root (a device's rooted inside home), and the folder is made with `os.Mkdir` (`0755`), never `MkdirAll` — no parent is ever made, no `git init` runs, no project is added. The browse `404` for a relative path, the filesystem root, a guarded place (`tcc.Guarded`), a missing parent, a parent that is a file and anything outside the root; `400` for a name that is not one ordinary folder name (`projects.CheckFolderName`); `409` when the name is taken (a folder, a file or a link). Owner only: neither a controller nor a computer route, so a paired phone or computer is `403`.
 - **`GET /v1/browse/repos` lists the git repositories under the default folder**, for the project search in New agent and Add a project (2026-10-10). → `{root, home?, scanned_at, truncated?, repos: [{name, path}]}`: `root` is `settings.default_folder` (`~` expanded) when it resolves inside the browse root, otherwise the browse root itself (a device's is rooted inside home); `home` lets the page write `~/dev/x`. A repository is a directory holding `.git`, one or two levels below `root`; one is never descended into, and hidden directories, `node_modules` and places macOS guards (`tcc.Guarded`) are skipped — a guarded `root` answers an empty list without reading it. Names and paths only, as `/v1/browse`. At most 1000 repositories from at most 4000 directories opened (`truncated: true` past either). The answer is cached per root for 60 s and a stale one is served while a background rescan runs, so only a sheet's first open on a daemon waits for a scan. The page searches the answer itself; it never walks the disk.
-- **The weekly report states what changed, not what happened.** It is sold on the promise of the repository that cost 3× its usual week and of last week against the one before it, per repository and model — so it must ship as a comparison against the preceding period, not as a digest of the current one. This is not a presentation choice: five readers were shown a digest-shaped description of it and every one of them concluded they would be paying for delivery of figures the free dashboard already shows (FB-027). A digest is a notification; what moved is the thing a week of data can say and a live screen cannot.
+- **The weekly report states what changed, not what happened.** Its promise is the repository that cost 3× its usual week and of last week against the one before it, per repository and model — so it must ship as a comparison against the preceding period, not as a digest of the current one. This is not a presentation choice: five readers were shown a digest-shaped description of it and every one of them concluded it would only deliver figures the dashboard already shows (FB-027). It needs no licence since 2026-11-27 ([ADR-022](08-decisions.md) amended). A digest is a notification; what moved is the thing a week of data can say and a live screen cannot.
 - **`/v1/history` and the wide ranges of `/v1/stats/summary` are cached, with single-flight and stale-while-revalidate** (`internal/api/answercache.go`). Both answer from aggregates over the whole events table — on the owner's 1 GB, 333k-event database `/v1/history?range=all` is ~1.5s and `/v1/stats/summary?range=all` ~1.0s through the Go driver, and 4.7s and 1.5s under a live dashboard (2026-10-04) — and they are asked for in bursts: **five components on the main screen request history on their own timers**, and the share dialog asks for its period's summary (or all-time history) beside the glance. Requests for the same key that arrive while one is in flight wait for it and share its result. A settled answer is served as it is for its TTL (`historyTTL` 3s, `summaryTTL` 10s), and a history answer for **20 times what computing it took** when that is longer (`historyCostScale`, at most `historyCostCeiling` 2 min): today's history, milliseconds to count, keeps the 3 s, while an all-time one that takes a second is refreshed at most every 20 s, so keeping it current costs at most a twentieth of one core however large the history grows — with agents writing, the version always moves and the all-time answer was otherwise counted again on every poll, 40% of the daemon's CPU under the 2026-10-18 profile (resource-usage audit F13). A history that reaches before today (`7d`, `30d`, `all`) is also kept for at least `historyWideTTL` (1 min) however fast it was to count: the cost bound measures wall time, a whole-history scan the page cache answers is fast, and it still reads every event in the range — on a machine short of memory those reads go to disk on every poll (resource-usage audit F16). Today's history keeps the 3 s. The history totals take turns, tool calls, cost, unpriced and background volume from the summary computed beside them (`store.HistoryFrom`) instead of scanning for them a second time; past that it is **still served at once and one background refresh replaces it**, so nobody waits on a whole-table scan once a key has been computed, and what is shown is at most one refresh behind. Past `answerMaxStale` (30 min) an answer is too old to present as current and the caller waits for a fresh one. The daemon computes history for all time, the 7d, 30d and all-time summaries and the all-time glance (§ At a glance) in the background as it starts (`Server.Warm`), so the first screen after a restart finds them ready. **Today's summary is not cached** — it is ~40ms and is the figure people watch move — and neither are the burn rate, throttles and plan windows beside any range, which are read live on every request. Keys carry the range's resolved start as well as its label, so `today`, `7d` and `30d` become new keys at midnight rather than serving yesterday's answer; `?range=` and `?range=today` still share one entry. **Errors are never cached**, and a failed refresh keeps the stale answer. Computations run on a context detached from their first caller: browsers abandon requests routinely, and a caller hanging up must not take the answer away from the callers waiting behind it. Writes do not invalidate — ingest commits several times a second while anyone works, so an invalidated cache would be empty exactly when the screen is busiest. Measured on a copy of the owner's database with a writer committing every 200ms and the main screen's eleven requests fired at once: the slowest went from 3.6s to 0.09s (2026-10-04). `/v1/status` reads its stored-event count the same way, recounted in the background at most every 30 s: a `COUNT(*)` over 333k events is 600ms on a cold connection. The count is kept by session (`store.EventCounter`) and recounted only for the sessions whose events moved (below): with nothing written it reads no event.
 - **What the caches above compute is itself kept per session, so a refresh reads only what moved** (`store.PartsCache`, `internal/store/summaryparts.go`; 2026-11-21). The owner's daemon read **1.6 GB from disk an hour** against the doctor's 500 MB line (2.1 GB database, ~675k events; `disk_reads_high`), and its slow-query log named the whole-range summaries: `turnSpendBySession` (675,718 rows, 1.7 s), `sumKinds` (2.8 s), the summary's distinct-session, model and per-session sums, `ToolDistribution`, `SpendPartsBetween` — every all-time `/v1/history` (once a minute from the Now screen while agents work) and every wide `/v1/stats/summary` read every event of its range again, because the data version moves on every commit. Now every figure a summary sums — per-kind totals, distinct sessions, model mix, unpriced and background volume, per-session spend by clock hour (the sparklines), carry-forward directories and work kinds, tool counts and bytes, the split by sign-in, and Cursor's and Hermes's payload figures — is summed **per session** from one ordered scan of `idx_events_attr_work`, which covers every column read (migration 0087, § Session parts DDL). A range's parts are kept between requests, keyed by the range's start; asked again, `store.EventsMark` says which sessions moved without reading an event — a new row takes an id above the newest one seen (`SELECT DISTINCT sid FROM events NOT INDEXED WHERE id > ?`, a rowid seek to the newest rows: left to itself SQLite walks all of `idx_events_session_id` for the DISTINCT), and an update or delete moves the session's `session_gen` in the same transaction (migration 0063) — and only those sessions are read again, one seek each on the same index. The whole range is read on the first ask, when more than 256 sessions moved, when rows were moved in from the legacy table, when a rewritten session's row is gone, and at least every 6 hours; a range nobody asked for in 15 minutes is dropped. **Within 15 seconds of a range's last read of events, what moved waits** (`partsThrottle`, 2026-11-22): the ask is answered from the parts as they are, the kept mark stays where it was, and the first ask past the window reads every session that moved in it, once — so the figures converge to exactly what a fresh count gives, and a summary or history built from parts may be up to 15 seconds behind, today's cost and tokens included. Such an answer is marked behind (`store.NoteLag`), and the answer caches record it at no version, so an unchanged version never renews it as current: past its TTL it is counted again. A removal (`forgetAnswers`) lifts the window for the next ask (`PartsCache.Hurry`). Why: with agents working every commit moves a session, and today's summary and history, asked every two or three seconds by the Now screen, read every moved session's whole range again on each ask, once per kept range. Measured on the stand above (two sessions writing, the Now screen and two session tabs in a headless browser, both builds side by side for the same 10 minutes, no eviction timer, 2026-11-22): `scanEventParts` went from **966 to 288 calls an hour** and its disk reads from 2,071 to 1,819 MB/hour. The reads fall much less than the calls because each read still takes in the moved sessions' whole range, and spaced 15 seconds apart more of those pages have left the cache. Reading only the rows a session added is the cut still open. The answer is then built from the parts in Go by the same rules the per-range queries applied (`buildSummary`; the agent filter narrows what it narrowed — the work breakdown it never did), checked figure by figure against those queries, kept as a test oracle (`TestPartsSummaryMatchesTheRangeQueries`): only the order floating-point sums are added in differs, far below a cent; tools with the same count are ordered by name. `/v1/stats/summary` (every range, with its `cost_parts`) and `/v1/history` (its summary and tools) read through it; the answer caches above still decide how often. Measured on a synthetic 1.6 GB, 680k-event database (`TestSeedLargeDB`, below) with the Now screen and two session tabs open in a headless browser, two sessions writing transcripts and the database file evicted from the OS cache on a timer (`ri_diskio_bytesread`, 10-minute windows, 2026-11-21): evicted every 5 minutes, the daemon's disk reads went from **24,361 to 3,489 MB/hour**; evicted every 30 seconds, from **36,037 to 6,334 MB/hour**; writes fell from about 900 to 290 MB/hour with them. The stand evicts the whole file, harsher than a Mac under memory pressure, so the ratio is the figure to carry, not the hourly number. Request by request, with the file evicted just before each: `/v1/history?range=7d` read 572 MB before and 5 MB after; the slow-query log in the window went from 69 entries (`SummarizeSparkFor`, `turnSpendBySession`, `sumKinds`, `ToolDistribution`, `CountEvents` 50 of them) to 22. What still reads most on a cold cache is `/v1/week` (309 MB), `/v1/glance` (252 MB) and `/v1/plan-share` (172 MB), each held by its own answer TTL. `GET /v1/sessions/{id}/calls` is kept by the session's events generation the same way (§ Session calls).
 - **A large synthetic database for measuring reads**: `CAPROCK_SEED_DB=<path> go test ./internal/store -run TestSeedLargeDB` writes ~680k events (1,300 sessions over 120 days, eight repositories, tool results of 0.2–60 KB) through the store's own insert path, and `CAPROCK_SEED_LIVE=N` appends N turns to three live sessions; it never opens a real database.

@@ -2,7 +2,7 @@
 
 xAI's terminal coding agent, `grok` ("Grok Build"). Since 2026-10-10 Caprock
 starts it from New agent and Quick chat like Claude Code, Codex, OpenCode and
-Gemini CLI ([ADR-046](08-decisions.md#adr-046--the-agent-pickers-list-every-agent-with-what-it-lacks-grok-build-is-a-sixth-agent-custom-agents-are-premium)).
+Gemini CLI ([ADR-046](08-decisions.md#adr-046--the-agent-pickers-list-every-agent-with-what-it-lacks-grok-build-is-a-sixth-agent-custom-agents-are-free)).
 It is **launch-only**: Caprock does not read its sessions, so a Grok session
 has a row, a terminal and a tab, and no turns, tokens or cost.
 

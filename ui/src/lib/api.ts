@@ -511,8 +511,6 @@ export interface GeminiStatus {
   from_env?: boolean
   /** The variable to set — so the UI can tell the reader what to do. */
   env_var: string
-  /** The licence is active. Asking is refused by the server without it. */
-  licensed: boolean
   model: string
   /** The Gemini models in the pricing table, cheapest first, each with what a
    *  short question costs at its rates. */
@@ -1093,17 +1091,6 @@ export interface RateWindow {
   observed_at?: number
 }
 
-/** What the paid plan costs. Served by the daemon so no price is hardcoded in
- *  the UI — one edit in Go changes every place it appears. */
-export interface PremiumPlan { per_month_usd: number; charged_usd: number; period: string; url: string }
-/** What a licence key grants, decided by the daemon from the key's own date. */
-export interface LicenseState { active: boolean; in_grace: boolean; expires_at?: string; reason?: string }
-/** A price the reader is already paying, quoted with its source and date, so
- *  ours has something to be measured against. Not a claim the two substitute
- *  for each other — see internal/premium. */
-export interface PremiumCompare { plan: string; monthly_usd: number; source: string; read_on: string }
-export interface PremiumPricing { yearly: PremiumPlan; monthly: PremiumPlan; lifetime: PremiumPlan; info_url: string; license?: LicenseState; compare?: PremiumCompare }
-
 /** One plan window as the plan-window stop sees it (GET /v1/window-stop). */
 export interface WindowStopFigure {
   window: 'five_hour' | 'seven_day'
@@ -1138,11 +1125,10 @@ export interface WindowStopEvent {
   sessions: string[]
 }
 
-/** GET /v1/window-stop: the Premium plan-window stop's state. */
+/** GET /v1/window-stop: the plan-window stop's state. */
 export interface WindowStop {
   /** The share in percent; 0 is off. */
   pct: number
-  licensed: boolean
   /** How old a figure may be and still pause anything. */
   fresh_for_s: number
   windows: WindowStopFigure[]
@@ -1314,7 +1300,7 @@ export interface Settings {
   quick_replies?: QuickReply[]
   /** The daily spend ceiling in USD; 0 is off. See internal/cap. */
   cap_usd_per_day?: number
-  /** The share of a Claude plan window (50–99) at which Premium pauses the
+  /** The share of a Claude plan window (50–99) at which Caprock pauses the
    *  Claude Code sessions Caprock started until the window resets; 0 is off.
    *  90 until someone chooses. See internal/cap/window.go. */
   window_stop_pct?: number
@@ -1338,8 +1324,8 @@ export interface Settings {
   alert_reply?: boolean
   /** A turn that asked nothing (Done) still goes as "Finished"; on unless turned off. */
   alert_done?: boolean
-  /** Two-way Telegram chat (Premium, ADR-047): replies, /sessions, /new,
-   *  /stop, Approve and Deny. Off unless turned on, and inert without a licence. */
+  /** Two-way Telegram chat (ADR-047, free): replies, /sessions, /new, /stop,
+   *  Approve and Deny. Off unless turned on. */
   telegram_chat?: boolean
   /** Replies sent to Telegram keep their code blocks; off unless turned on. */
   telegram_code?: boolean
@@ -1400,7 +1386,7 @@ export interface Settings {
   plan_usd_per_month: number
   /** The paid key, checked locally against the expiry it carries. */
   license_key?: string
-  /** When each dashboard offer (star strip, Premium and Teams nudges, share
+  /** When each dashboard offer (star strip, Teams nudges, share
    *  prompt) was last answered: prompt id → Unix ms. PUT merges; 0 clears one. */
   prompts?: Record<string, number>
 }
@@ -1550,7 +1536,7 @@ export interface Week {
   pricing_version?: string
 }
 
-/** One group of a tool's calls. Results, failures, bytes and trend are Premium:
+/** One group of a tool's calls. Results, failures, bytes and trend are free:
  *  the daemon leaves them out without a licence. */
 export interface DrillRow { key: string; calls: number; results?: number; failures?: number; bytes?: number; trend?: number[] }
 export interface DrillHint { kind: 'failures' | 'output' | 'repeats'; key: string; text: string }
@@ -1569,9 +1555,6 @@ export interface ToolDrill {
   trend_width_ms?: number
   hints?: DrillHint[]
   range: string
-  locked: boolean
-  /** The strongest hint, sent in full even without a licence. */
-  teaser?: DrillHint
 }
 
 /** Which Caprock hook events are registered in Claude Code's settings file. */
@@ -1856,16 +1839,14 @@ export interface CatalogEntry {
   /** Caprock reads its sessions' turns and cost. */
   observed: boolean
   custom?: boolean
-  /** A custom agent the licence no longer covers. */
-  locked?: boolean
   /** A first message reaches it (a custom agent's args may have no {prompt}). */
   prompt: boolean
   setup?: { reason: 'not_installed' | 'no_provider' | 'signin'; text: string; command?: string; docs?: string }
 }
 
-export interface AgentCatalog { agents: CatalogEntry[]; licensed: boolean; home?: string }
+export interface AgentCatalog { agents: CatalogEntry[]; home?: string }
 
-/** A coding agent the user added by command (Settings → Agents, Premium). */
+/** A coding agent the user added by command (Settings → Agents). */
 export interface CustomAgent { id?: string; name: string; command: string; args?: string[]; models?: string[] }
 
 /** A saved prompt or command (ADR-051); see lib/saved.ts. */
@@ -2315,8 +2296,6 @@ export interface SubscriptionsResponse {
      *  subscription runs without, so it runs on its own sign-in. Names only. */
     ignored_env?: string[]
   }[]
-  licensed: boolean
-  free_per_agent: number
   home?: string
 }
 
@@ -3033,7 +3012,6 @@ export const api = {
   /** A repository's cost per agent-hour and agent team, for its folders (clones of one repository are several). */
   pipelineAgents: (roots: string[]) => get<RepoAgents>(`/v1/pipeline/agents?${roots.map((r) => `repo=${encodeURIComponent(r)}`).join('&')}`),
   trends: (agent?: string) => get<Trends>(`/v1/stats/trends${agent && agent !== 'all' ? `?agent=${agent}` : ''}`),
-  premium: () => get<PremiumPricing>('/v1/premium'),
   // Private modules (ADR-076): the admin key and what it opens.
   admin: () => get<AdminState>('/v1/admin'),
   setAdminKey: (key: string) => post<AdminState>('/v1/admin', { key }, 'PUT'),
@@ -3146,9 +3124,9 @@ export const api = {
     post<ContinueOnResult>(`/v1/sessions/${encodeURIComponent(id)}/continue-on`, { target }),
   /** GET /v1/agents/catalog: every agent here, installed or not, with its models and what it is missing. */
   agentCatalog: () => get<AgentCatalog>('/v1/agents/catalog'),
-  customAgents: () => get<{ agents: CustomAgent[]; licensed: boolean }>('/v1/agents/custom'),
+  customAgents: () => get<{ agents: CustomAgent[] }>('/v1/agents/custom'),
   /** PUT /v1/agents/custom: replaces the list; 402 without an active licence. */
-  saveCustomAgents: (agents: CustomAgent[]) => post<{ agents: CustomAgent[]; licensed: boolean }>('/v1/agents/custom', { agents }, 'PUT'),
+  saveCustomAgents: (agents: CustomAgent[]) => post<{ agents: CustomAgent[] }>('/v1/agents/custom', { agents }, 'PUT'),
   /** Saved prompts and commands (ADR-051): all of them, or a session's — every project's and its own project's. */
   savedPrompts: (sessionId?: string) =>
     get<{ items: SavedPrompt[]; max: number }>(`/v1/saved-prompts${sessionId ? `?session=${encodeURIComponent(sessionId)}` : ''}`),
