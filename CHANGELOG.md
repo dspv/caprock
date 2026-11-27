@@ -12,6 +12,52 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.200.0] - 2026-11-27
+
+### Added
+
+- **cli:** `caprock url` prints the dashboard's local address on the port
+  this computer uses (22776, or 4173 on an older install), so a script runs
+  `curl "$(caprock url)/v1/status"` anywhere; `caprock status` names the
+  address while the daemon is down too.
+- **machines:** *Send secrets* on a linked computer's page: tick the GitHub
+  token Caprock keeps, the DeepSeek key or the Kimi key and press Send. They
+  travel only inside the computer's end-to-end encrypted link (the relay sees
+  ciphertext), are written straight into that computer's secret store, and
+  appear there by name under the computer that sent them, never as values.
+  No SSH needed to set a second computer's keys (#1095, ADR-107).
+- **telegram:** one Telegram bot for all your computers. A computer with no
+  bot of its own can send its alerts and questions through the bot of a
+  computer it is linked to (Settings → Telegram → *Send through <name>*):
+  each message names the computer it came from, and Approve, Deny, Mute and
+  replies go back to that computer, which acts on them by its own settings.
+  While the computer with the bot is offline, messages wait on the sender
+  (at most 200, up to a day) and Settings says so; *Make this computer the
+  holder* moves the bot, its chat and where it stopped reading, with no new
+  bot or pairing (issue #1100).
+
+### Changed
+
+- **sidebar:** on a Claude plan, the line above the sidebar's footer is now just
+  the plan limit, as a wide bar with its percent: *Weekly limit ▬▬▬▬ 56%*.
+  Today's spend and the running count no longer crowd it; they stay on Home
+  and Cost. With no plan window (API billing) the line still shows today's
+  spend and what runs.
+
+### Fixed
+
+- **agents:** a Claude Code start in Bypass is checked for its one-time
+  warning at every start, not only from New agent: a continue-on, the
+  orchestrator, several attempts or a session on another subscription no
+  longer opens on Claude Code's warning and ends a few seconds later on a
+  computer nobody is looking at. It is refused with the same note, and New
+  agent, here or on a linked computer, shows the warning with Accept and
+  start. Nothing is accepted for you.
+- **userenv:** on Windows, Git or the GitHub CLI installed with winget after
+  Caprock started is found by Caprock itself, for a clone, a worktree or the
+  GitHub tabs, without restarting it: the daemon adds the folders new in the
+  registry's PATH to its own.
+
 ## [0.199.0] - 2026-11-27
 
 ### Changed
