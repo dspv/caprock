@@ -84,6 +84,10 @@ type Deps struct {
 	// Telegram is the bridge to the owner's bot (ADR-047): its setup and
 	// pairing. Nil answers 501.
 	Telegram TelegramController
+	// TelegramVia sends this machine's Telegram messages through another
+	// computer's bot, and moves that bot here (ADR-047, amended
+	// 2026-11-27). Nil answers 501.
+	TelegramVia TelegramVia
 	// Alerts sends a test phone alert on demand (ADR-036). Nil disables the
 	// endpoint.
 	Alerts AlertSender
@@ -447,6 +451,10 @@ type Settings struct {
 	// unless turned on.
 	TelegramChat bool `json:"telegram_chat"`
 	TelegramCode bool `json:"telegram_code"`
+	// TelegramVia is the computer this machine sends its Telegram messages
+	// through (ADR-047, amended 2026-11-27); empty for none. Read-only here:
+	// PUT and DELETE /v1/telegram/via set it.
+	TelegramVia string `json:"telegram_via,omitempty"`
 	// MorningSummary is the daily Telegram summary (ADR-092), off unless
 	// turned on; MorningSummaryAt its local time, "HH:MM" (08:00 until
 	// chosen). The last send's time and error are read-only.
@@ -889,6 +897,17 @@ func New(d Deps) *Server {
 	m.HandleFunc("DELETE /v1/telegram/pair", s.handleTelegramCancelPair)
 	m.HandleFunc("DELETE /v1/telegram", s.handleTelegramDisconnect)
 	m.HandleFunc("POST /v1/telegram/photo", s.handleTelegramPhoto)
+	// One bot for several computers (ADR-047, amended 2026-11-27): the
+	// holder's routes, for another computer only, and the sender's own.
+	m.HandleFunc("GET /v1/telegram/hub", s.handleTelegramHub)
+	m.HandleFunc("POST /v1/telegram/hub/messages", s.handleTelegramHub)
+	m.HandleFunc("GET /v1/telegram/hub/presses", s.handleTelegramHub)
+	m.HandleFunc("POST /v1/telegram/hub/results", s.handleTelegramHub)
+	m.HandleFunc("POST /v1/telegram/hub/handover", s.handleTelegramHub)
+	m.HandleFunc("GET /v1/telegram/holders", s.handleTelegramHolders)
+	m.HandleFunc("PUT /v1/telegram/via", s.handleTelegramSetVia)
+	m.HandleFunc("DELETE /v1/telegram/via", s.handleTelegramClearVia)
+	m.HandleFunc("POST /v1/telegram/via/take", s.handleTelegramTake)
 	m.HandleFunc("GET /v1/stats/daily", s.handleDaily)
 	m.HandleFunc("GET /v1/events", s.handleEventsFeed)
 	m.HandleFunc("GET /v1/history", s.handleHistory)

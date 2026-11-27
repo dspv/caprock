@@ -208,6 +208,6 @@ func (d *Daemon) sendMorning(ctx context.Context, now time.Time) error {
 		}
 		out.Markup = &telegram.Markup{InlineKeyboard: [][]telegram.InlineButton{row}}
 	}
-	_, err := d.tg.Out.Send(ctx, out)
+	err := d.tg.SendNow(ctx, out)
 	return err
 }

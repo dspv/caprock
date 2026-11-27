@@ -146,9 +146,7 @@ func newStand(t *testing.T, h *host, opts ...func(*telegram.Bridge)) *stand {
 	for _, o := range opts {
 		o(b)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
-	go b.Run(ctx)
+	runJoined(t, b)
 	s := &stand{t: t, bot: bot, h: h, b: b, logs: logs}
 	t.Cleanup(func() {
 		if strings.Contains(logs.String(), token) {
@@ -159,6 +157,24 @@ func newStand(t *testing.T, h *host, opts ...func(*telegram.Bridge)) *stand {
 		}
 	})
 	return s
+}
+
+// runJoined runs b until the test ends, then stops it and waits for it to
+// return before the test's temporary directory is removed (cleanups run
+// last-registered first): Windows cannot delete a directory telegram.json is
+// still being written in.
+func runJoined(t *testing.T, b *telegram.Bridge) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		b.Run(ctx)
+	}()
+	t.Cleanup(func() {
+		cancel()
+		<-done
+	})
 }
 
 // paired is a stand whose chat is already paired.

@@ -153,6 +153,13 @@ type Config struct {
 	// of a one-line note; off unless switched on.
 	TelegramChat *bool `json:"telegram_chat,omitempty"`
 	TelegramCode *bool `json:"telegram_code,omitempty"`
+	// TelegramVia is the computer this machine sends its Telegram messages
+	// through, by its id among the computers it reaches (machines.json,
+	// ADR-067), when this machine has no bot of its own: one bot for all the
+	// owner's computers (ADR-047, amended 2026-11-27). Set and cleared only
+	// by Settings → Telegram (PUT/DELETE /v1/telegram/via), never by
+	// PUT /v1/settings.
+	TelegramVia string `json:"telegram_via,omitempty"`
 	// MorningSummary sends one Telegram message each morning through the
 	// same bot (ADR-092): important mail by sender and subject, the sessions
 	// that finished per project, and what waits for the owner. Off unless

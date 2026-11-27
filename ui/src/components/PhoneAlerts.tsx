@@ -41,7 +41,7 @@ export function PhoneAlerts() {
   const loaded = settings.data
   if (!loaded) return null
   const s: Settings = { ...loaded, ...patch }
-  const configured = !!s.report_bot_set && !!s.report_chat_id
+  const configured = (!!s.report_bot_set && !!s.report_chat_id) || !!s.telegram_via
 
   const toggle = (key: 'alert_approval' | 'alert_finished' | 'alert_reply' | 'alert_done', on: boolean) => {
     setPatch((p) => ({ ...p, [key]: on }))

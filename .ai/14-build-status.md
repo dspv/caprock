@@ -90,6 +90,22 @@ which also checks the value is in no log, answer or other file on either
 machine. Not done: the rest of #1095 (tools from the join key, PATH, the
 port).
 
+### 2026-11-27 — unreleased: one Telegram bot for all computers (ADR-047, amended; #1100)
+
+A computer with no bot sends its Telegram messages through the bot of a
+computer it reaches (`telegram_via`): the holder posts each under the
+sender's name, and presses and replies go back to the sender, which acts on
+them by its own licence, switch and rule 7 (`internal/telegram/hub.go`,
+`via.go`, `hubhttp.go`; `internal/daemon/telegramvia.go`). Messages wait in
+the sender's `telegram_outbox` (migration 0096, 200 rows, a day) while the
+holder is out of reach, and Settings → Telegram says so; *Make this computer
+the holder* moves the token, chat and offset over the encrypted link. Tested
+with two bridges against the fake Telegram in one process (the link served
+by `ServeHub`), the daemon's queue with a link the test cuts, the hub routes
+through the real device gate, and the screen in vitest. Not yet run between
+two real daemons over a relay (the machines smoke does not include Telegram)
+or against the real Telegram API.
+
 ### 2026-11-26 — unreleased: a session refused a guarded folder (ADR-106)
 
 Sessions on 0.197.0 were refused `~/Downloads` with no prompt, and an image

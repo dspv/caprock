@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -163,6 +164,17 @@ type Bridge struct {
 	// a module the admin key no longer names. nil keeps none (module.go).
 	ModuleAnswer func(ctx context.Context, module, doc string, data map[string]any) error
 
+	// One bot for several computers (hub.go, via.go). Via is the holder this
+	// machine sends through ("" for none); Route hands it one message, done
+	// hearing whether the holder took it; ViaStatus is that link as Settings
+	// shows it. All nil on a machine that never sends through another.
+	// OnMoved hears that this machine handed its bot to another computer.
+	Via       func() string
+	Route     func(m HubMessage, done func(error))
+	ViaStatus func() *ViaStatus
+	OnMoved   func(to Sender)
+	hub       hubState
+
 	// pinMu keeps one module pin change at a time, so a module never
 	// ends up with two pinned messages.
 	pinMu sync.Mutex
@@ -264,12 +276,19 @@ func (b *Bridge) wanted() bool {
 	b.mu.Lock()
 	pairing := b.pair != nil && b.now().Sub(b.pair.started) < PairFor
 	b.mu.Unlock()
-	return pairing || (chat != "" && (b.Host.AlertsOn() || b.Host.ChatOn() || b.moduleWaiting()))
+	return pairing || (chat != "" && (b.Host.AlertsOn() || b.Host.ChatOn() || b.moduleWaiting() || b.hubWaiting()))
 }
 
 // Run polls and sends until ctx ends.
 func (b *Bridge) Run(ctx context.Context) {
-	go b.Out.Run(ctx)
+	// The outbox ends with Run, so nothing it sends records a message in
+	// telegram.json after Run has returned.
+	outDone := make(chan struct{})
+	go func() {
+		defer close(outDone)
+		b.Out.Run(ctx)
+	}()
+	defer func() { <-outDone }()
 	idle := 30 * time.Second
 	for ctx.Err() == nil {
 		if !b.wanted() {
@@ -446,6 +465,18 @@ type Status struct {
 	LastError  string   `json:"last_error,omitempty"`
 	MuteAll    bool     `json:"mute_all,omitempty"`
 	Muted      int      `json:"muted,omitempty"`
+	// Via is the holder this machine sends through, when it has no bot of
+	// its own (hub.go); Carries the other computers that send through this
+	// machine's bot; MovedTo where this machine's bot went.
+	Via     *ViaStatus    `json:"via,omitempty"`
+	Carries []CarriedView `json:"carries,omitempty"`
+	MovedTo *Moved        `json:"moved_to,omitempty"`
+}
+
+// CarriedView is a computer that sends through this machine's bot.
+type CarriedView struct {
+	Name   string `json:"name"`
+	LastMs int64  `json:"last_ms"`
 }
 
 // Status reports the bridge's state.
@@ -467,6 +498,17 @@ func (b *Bridge) Status() Status {
 	b.mu.Lock()
 	out.Polling, out.LastError = b.polling, b.lastErr
 	b.mu.Unlock()
+	if token != "" {
+		for _, c := range st.Carries {
+			out.Carries = append(out.Carries, CarriedView{Name: c.Name, LastMs: c.LastAt})
+		}
+		sort.Slice(out.Carries, func(i, j int) bool { return out.Carries[i].LastMs > out.Carries[j].LastMs })
+	} else {
+		out.MovedTo = st.MovedTo
+	}
+	if b.ViaStatus != nil && (token == "" || chat == "") {
+		out.Via = b.ViaStatus()
+	}
 	return out
 }
 
@@ -517,12 +559,17 @@ func (b *Bridge) Muted(id string) bool { return b.Store.IsMuted(id) }
 // on, and a chat paired.
 func (b *Bridge) Active() bool {
 	_, chat := b.Host.Bot()
-	return chat != "" && b.Host.ChatOn() && b.Host.Licensed()
+	return (chat != "" || b.routing()) && b.Host.ChatOn() && b.Host.Licensed()
 }
 
 // Deliver queues a message about a session and remembers it, so a reply or
 // a button press finds the session again. done, when set, hears the outcome.
+// On a machine that sends through a holder the message goes there instead.
 func (b *Bridge) Deliver(m Out, ref Ref, done func(error)) {
+	if b.routing() {
+		b.route(m, ref, done)
+		return
+	}
 	prev := m.Sent
 	m.Sent = func(msg Message, err error) {
 		if err == nil {
@@ -868,6 +915,12 @@ func (b *Bridge) reply(ctx context.Context, m *Message, text string) {
 		b.moduleReply(ctx, m, ref, text)
 		return
 	}
+	if ok && ref.Kind == "hub" {
+		// Another computer's message: the reply goes back to that computer,
+		// which gates and types it by its own rules (hub.go).
+		b.hubReply(m, ref, text)
+		return
+	}
 	if !ok || ref.SessionID == "" {
 		if b.gate(m) {
 			b.say(m, "I don't know which session that message was about. Send /sessions to pick one.")
@@ -1166,6 +1219,10 @@ func (b *Bridge) handleCallback(ctx context.Context, q *CallbackQuery) {
 		}, Ref{SessionID: s.ID, Kind: "reply"}, nil)
 	case strings.HasPrefix(data, moduleData):
 		b.modulePress(ctx, c, chat, msgID, ref, strings.TrimPrefix(data, moduleData), toast)
+	case strings.HasPrefix(data, "h:"):
+		// A button under another computer's message: that computer decides
+		// (hub.go), so no licence is asked here.
+		b.hubPress(ref, strings.TrimPrefix(data, "h:"), toast)
 	case strings.HasPrefix(data, "f:"):
 		b.forwardPress(ctx, c, chat, msgID, strings.TrimPrefix(data, "f:"), toast, premium)
 	default:

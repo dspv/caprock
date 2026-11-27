@@ -23,7 +23,7 @@
  * not a paragraph on the page.
  */
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { api, errText, type Settings, type TelegramStatus } from '@/lib/api'
+import { api, errText, type Settings, type TelegramStatus, type TelegramVia } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { useNow } from '@/lib/useNow'
 import { openExternal } from '@/lib/nudges'
@@ -62,6 +62,7 @@ function Step({ n, done, title, children }: { n: number; done: boolean; title: R
 const SMALL = 'h-8 rounded-[7px] border border-[var(--app-hairline-strong)] px-3 text-[13px] font-medium text-fg hover:border-accent hover:text-accent disabled:opacity-50'
 const BIG = 'h-11 rounded-[10px] border border-[var(--app-hairline-strong)] px-4 text-[14px] font-medium text-fg hover:border-accent hover:text-accent disabled:opacity-50'
 const PRIMARY = 'inline-flex h-11 items-center rounded-[10px] bg-accent px-6 text-[15px] font-semibold text-panel hover:brightness-110 disabled:opacity-50'
+const MID = 'inline-flex h-9 items-center rounded-[9px] bg-accent px-4 text-[13.5px] font-semibold text-panel hover:brightness-110 disabled:opacity-50'
 
 export function TelegramBotFields({ s, onSaved, rejected: refused }: {
   s?: Settings
@@ -188,14 +189,33 @@ export function TelegramBotFields({ s, onSaved, rejected: refused }: {
             </button>
           </span>
         </div>
+        {state.carries && state.carries.length > 0 && (
+          <p className="text-[12.5px] text-fg-muted" data-telegram-carries="" data-keep>
+            Also carries the messages of {state.carries.map((c) => c.name).join(', ')}: each one says which computer it is from.
+          </p>
+        )}
         {state.last_error && <p className="text-[12.5px] text-danger">Telegram: {state.last_error}</p>}
         {err}
       </div>
     )
   }
 
+  if (state.via && !state.bot_set) {
+    return <ViaLine via={state.via} busy={busy} now={now}
+      onTake={() => void run(() => api.telegramTake())}
+      onStop={() => void run(() => api.telegramClearVia())}
+      err={err} />
+  }
+
   const left = pairing ? Math.max(0, Math.round((pairing.expires_ms - now) / 1000)) : 0
+  const others = !state.bot_set && !editing && !rejected
+    ? <OtherComputersBot movedTo={state.moved_to} busy={busy}
+        onSend={(id) => void run(() => api.telegramSetVia(id))}
+        onTake={(id) => void run(() => api.telegramTake(id))} />
+    : null
   return (
+    <div className="grid gap-3">
+    {others}
     <div
       data-telegram-setup=""
       data-telegram-rejected={rejected ? '' : undefined}
@@ -281,6 +301,124 @@ export function TelegramBotFields({ s, onSaved, rejected: refused }: {
       </ol>
       {state.last_error && !rejected && <p className="text-[12.5px] text-danger">Telegram: {state.last_error}</p>}
       {err}
+    </div>
+    </div>
+  )
+}
+
+/** "3 min ago", "2 h ago": how long since a unix-ms moment. */
+function ago(ms: number, now: number): string {
+  const s = Math.max(0, Math.round((now - ms) / 1000))
+  if (s < 60) return 'just now'
+  if (s < 3600) return `${Math.floor(s / 60)} min ago`
+  if (s < 48 * 3600) return `${Math.floor(s / 3600)} h ago`
+  return `${Math.floor(s / 86400)} days ago`
+}
+
+/**
+ * One bot for all the owner's computers (ADR-047, amended 2026-11-27): this
+ * computer has no bot of its own and sends through another's. One line says
+ * which, a warning says when messages wait because that computer is out of
+ * reach, and two buttons move the bot here or stop sending through it.
+ */
+function ViaLine({ via, busy, now, onTake, onStop, err }: {
+  via: TelegramVia
+  busy: boolean
+  now: number
+  onTake: () => void
+  onStop: () => void
+  err: ReactNode
+}) {
+  return (
+    <div className="grid gap-1.5" data-telegram-via="">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <p className="min-w-0 text-[15px] text-fg">
+          <span className="text-ok">✓</span> Sent through <span className="font-medium">{via.name}</span>
+          <span className="text-fg-muted"> · its bot, its chat, each message named with this computer</span>
+        </p>
+        <span className="flex flex-wrap items-center gap-2">
+          <button type="button" onClick={onTake} disabled={busy} className={SMALL}
+            title={`The bot, its chat and where it stopped reading move here; ${via.name} then sends through this computer if it reaches it`}>
+            Make this computer the holder
+          </button>
+          <button type="button" onClick={onStop} disabled={busy}
+            className="h-8 rounded-[7px] border border-[var(--app-hairline-strong)] px-3 text-[13px] font-medium text-fg hover:border-danger hover:text-danger disabled:opacity-50">
+            Stop sending through {via.name}
+          </button>
+        </span>
+      </div>
+      {via.waiting && via.queued > 0 ? (
+        <p role="status" data-telegram-via-waiting="" className="rounded-[8px] border border-accent/50 bg-accent/10 px-3 py-2 text-[13px] text-fg" data-keep>
+          {via.queued === 1 ? '1 message waits' : `${via.queued} messages wait`} for {via.name}: delivery resumes when it is back.
+          {via.last_error && <span className="block text-[12.5px] text-fg-muted">{via.last_error}</span>}
+        </p>
+      ) : via.last_error ? (
+        <p className="text-[12.5px] text-danger">{via.last_error}</p>
+      ) : via.last_sent_ms ? (
+        <p className="text-[12.5px] text-fg-faint" data-keep>Last message handed to {via.name} {ago(via.last_sent_ms, now)}.</p>
+      ) : null}
+      {!!via.dropped && (
+        <p className="text-[12.5px] text-fg-muted" data-keep>
+          {via.dropped} waited more than a day, or past 200, and were dropped.
+        </p>
+      )}
+      {err}
+    </div>
+  )
+}
+
+/**
+ * On a computer with no bot: the owner's other computers that hold one, to
+ * send through instead of making a second bot, or to move here. Asked of each
+ * computer when the card shows; nothing is listed when none is linked.
+ */
+function OtherComputersBot({ movedTo, busy, onSend, onTake }: {
+  movedTo?: { name: string; at: number }
+  busy: boolean
+  onSend: (id: string) => void
+  onTake: (id: string) => void
+}) {
+  const holders = useApi(() => api.telegramHolders(), [], { live: false })
+  const now = useNow(60_000)
+  const list = (holders.data?.computers ?? []).filter((c) => c.holder)
+  if (!movedTo && list.length === 0) return null
+  return (
+    <div className="grid gap-2 rounded-[12px] border border-border bg-panel-2/50 px-4 py-3" data-telegram-holders="">
+      {movedTo && (
+        <p className="text-[13px] text-fg-muted" data-keep>
+          This computer's bot moved to <span className="font-medium text-fg">{movedTo.name}</span> {ago(movedTo.at, now)}.
+        </p>
+      )}
+      {list.length > 0 && (
+        <>
+          <p className="text-[15px] font-medium text-fg" data-keep>Use the bot you already have</p>
+          <p className="text-[13px] leading-snug text-fg-muted" data-keep>
+            One bot for all your computers: this one's messages go through the other's bot, each named with this computer,
+            end-to-end encrypted on the way. Buttons and replies come back here.
+          </p>
+          <ul className="grid gap-2">
+            {list.map((c) => (
+              <li key={c.id} className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                <span className="min-w-0 text-[14px] text-fg">
+                  <span className="font-medium">{c.name}</span>
+                  {c.bot_username && <span className="text-fg-muted"> · @{c.bot_username}</span>}
+                  {c.chat_name && <span className="text-fg-muted"> · to {c.chat_name}</span>}
+                </span>
+                <span className="flex flex-wrap items-center gap-2">
+                  <button type="button" onClick={() => onSend(c.id)} disabled={busy} className={MID}>
+                    Send through {c.name}
+                  </button>
+                  <button type="button" onClick={() => onTake(c.id)} disabled={busy} className={SMALL}
+                    title={`The bot and its chat move here from ${c.name}: no new bot, no new code`}>
+                    Move the bot here
+                  </button>
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="text-[12.5px] text-fg-faint" data-keep>Or connect a bot of this computer's own below.</p>
+        </>
+      )}
     </div>
   )
 }

@@ -82,11 +82,15 @@ func (s *phoneAlertState) isUntested() bool {
 	return s.untested
 }
 
-// botConfigured reports whether the owner has set up a Telegram bot. Shared
-// with the weekly report; unlike it, alerts are free (ADR-036).
+// botConfigured reports whether the owner has set up a Telegram bot here,
+// or chose another computer's bot to send through (ADR-047, amended
+// 2026-11-27). Unlike the weekly report, alerts are free (ADR-036).
 func (d *Daemon) botConfigured() bool {
 	cfg := d.config()
-	return strings.TrimSpace(cfg.ReportBotToken) != "" && strings.TrimSpace(cfg.ReportChatID) != ""
+	if strings.TrimSpace(cfg.ReportBotToken) != "" && strings.TrimSpace(cfg.ReportChatID) != "" {
+		return true
+	}
+	return d.tg != nil && d.tg.Routing()
 }
 
 // alertEnabled is the switch for one kind, read per event so a change in
@@ -353,7 +357,7 @@ func (d *Daemon) SendAlertCheck(ctx context.Context) error {
 	}
 	var err error
 	if d.tg != nil {
-		_, err = d.tg.Out.Send(ctx, telegram.Out{Text: alerts.CheckMessage(d.sessionLink("")), ParseMode: alerts.ParseMode})
+		err = d.tg.SendNow(ctx, telegram.Out{Text: alerts.CheckMessage(d.sessionLink("")), ParseMode: alerts.ParseMode})
 	} else {
 		cfg := d.config()
 		err = d.sender().SendFormatted(ctx, cfg.ReportBotToken, cfg.ReportChatID, alerts.CheckMessage(d.sessionLink("")), alerts.ParseMode)

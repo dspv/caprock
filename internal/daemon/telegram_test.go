@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -32,11 +33,31 @@ func bridgeDaemon(t *testing.T, cfg config.Config) (*Daemon, *telegramtest.Bot) 
 	d.tg = d.newTelegram()
 	d.tg.Out.Gap = 10 * time.Millisecond
 	d.tg.PollWait = time.Second
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
-	go d.tg.Run(ctx)
-	go d.alertLoop(ctx, d.bus.Subscribe(64))
+	sub := d.bus.Subscribe(64) // before the first event a test records
+	runJoined(t, func(ctx context.Context) { d.tg.Run(ctx) }, func(ctx context.Context) { d.alertLoop(ctx, sub) })
 	return d, bot
+}
+
+// runJoined runs each loop until the test ends, then cancels them and waits
+// for every one to return — before the test's temporary directories are
+// removed (cleanups run last-registered first), so nothing still writes
+// telegram.json or config.json there. Windows cannot delete a directory a
+// file is being written in.
+func runJoined(t *testing.T, loops ...func(context.Context)) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	var wg sync.WaitGroup
+	for _, loop := range loops {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			loop(ctx)
+		}()
+	}
+	t.Cleanup(func() {
+		cancel()
+		wg.Wait()
+	})
 }
 
 func waitFor(t *testing.T, what string, cond func() bool) {

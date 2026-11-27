@@ -305,8 +305,11 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   `/update-branch`, `GET /v1/projects/{id}/branches`, `copies`, `cleanup`,
   `POST /v1/projects/{id}/copies/remove`, `cleanup` and `cleanup/restore`,
   `GET /v1/projects/scan`, `POST /v1/projects/merge` and `POST
-  /v1/projects/{id}/split`, and `POST /v1/claude/bypass-consent` (ADR-041,
-  amended 2026-11-26). A phone's limits do not apply to it
+  /v1/projects/{id}/split`, `POST /v1/claude/bypass-consent` (ADR-041,
+  amended 2026-11-26), and the Telegram hub's `GET /v1/telegram/hub`, `POST
+  /v1/telegram/hub/messages`, `GET /v1/telegram/hub/presses`, `POST
+  /v1/telegram/hub/results` and `POST /v1/telegram/hub/handover` (ADR-047,
+  amended 2026-11-27; § Telegram bridge). A phone's limits do not apply to it
   (`phoneLimited`): `POST /v1/agents` may name any folder, `command`, `args`
   and `chat`; the folder picker, `GET /v1/browse/stat`, `GET
   /v1/browse/repos` and `GET /v1/recent-dirs` use the machine's own root;
@@ -314,7 +317,8 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   command may be set. It stays `403` on everything the machine keeps, whatever
   the role: `/v1/pair/*` but `me`, settings writes (`PUT /v1/settings`,
   Telegram, GitHub connect, custom agents, subscriptions, 2nd Brain's
-  settings), `POST /v1/footprint/orphans/stop`, `POST /v1/resources/reap`,
+  settings; `PUT`/`DELETE /v1/telegram/via`, `POST /v1/telegram/via/take`
+  and `GET /v1/telegram/holders` too), `POST /v1/footprint/orphans/stop`, `POST /v1/resources/reap`,
   `POST /v1/system/memory/end-idle`, `POST /v1/system/memory/restart`,
   `POST /v1/shutdown`, `POST /v1/update/check`, `POST /v1/hooks/install`,
   `open-terminal`, the editor routes, `POST /v1/sessions/remove`,
@@ -2883,6 +2887,10 @@ POST   /v1/telegram/pair      → a new one-time code (10 minutes); 409 with no 
 DELETE /v1/telegram/pair      → the code withdrawn
 DELETE /v1/telegram           → token, chat and telegram.json forgotten (the weekly report and alerts stop too)
 POST   /v1/telegram/photo     {png, caption} → {sent:true}; 409 with no bot or chat, 400 when png is not one base64 PNG ≤ 10 MB, 502 with Telegram's words
+GET    /v1/telegram/holders   → {computers: [{id, name, holder, bot_username?, chat_name?, error?}]}: each computer this one reaches, asked whether it holds a bot
+PUT    /v1/telegram/via       {machine} → TelegramStatus; send through that computer's bot; 409 with a bot here, or when it holds none or cannot be reached
+DELETE /v1/telegram/via       → TelegramStatus; stop sending through it; what waited is dropped
+POST   /v1/telegram/via/take  {machine?} → TelegramStatus; the bot moves here from that computer (the one sent through when omitted); 409 with Telegram's or its words
 ```
 
 `POST /v1/telegram/photo` is the Share sheet's **Send to my Telegram** (§ Share in
@@ -2896,7 +2904,10 @@ person ticked **Show repo name** for that one share (04-ui.md § Share).
 
 `TelegramStatus` = `{bot_set, token_masked?, bot_username?, chat_set,
 chat_name?, manual_chat?, pairing?: {code, link?, expires_ms}, polling,
-last_error?, mute_all?, muted?}`. `token_masked` is `••••••` and the token's
+last_error?, mute_all?, muted?, via?: {machine, name, queued, waiting?,
+last_error?, last_sent_ms?, dropped?}, carries?: [{name, last_ms}],
+moved_to?: {name, at}}` — the last three under § One bot for all
+computers below. `token_masked` is `••••••` and the token's
 last four characters; the token itself is never in a response, a log line or
 an error (a transport error's URL, which carries it, is dropped). `link` is
 `https://t.me/<bot>?start=<code>`, which opens the bot and sends `/start
@@ -2971,14 +2982,96 @@ existed; it keeps working.
   within 30 s is dropped.
 
 `PUT /v1/settings` accepts `telegram_chat` and `telegram_code` (bools, off
-unless turned on; `GET` returns them). `<data_dir>/telegram.json` (`0600`) is
+unless turned on; `GET` returns them). `GET` also returns `telegram_via`
+(read-only: the computer this one sends through, set by `/v1/telegram/via`). `<data_dir>/telegram.json` (`0600`) is
 the bridge's own: `{bot_id, bot_username, chat_id, chat_name, paired_at,
 offset, refs: [{message_id, session_id, prompt_id, kind, at, module,
-buttons, order, chosen, answers}], muted: {session_id: ms}, mute_all,
-premium_note_at, module_pins: {module_id: message_id}, forward_reply}` — the last 400 messages and the sessions (or
+buttons, order, chosen, answers, remote, machine, machine_name, actions,
+hub_reply}], muted: {session_id: ms}, mute_all,
+premium_note_at, module_pins: {module_id: message_id}, forward_reply,
+carries: {device_id: {name, last_at}}, moved_to: {name, at}}` — the last 400 messages and the sessions (or
 private modules) they were about, so a reply finds its session, and a module
 its own message, across a restart. The
 token stays in `config.json`.
+
+#### One bot for all computers
+
+[ADR-047](08-decisions.md), amended 2026-11-27 (issue #1100). Telegram lets
+one process read a bot's updates, so one computer **holds** the bot and the
+owner's other computers **send through** it over their machine-to-machine
+link (ADR-067; Noise ciphertext through the relay, ADR-058). A sender is a
+computer with no bot of its own whose `config.json` names the holder in
+`telegram_via` (its id in `machines.json`); the holder is any computer with
+a bot and a chat. The direction is the link's: the sender reaches the
+holder; the holder never calls the sender.
+
+The holder's routes, on `computerRoutes` only (a computer the owner allowed
+there; a phone, a computer still waiting and loopback get `403`), the
+caller named by its device record there — its `name`, never a field of the
+request:
+
+```
+GET  /v1/telegram/hub            → {holder, bot_username?, chat_name?}
+POST /v1/telegram/hub/messages   {id, text, parse_mode?, buttons?: [[{text, action?|url?}]], reply?, late_s?} → {message_id}; 409 {reason:"not_holder"} with no bot or chat; 400 a message it will not post; 502 Telegram's words
+GET  /v1/telegram/hub/presses?wait=<s> → {presses: [{id, action, text?, reply?, at}]}; held up to 25 s while none waits
+POST /v1/telegram/hub/results    {id, label?, say?, react?, reply?} → {ok:true}; 404 for a message it never posted for that computer
+POST /v1/telegram/hub/handover   → {token, chat_id, chat_name?, bot_id?, bot_username?, offset?}; 409 with no bot or chat
+```
+
+- **A message** is posted with `parse_mode: HTML` under a first line `🖥
+  <b><computer's name></b>`, plus ` · <i>N min late: this computer was out
+  of reach</i>` when `late_s` ≥ 60. Plain text is escaped; HTML Telegram
+  refuses is sent again escaped. `id` (1–64 characters) is the sender's: a
+  second post under the same id from the same computer returns the first
+  message's id and posts nothing. Buttons: at most three rows of four, a
+  label of at most 48 characters; `action` is `approve`, `deny` or `mute`
+  (callback `h:<index>`), `url` an `http(s)` link; anything else is
+  dropped. `reply: true` carries a Telegram reply to the message back as
+  `action: "reply"` with its `text`. The bridge reads updates while such a
+  message from the last 24 hours exists, whatever this machine's own alert
+  switches say.
+- **A press** toasts *Sent to <name>.* and waits for that computer, in
+  memory, at most 100 per computer; each is handed over once (a press lost
+  on the way is lost, never acted on twice). The holder asks no licence:
+  the sender acts by its own — Approve and Deny need an active licence and
+  `telegram_chat` **there**, and go through `AnswerPermission` there; Mute
+  mutes the session there; a reply is typed there as § Telegram bridge's
+  Premium reply is, rule 7 included. The result replaces the buttons with
+  `label` (*✅ Approved from Telegram*, *🔕 Muted*), threads `say` under
+  the reply or the message, and puts 👍 on the reply when `react`.
+- **The sender's queue.** Every message the sender would send (alerts,
+  conversation replies, the test alert, the Morning summary, the phone
+  link) is written to `telegram_outbox` (§ Telegram outbox DDL) and posted
+  oldest first; taken, it is deleted. A transport failure or a `502` keeps
+  it, counts the try and backs off from 2 s to a minute; `409` reads as the
+  holder having no bot any more; a `400`, `403` or `404` drops that one. At
+  most 200 wait and none older than 24 hours (the oldest go first, counted
+  as `dropped`). The 30-second expiry of a local alert does not apply: a
+  late question is answered or refused by its prompt id there. A test or a
+  Morning summary that cannot be posted answers *queued: <holder> cannot be
+  reached …; it is sent when it is back*. The sender asks for presses (a
+  long poll) only while a message about a session that it handed over in
+  the last hour exists, so its channel stays closed otherwise; a later
+  press waits on the holder until the next message opens the window.
+- **Settings** (`TelegramStatus.via`): the holder's id and name, `queued`,
+  `waiting` (the last try failed and messages wait), `last_error`,
+  `last_sent_ms` and `dropped`. On the holder, `carries` lists the
+  computers that posted, newest first. `GET /v1/telegram/holders` asks each
+  computer this one reaches (8 s each, at once); `PUT /v1/telegram/via`
+  saves only when this machine has no bot and that computer answers
+  `holder: true`; saving a token here (`PUT /v1/telegram/token`) clears
+  `telegram_via`.
+- **Moving the bot** (`POST /v1/telegram/via/take`): the holder hands over
+  its token, chat and update offset, then forgets the bot as `DELETE
+  /v1/telegram` does, stops reading and keeps `moved_to` (which computer,
+  when). The new holder stores them as its own (the token in the secret
+  store), so the same chat keeps working with no new bot or code, and says
+  in the chat *🔁 This bot now runs on <name>, moved from <old>*. The old
+  holder then sends through the new one by itself when it reaches it (its
+  `machines.json` holds the computer whose relay key the token is bound
+  to); otherwise its Settings says where the bot went. What waited on the
+  new holder goes out through its own bot. The token crosses only the
+  end-to-end encrypted link.
 
 #### Morning summary
 
@@ -9755,6 +9848,26 @@ CREATE INDEX idx_events_attr_work ON events(
 ```
 
 The summaries are kept per session and only the sessions whose events moved are read again (`store.PartsCache`; the answer-cache notes under § Pricing table say how and why). That read seeks each moved session on this index, so it has to cover every column a summary sums: the model mix needs `model` and the tool distribution `tool_bytes`, which the index did not carry, and without them every row of a live session would be fetched from the table, payload and all. The two columns go on the end, so every query that pins the index by name keeps its plan. SQLite cannot add a column to an index in place, so it is dropped and created again under the same name; on a synthetic 680k-event database the index was 59 MB as inserts had grown it and is 57 MB rebuilt with the two columns (2026-11-21), the rebuild's packing outweighing them.
+
+### Telegram outbox DDL (migration 0096)
+
+A computer that sends through another computer's bot keeps each message here
+until the holder takes it (§ One bot for all computers, ADR-047 amended
+2026-11-27). `id` is the message's own id, `created_at` unix ms on this
+machine's clock, `body` the `POST /v1/telegram/hub/messages` body (JSON),
+`tries` the failed posts and `last_error` the last one's words. The daemon
+keeps at most 200 rows and none older than 24 hours.
+
+```sql
+CREATE TABLE IF NOT EXISTS telegram_outbox (
+  id         TEXT PRIMARY KEY,
+  created_at INTEGER NOT NULL,
+  body       TEXT NOT NULL,
+  tries      INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_telegram_outbox_created ON telegram_outbox(created_at, id);
+```
 
 ### Kept parts DDL (migration 0093)
 

@@ -29,6 +29,14 @@ func (d *Daemon) newTelegram() *telegram.Bridge {
 	b := telegram.New(&tgHost{d: d}, d.opt.DataDir, d.log)
 	b.BaseFrom = d.telegramBase
 	b.ModuleAnswer = d.moduleAnswer
+	// One bot for several computers (telegramvia.go).
+	if d.via == nil {
+		d.via = newViaState()
+	}
+	b.Via = func() string { return d.config().TelegramVia }
+	b.Route = d.viaRoute
+	b.ViaStatus = d.viaStatus
+	b.OnMoved = d.telegramMoved
 	return b
 }
 
@@ -68,7 +76,15 @@ func (h *tgHost) SaveBot(token string) error {
 	if err := h.d.putSecret(context.Background(), telegramSecret, token); err != nil {
 		return err
 	}
-	if err := h.saveConfig(func(c *config.Config) { applySecret(c, telegramSecret, token) }); err != nil {
+	if err := h.saveConfig(func(c *config.Config) {
+		applySecret(c, telegramSecret, token)
+		if token != "" {
+			// A bot of its own: this machine is a holder now, and sends
+			// through no other (what waited goes through this bot once a
+			// chat is paired, telegramvia.go).
+			c.TelegramVia = ""
+		}
+	}); err != nil {
 		return err
 	}
 	h.d.botChanged()

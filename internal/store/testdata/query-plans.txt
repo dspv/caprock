@@ -954,6 +954,9 @@ SELECT c.session_id FROM sessions c JOIN sessions p ON p.session_id = c.parent_s
     SCAN c
     USE TEMP B-TREE FOR ORDER BY
 
+## store.ClearTelegramOutbox
+DELETE FROM telegram_outbox
+
 ## store.CloseTaskAssignments
 UPDATE task_assignments SET to_ts = ? WHERE task_id = ? AND to_ts IS NULL
     SEARCH task_assignments USING INDEX sqlite_autoindex_task_assignments_1 (task_id=?)
@@ -1070,6 +1073,10 @@ SELECT COUNT(*) FROM sessions WHERE chat = 1 AND archived_at > 0
 SELECT COUNT(*) FROM sessions WHERE status != 'ended'
     SCAN sessions
 
+## store.CountTelegramOutbox
+SELECT COUNT(*) FROM telegram_outbox
+    SCAN telegram_outbox USING COVERING INDEX sqlite_autoindex_telegram_outbox_1
+
 ## store.CountThrottles
 SELECT COUNT(*) FROM throttle_observations WHERE ts >= ?
     SCAN throttle_observations
@@ -1152,6 +1159,10 @@ DELETE FROM queued_messages WHERE session_id = ? AND id = ?
 DELETE FROM saved_prompts WHERE id = ?
     SEARCH saved_prompts USING INTEGER PRIMARY KEY (rowid=?)
 
+## store.DeleteTelegramOutbox
+DELETE FROM telegram_outbox WHERE id = ?
+    SEARCH telegram_outbox USING INDEX sqlite_autoindex_telegram_outbox_1 (id=?)
+
 ## store.EachBrainKey
 SELECT id, norm FROM brain_nodes WHERE kind IN ('idea','decision','finding','question')
     SCAN brain_nodes
@@ -1202,6 +1213,10 @@ SELECT COALESCE(MAX(id), 0) + COALESCE((SELECT CAST(v AS INTEGER) FROM meta WHER
     SEARCH events
     SCALAR SUBQUERY 1
         SEARCH meta USING INDEX sqlite_autoindex_meta_1 (k=?)
+
+## store.FailTelegramOutbox
+UPDATE telegram_outbox SET tries = tries + 1, last_error = ? WHERE id = ?
+    SEARCH telegram_outbox USING INDEX sqlite_autoindex_telegram_outbox_1 (id=?)
 
 ## store.FindRemovalCandidates
 SELECT s.session_id, COALESCE(s.cwd,''), COALESCE(s.project,''), COALESCE(s.agent,''), s.status, COALESCE(s.owned,0), COALESCE(s.last_event_at,0), COALESCE(st.turns,0), COALESCE(st.cost_usd,0) FROM sessions s LEFT JOIN session_stats st ON st.session_id = s.session_id WHERE s.cwd = ? OR substr(s.cwd, 1, ?) = ? OR substr(s.cwd, 1, ?) = ? ORDER BY s.last_event_at
@@ -1750,6 +1765,10 @@ SELECT 1 FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?)
     SCALAR SUBQUERY 1
         SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
 
+## store.NextTelegramOutbox
+SELECT id, created_at, body, tries, last_error FROM telegram_outbox ORDER BY created_at, id LIMIT 1
+    SCAN telegram_outbox USING INDEX idx_telegram_outbox_created
+
 ## store.OpenAssignment
 INSERT INTO task_assignments(task_id, session_id, from_ts) SELECT ?, ?, ? WHERE NOT EXISTS ( SELECT 1 FROM task_assignments WHERE task_id = ? AND session_id = ? AND to_ts IS NULL )
     SCAN CONSTANT ROW
@@ -1859,6 +1878,9 @@ SELECT sid_, ts, p FROM ( SELECT id, (SELECT session_id FROM sessions WHERE sess
 
 ## store.PutEventTLDR
 INSERT INTO event_tldr(event_id, text, model, cost_usd, created_at) VALUES(?, ?, ?, ?, ?) ON CONFLICT(event_id) DO UPDATE SET text = excluded.text, model = excluded.model, cost_usd = excluded.cost_usd, created_at = excluded.created_at
+
+## store.PutTelegramOutbox
+INSERT OR REPLACE INTO telegram_outbox (id, created_at, body) VALUES (?, ?, ?)
 
 ## store.QueuedSessions
 SELECT DISTINCT session_id FROM queued_messages WHERE undelivered_at = 0 ORDER BY session_id
@@ -2741,6 +2763,16 @@ SELECT ts / ? AS b, (SELECT session_id FROM sessions WHERE sessions.sid = events
     USE TEMP B-TREE FOR GROUP BY
     CORRELATED SCALAR SUBQUERY 1
         SEARCH sessions USING INTEGER PRIMARY KEY (rowid=?)
+
+## store.TrimTelegramOutbox
+DELETE FROM telegram_outbox WHERE created_at < ?
+    SEARCH telegram_outbox USING INDEX idx_telegram_outbox_created (created_at<?)
+
+## store.TrimTelegramOutbox
+DELETE FROM telegram_outbox WHERE id IN ( SELECT id FROM telegram_outbox ORDER BY created_at DESC, id DESC LIMIT -1 OFFSET ?)
+    SEARCH telegram_outbox USING COVERING INDEX sqlite_autoindex_telegram_outbox_1 (id=?)
+    LIST SUBQUERY 1
+        SCAN telegram_outbox USING COVERING INDEX idx_telegram_outbox_created
 
 ## store.TurnPaidElsewhere
 SELECT 1 FROM events INDEXED BY idx_events_turn_msg WHERE kind = 'turn.assistant' AND msg_id = ? AND sid IS NOT (SELECT sid FROM sessions WHERE session_id = ?) AND COALESCE(tokens_in,0)+COALESCE(tokens_out,0)+COALESCE(cache_read,0)+COALESCE(cache_write,0) > 0 LIMIT 1
