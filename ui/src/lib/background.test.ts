@@ -3,7 +3,7 @@
 // These pin what the sidebar, ⌘J, the cockpit and the header make of it.
 import { describe, expect, it } from 'vitest'
 import type { SessionSummary } from './api'
-import { backgroundAgents, backgroundCounts, backgroundLabel, backgroundTasks, cockpitState } from './cockpit'
+import { backgroundAgents, backgroundCounts, backgroundLabel, backgroundShort, backgroundTasks, backgroundWait, cockpitState, phoneHealth } from './cockpit'
 import { atPrompt } from './sessionJump'
 import { sessionPlace } from './projects'
 import { buildSidebar, dotOf } from './sidebar'
@@ -77,5 +77,34 @@ describe('where a session runs', () => {
     expect(sessionPlace(sess({ cwd: '/u/x', repo_root: '/u/x', project: '', git_branch: 'main' })).project).toBe('x')
     expect(sessionPlace(sess({ cwd: '/u/x', git_branch: 'main' })).branch).toBe('')
     expect(sessionPlace(sess({ cwd: '/u/x', git_branch: 'HEAD' })).branch).toBe('')
+  })
+})
+
+// Owner, 2026-11-27 (translated): "on the phone I see the session status
+// 'done'" — its turn had ended, and it waited on a background subagent.
+describe('a session waiting on background work, on a phone', () => {
+  const at = new Date().toISOString()
+  const agent = sess({ session_id: 'pa', activity: { phrase: 'done', at, health: 'done', background: 1 } })
+  const work = sess({ session_id: 'pw', activity: { phrase: 'idle', at, health: 'idle', background_tasks: 1 }, background_work: [{ kind: 'monitor', id: 'm', command: 'tail -F x', started_at: 1 }] })
+  it('reads as working with its work named short, whatever health the turn left', () => {
+    expect(backgroundWait(agent)).toEqual({ agents: 1, shells: 0, monitors: 0 })
+    expect(phoneHealth(agent)).toBe('working')
+    expect(backgroundShort(backgroundWait(agent)!)).toBe('Background · 1 agent')
+    expect(phoneHealth(work)).toBe('working')
+    expect(backgroundShort(backgroundWait(work)!)).toBe('Background · 1 monitor')
+    expect(phoneHealth(background)).toBe('working')
+    expect(backgroundShort({ agents: 2, shells: 1, monitors: 0 })).toBe('Background · 2 agents, 1 shell')
+  })
+  it('leaves what outranks it, nothing in the background, and an ended session alone', () => {
+    for (const health of ['waiting-on-you', 'looping', 'error'] as const) {
+      const s = sess({ activity: { phrase: '', at, health, background: 1 } })
+      expect(backgroundWait(s)).toBeNull()
+      expect(phoneHealth(s)).toBe(health)
+    }
+    const done = sess({ activity: { phrase: 'done', at, health: 'done' } })
+    expect(backgroundWait(done)).toBeNull()
+    expect(phoneHealth(done)).toBe('done')
+    expect(backgroundWait({ ...agent, status: 'ended' })).toBeNull()
+    expect(phoneHealth({ ...agent, status: 'ended' })).toBe('ended')
   })
 })

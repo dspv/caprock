@@ -28,6 +28,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, errText, isPairedDevice, type FolderLabelKind, type SessionSummary } from '@/lib/api'
 import { chatModelLabel, chatTitle, importSummary, startChat } from '@/lib/chats'
 import { idleEndedText } from '@/lib/idleEnd'
+import { backgroundShort, backgroundWait, phoneHealth } from '@/lib/cockpit'
 import { fmtAgo } from '@/lib/format'
 import { href, navigate } from '@/lib/router'
 import { useApi } from '@/lib/useApi'
@@ -46,7 +47,7 @@ const PAGE = 100
 
 function dot(s: SessionSummary): string {
   if (s.status === 'ended') return 'bg-fg-faint/50'
-  const h = s.activity?.health
+  const h = phoneHealth(s)
   if (h === 'working') return 'bg-ok animate-pulse'
   if (h === 'waiting-on-you') return 'bg-warn'
   if (h === 'looping' || h === 'error') return 'bg-danger'
@@ -59,6 +60,9 @@ function stateWord(s: SessionSummary): string {
   const idle = idleEndedText(s)
   if (idle) return `${idle} — continue`
   if (s.status === 'ended') return 'ended'
+  // Its turn ended but what it started in the background still works (lib/cockpit backgroundWait).
+  const bg = backgroundWait(s)
+  if (bg) return backgroundShort(bg)
   const h = s.activity?.health
   return h === 'working' ? 'answering…' : h === 'waiting-on-you' ? 'waiting for you' : ''
 }

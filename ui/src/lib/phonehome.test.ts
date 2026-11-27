@@ -161,6 +161,11 @@ describe('folded lines', () => {
       s('e', 'idle', NOW, { status: 'ended' }),
     ], NOW)).toEqual({ waiting: 1, working: 2, stalled: 0, done: 0, idle: 1 })
   })
+  it('counts a row waiting on background work as working, never done (owner, 2026-11-27)', () => {
+    const bg = (id: string, health: string) => s(id, health, NOW, { activity: { health, phrase: '', at: '', background: 1 } } as Partial<SessionSummary>)
+    expect(continueCounts([bg('a', 'done'), bg('b', 'idle'), bg('c', 'working'), s('d', 'done', NOW), bg('e', 'waiting-on-you')], NOW))
+      .toEqual({ waiting: 1, working: 3, stalled: 0, done: 1, idle: 0 })
+  })
   it('counts a stalled row as no reply, as its row reads, never idle or working (lib/stalled.ts)', () => {
     const old = NOW - 2 * 3_600_000
     expect(continueCounts([

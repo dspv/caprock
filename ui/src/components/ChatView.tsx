@@ -114,7 +114,7 @@ async function base64Of(file: File): Promise<string> {
 const nextFrame: (fn: () => void) => void =
   typeof requestAnimationFrame === 'function' ? (fn) => { requestAnimationFrame(fn) } : (fn) => { setTimeout(fn, 16) }
 
-export function ChatView({ sessionId, earlier = NONE, canType, ended = false, className = '', phone = false, foldKeys, chat = false, footer, boxRef, scrollRef, topInset = 0, agent, prompt = false, desk = false, onOpenTerminal, onResent }: {
+export function ChatView({ sessionId, earlier = NONE, canType, ended = false, className = '', phone = false, foldKeys, chat = false, footer, boxRef, scrollRef, topInset = 0, agent, prompt = false, desk = false, onOpenTerminal, onResent, background = '' }: {
   sessionId: string
   /** Where to go once messages this session never got were sent to a new
    *  session with another id; the session page by default. */
@@ -160,6 +160,10 @@ export function ChatView({ sessionId, earlier = NONE, canType, ended = false, cl
   /** Brings this session's terminal forward in place of the chat, for what
    *  only the terminal answers (a question with options, several prompts). */
   onOpenTerminal?: () => void
+  /** The turn ended but work it started in the background still runs
+   *  (lib/cockpit backgroundWait): the line under the conversation says so
+   *  (*Background · 1 agent*) rather than nothing, which read as done. */
+  background?: string
 }) {
   const [events, setEvents] = useState<readonly Event[]>([])
   const eventsRef = useRef<readonly Event[]>([])
@@ -654,6 +658,12 @@ export function ChatView({ sessionId, earlier = NONE, canType, ended = false, cl
               onSendAgain={canType ? (text) => void submitText(text, undefined, true) : undefined}
               onOpenTerminal={onOpenTerminal ?? (() => openTerminal(sessionId))}
             />
+          )}
+          {!ended && !turn && !permission && background && (
+            <div role="status" aria-live="polite" data-chat-working="background" className="flex min-w-0 items-center gap-2 py-2 text-[13px] text-fg-muted">
+              <span aria-hidden className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-border-strong border-t-accent motion-reduce:animate-none" />
+              <span className="min-w-0 truncate" title="Claude Code picks the session up when it finishes">{background}</span>
+            </div>
           )}
           {!ended && question && <QuestionLine m={question} onOpenTerminal={onOpenTerminal} />}
           {prompt && !ended && <div className="py-1.5 empty:hidden" data-chat-permission><PermissionPrompt sessionId={sessionId} keys={false} onOpenTerminal={onOpenTerminal} /></div>}

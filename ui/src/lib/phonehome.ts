@@ -7,6 +7,7 @@ import type { InboxItem, LimitsAnswer, RateWindow, SessionSummary, TabsAnswer } 
 import { quotePath } from './xtermInput'
 import { needsYou, oldestFirst } from './needs'
 import { stalledAge } from './stalled'
+import { phoneHealth } from './cockpit'
 import { isNativeApp } from '@/native/platform'
 
 /**
@@ -154,13 +155,15 @@ export function keepFolds(f: Record<FoldKey, boolean>): void {
  * Continue folded: how many of its rows need you, work, got no reply, are
  * done and sit idle (ended rows are not counted). A row is counted as its
  * row reads: a stalled one (lib/stalled.ts, *no reply 2h* on the row) is
- * *no reply*, whatever its health, never idle or working.
+ * *no reply*, whatever its health, never idle or working; one waiting on
+ * background work it started (lib/cockpit backgroundWait) is working, never
+ * done.
  */
 export function continueCounts(rows: readonly SessionSummary[], now = Date.now()): { waiting: number; working: number; stalled: number; done: number; idle: number } {
   const n = { waiting: 0, working: 0, stalled: 0, done: 0, idle: 0 }
   for (const s of rows) {
     if (s.status === 'ended') continue
-    const h = s.activity?.health
+    const h = phoneHealth(s)
     if (stalledAge(s, now) !== null) n.stalled++
     else if (h === 'waiting-on-you') n.waiting++
     else if (h === 'working' || h === 'looping') n.working++

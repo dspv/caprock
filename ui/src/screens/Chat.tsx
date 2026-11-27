@@ -30,6 +30,7 @@ import { EndSheet, endState } from '@/components/PhoneEnd'
 import { RenameField } from './Chats'
 import { KeyGrid } from '@/components/TerminalKeys'
 import { idleEndedText } from '@/lib/idleEnd'
+import { backgroundShort, backgroundWait } from '@/lib/cockpit'
 
 export function ChatScreen({ id }: { id: string }) {
   const phone = useNarrowScreen()
@@ -77,6 +78,8 @@ export function ChatScreen({ id }: { id: string }) {
   const ended = !!s && (s.status === 'ended' || !!s.detached)
   const canType = !!s && canControl && s.owned && !ended
   const title = s ? chatTitle(s) : 'Chat'
+  // The turn ended; what it started in the background still works (lib/cockpit backgroundWait).
+  const bg = s && !ended ? backgroundWait(s) : null
   // End in the ⋯, or the one line that says why not (components/PhoneEnd).
   const ending = s ? endState(s, canControl) : null
   const n = files?.length ?? 0
@@ -133,7 +136,7 @@ export function ChatScreen({ id }: { id: string }) {
             <button type="button" disabled={!canControl || !s} onClick={() => setRenaming(true)} title={canControl ? 'Rename' : undefined} className="min-w-0 flex-1 px-1 text-left">
               <h1 className="truncate text-[16px] font-semibold leading-tight text-fg">{title}</h1>
               <span className="block truncate text-[12.5px] text-fg-faint">
-                {s ? [chatModelLabel(s), ended ? (idleEndedText(s).toLowerCase() || 'ended') : s.activity?.health === 'working' ? 'answering…' : s.activity?.health === 'waiting-on-you' ? 'waiting for you' : ''].filter(Boolean).join(' · ') : ' '}
+                {s ? [chatModelLabel(s), ended ? (idleEndedText(s).toLowerCase() || 'ended') : bg ? backgroundShort(bg) : s.activity?.health === 'working' ? 'answering…' : s.activity?.health === 'waiting-on-you' ? 'waiting for you' : ''].filter(Boolean).join(' · ') : ' '}
               </span>
             </button>
           )}
@@ -167,6 +170,7 @@ export function ChatScreen({ id }: { id: string }) {
           chat
           agent={s?.agent}
           prompt={!!s && s.owned}
+          background={bg ? backgroundShort(bg) : ''}
           className="min-h-0 flex-1"
           footer={footer}
         />

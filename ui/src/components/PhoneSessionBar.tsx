@@ -48,12 +48,14 @@ const LABEL: Record<PhoneView, string> = { chat: 'Chat', terminal: 'Terminal', c
 export const PHONE_BAR_PX = 44
 
 export function PhoneSessionBar({
-  backHref, title, health, alert, views, active, onPick, overlay = false, hidden = false, onReveal, end, endWhy, onEnded, keys, voiceLang = false, children,
+  backHref, title, health, healthLabel, alert, views, active, onPick, overlay = false, hidden = false, onReveal, end, endWhy, onEnded, keys, voiceLang = false, children,
 }: {
   backHref: string
   title: string
   /** The session's state, as a dot; none while the figures are a kept copy. */
   health?: Health
+  /** The dot's word in place of the health's own (*Background · 1 agent*). */
+  healthLabel?: string
   /** Something about the connection worth a glance (a reconnect), as a dot. */
   alert?: { tone: 'warn' | 'danger' | 'muted'; label: string }
   views: PhoneView[]
@@ -114,7 +116,7 @@ export function PhoneSessionBar({
             className="flex h-11 min-w-0 flex-1 items-center gap-1.5 text-left"
           >
             <span className="min-w-0 truncate text-[15px] font-medium text-fg">{title}</span>
-            {health && <HealthDot health={health} />}
+            {health && <HealthDot health={health} label={healthLabel} />}
             {alert && <span role="img" aria-label={alert.label} title={alert.label} className={`inline-block h-2 w-2 shrink-0 rounded-full ring-2 ring-offset-1 ring-offset-panel ${alert.tone === 'danger' ? 'bg-danger ring-danger/40' : alert.tone === 'warn' ? 'bg-warn ring-warn/40' : 'bg-fg-faint ring-border'}`} />}
             <span aria-hidden className={`shrink-0 text-[10px] text-fg-faint transition-transform motion-reduce:transition-none ${sheet ? 'rotate-180' : ''}`}>▾</span>
           </button>
