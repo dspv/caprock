@@ -79,6 +79,19 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-11-27 — 0.201.0: free for one person, a join key for a new computer
+
+A minor release. Caprock no longer sells anything to one person: subscriptions
+(any number), custom agents, talking back from Telegram, Second Brain, the daily
+spend cap, the plan-window pause, the weekly report, Ask Gemini and the tool
+drill-down are all free, with no licence key; the team tier is the only paid
+product (ADR-022 amended). A new computer joins with one single-use key from
+`caprock machines key` and `caprock join <key>` (ADR-108). A dropped PDF or
+other file shows as a chip, not its path. Recently closed lists every closed
+tab, newest close first, and a reopened tab goes back to the place it closed
+from. On the phone, a session waiting on background work reads as working, not
+done. A join-key race and a slow-test flake are fixed at their cause.
+
 ### 2026-11-27 — unreleased: no paid plan for one person (ADR-022 amended)
 
 Owner (translated): "nobody paid, I gave everyone keys free; good time." The
