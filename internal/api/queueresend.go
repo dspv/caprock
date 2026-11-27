@@ -86,7 +86,7 @@ func (s *Server) handleQueueResend(w http.ResponseWriter, r *http.Request) {
 	bg := context.WithoutCancel(ctx)
 	id, _, err := s.d.Agents.Spawn(bg, req)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		spawnFail(w, err)
 		return
 	}
 	qv, err := rs.Resend(bg, from, id, body.IDs, true)

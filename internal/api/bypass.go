@@ -3,6 +3,8 @@ package api
 import (
 	"errors"
 	"net/http"
+
+	"github.com/dspv/caprock/internal/agents"
 )
 
 // bypassConsentMsg is what a client without the consent screen (an older
@@ -31,6 +33,20 @@ func (s *Server) needsBypassConsent(req map[string]any) bool {
 	// An unreadable settings file is not a reason to refuse: Claude Code
 	// would read the same file, and its own warning still stands behind us.
 	return err == nil && !ok
+}
+
+// spawnFail answers a start that did not happen: 409 bypass_consent when
+// the agent manager refused it for want of the bypass consent — in the
+// settings the session would read, which a subscription's own directory can
+// make another file than the one needsBypassConsent reads — so every dialog
+// shows the warning with Accept and start rather than a bare error; 400
+// otherwise.
+func spawnFail(w http.ResponseWriter, err error) {
+	if errors.Is(err, agents.ErrBypassConsent) {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": bypassConsentMsg, "code": "bypass_consent"})
+		return
+	}
+	writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 }
 
 // handleBypassConsent is POST /v1/claude/bypass-consent: the user accepted

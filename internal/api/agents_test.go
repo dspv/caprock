@@ -30,6 +30,7 @@ type fakeAgents struct {
 	snapshot []byte           // /term: snapshot returned on connect (nil ⇒ Term reports not-found)
 	termCh   chan []byte      // /term: output stream (nil ⇒ Term reports not-found)
 	spawns   []map[string]any // every request Spawn was handed
+	spawnErr error            // what Spawn answers, when set
 }
 
 // wrote and sized read the recorded calls under the lock: the socket handler
@@ -53,6 +54,9 @@ func (f *fakeAgents) Spawn(_ context.Context, req any) (string, string, error) {
 	f.mu.Lock()
 	f.spawns = append(f.spawns, m)
 	f.mu.Unlock()
+	if f.spawnErr != nil {
+		return "", "", f.spawnErr
+	}
 	cwd, _ := m["cwd"].(string)
 	return "new-session", cwd, nil
 }

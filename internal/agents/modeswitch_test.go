@@ -242,6 +242,43 @@ func TestAllowBypassFlagNeedsConsent(t *testing.T) {
 	}
 }
 
+// A Claude Code start in bypass where the warning was not accepted in the
+// settings it reads is refused before anything starts, whichever path asked
+// (#1095): it would sit on "No, exit" until the first typed Enter ended it.
+func TestSpawnRefusesBypassWithoutConsent(t *testing.T) {
+	m, _, f := newMgr(t)
+	defer m.Shutdown()
+	var asked []string
+	m.BypassConsent = func(dir string) bool { asked = append(asked, dir); return dir == "/accepted" }
+	_, err := m.Spawn(context.Background(), SpawnRequest{Cwd: t.TempDir(), PermissionMode: ModeBypass, ConfigDir: "/profile"})
+	if !errors.Is(err, ErrBypassConsent) {
+		t.Fatalf("err %v, want ErrBypassConsent", err)
+	}
+	if f.lastSpec.Command != "" {
+		t.Fatalf("a process was started: %v", f.lastSpec)
+	}
+	if !slices.Equal(asked, []string{"/profile"}) {
+		t.Fatalf("consent asked of %v, want the session's own settings", asked)
+	}
+	// Accepted in the settings it reads: it starts.
+	if _, err := m.Spawn(context.Background(), SpawnRequest{Cwd: t.TempDir(), PermissionMode: ModeBypass, ConfigDir: "/accepted"}); err != nil {
+		t.Fatal(err)
+	}
+	m.Shutdown()
+	// Another agent, another mode, or a command run as given is never refused.
+	for _, req := range []SpawnRequest{
+		{Cwd: t.TempDir(), PermissionMode: ModeAccept},
+		{Cwd: t.TempDir(), PermissionMode: ModeBypass, Command: "bash"},
+	} {
+		m2, _, _ := newMgr(t)
+		m2.BypassConsent = func(string) bool { return false }
+		if _, err := m2.Spawn(context.Background(), req); err != nil {
+			t.Fatalf("%+v: %v", req, err)
+		}
+		m2.Shutdown()
+	}
+}
+
 func TestStopForRestartWaitsForTheProcess(t *testing.T) {
 	m, f, _ := spawnOwned(t)
 	if _, _, err := m.StopForRestart(context.Background(), "fixed-session-id"); err != nil {

@@ -11,6 +11,7 @@ import (
 	"os"
 	"sync"
 
+	"github.com/dspv/caprock/internal/agents"
 	"github.com/dspv/caprock/internal/gitdiff"
 	"github.com/dspv/caprock/internal/store"
 )
@@ -73,6 +74,7 @@ func (s *Server) spawnAttempts(w http.ResponseWriter, r *http.Request, req map[s
 	group := newAttemptGroup()
 	var ids []string
 	var firstCwd, failed, commit string
+	var firstErr error
 	for i := 1; i <= n; i++ {
 		one := maps.Clone(req)
 		one["worktree"] = fmt.Sprintf("%s-%d", name, i)
@@ -87,6 +89,7 @@ func (s *Server) spawnAttempts(w http.ResponseWriter, r *http.Request, req map[s
 		id, cwd, err := s.d.Agents.Spawn(ctx, one)
 		if err != nil {
 			failed = fmt.Sprintf("attempt %d of %d did not start: %v", i, n, err)
+			firstErr = err
 			break
 		}
 		at := gitdiff.Head(ctx, cwd)
@@ -100,6 +103,10 @@ func (s *Server) spawnAttempts(w http.ResponseWriter, r *http.Request, req map[s
 		}
 	}
 	if len(ids) == 0 {
+		if errors.Is(firstErr, agents.ErrBypassConsent) {
+			spawnFail(w, firstErr)
+			return
+		}
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": failed})
 		return
 	}

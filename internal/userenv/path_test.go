@@ -3,6 +3,7 @@ package userenv
 import (
 	"context"
 	"errors"
+	"os"
 	"runtime"
 	"strings"
 	"testing"
@@ -72,6 +73,30 @@ func TestCurrentPathOnWindowsReadsTheRegistryAgain(t *testing.T) {
 	swapRegistry(t, "", errors.New("access denied"))
 	if p, fresh = currentPath(nil, "windows"); fresh || p != `C:\caprock` {
 		t.Fatalf("unreadable: %q %v", p, fresh)
+	}
+}
+
+// Windows: the daemon's own PATH gains what winget added to the registry
+// since it started, so `git` or `gh` run by name is found without a restart
+// (#1095); its own entries keep their order, and off Windows nothing moves.
+func TestRefreshOwnPathAppendsTheRegistrysNewDirectories(t *testing.T) {
+	t.Setenv("PATH", `C:\caprock;C:\Windows\system32`)
+	swapRegistry(t, `c:\windows\System32;C:\Program Files\Git\cmd`, nil)
+	if refreshOwnPath("linux") {
+		t.Fatal("changed the PATH off Windows")
+	}
+	if !refreshOwnPath("windows") {
+		t.Fatal("did not change the PATH")
+	}
+	if got := os.Getenv("PATH"); got != `C:\caprock;C:\Windows\system32;C:\Program Files\Git\cmd` {
+		t.Fatalf("%q", got)
+	}
+	if refreshOwnPath("windows") {
+		t.Fatal("changed it again with nothing new")
+	}
+	swapRegistry(t, "", errors.New("access denied"))
+	if refreshOwnPath("windows") || !strings.HasSuffix(os.Getenv("PATH"), `Git\cmd`) {
+		t.Fatalf("unreadable registry changed it: %q", os.Getenv("PATH"))
 	}
 }
 

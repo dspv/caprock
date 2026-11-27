@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/dspv/caprock/internal/agents"
 	"github.com/dspv/caprock/internal/telegram"
 )
 
@@ -168,5 +169,8 @@ func (s *Server) StartSession(ctx context.Context, req map[string]any) (string, 
 		return "", ErrBypassConsent
 	}
 	id, _, err := s.d.Agents.Spawn(context.WithoutCancel(ctx), req)
+	if errors.Is(err, agents.ErrBypassConsent) {
+		return "", ErrBypassConsent
+	}
 	return id, err
 }
