@@ -616,6 +616,47 @@ func TestModelShareCarriesPricedAndUnpricedParts(t *testing.T) {
 	}
 }
 
+// The savings meter weighs each model's cache at its own rates (#1113), so
+// each model row carries its cache reads and writes; the writes stay out of
+// the JSON, whose shape is a contract.
+func TestModelShareCarriesItsCacheWrites(t *testing.T) {
+	ctx := context.Background()
+	s := openTest(t)
+	now := time.Now().UnixMilli()
+	mustSession(t, s, "s1", now)
+	c := 0.5
+	for i, e := range []struct {
+		model  string
+		cr, cw int64
+	}{{"claude-opus-5-5", 1_000, 300}, {"claude-opus-5-5", 2_000, 0}, {"claude-haiku-4-5", 500, 70}} {
+		mustInsert(t, s, event.Event{
+			SessionID: "s1", Kind: event.KindTurnAssistant, Ts: time.UnixMilli(now + int64(i)),
+			Model: e.model, Tokens: &event.TokenDelta{In: 10, Out: 5, CacheRead: e.cr, CacheWrite: e.cw}, CostUSD: &c,
+		})
+	}
+	sum, err := Summarize(ctx, s.db, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	by := map[string]ModelShare{}
+	for _, m := range sum.Models {
+		by[m.Model] = m
+	}
+	if m := by["claude-opus-5-5"]; m.CacheRead != 3_000 || m.CacheWrite != 300 {
+		t.Errorf("opus 5.5 row = %+v, want 3000 read and 300 written", m)
+	}
+	if m := by["claude-haiku-4-5"]; m.CacheRead != 500 || m.CacheWrite != 70 {
+		t.Errorf("haiku row = %+v, want 500 read and 70 written", m)
+	}
+	b, err := json.Marshal(by["claude-haiku-4-5"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(b), "cache_write") {
+		t.Errorf("a model row sent cache_write: %s", b)
+	}
+}
+
 // The common case: everything priced. The field must be absent, not a zero
 // object, so no screen renders an "unpriced" warning on healthy data.
 func TestUnpricedIsAbsentWhenEverythingIsPriced(t *testing.T) {

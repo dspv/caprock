@@ -33,7 +33,7 @@ import (
 
 // keptPartsFormat is the encoding below. Bump it when sessionPart or any part
 // type changes shape or meaning; a row of another format is ignored.
-const keptPartsFormat = 1
+const keptPartsFormat = 2
 
 // partsSaveEvery bounds how often a range's parts are written again after
 // partial reads: a restart then reads at most this long of moves.
@@ -51,6 +51,7 @@ type (
 		Tokens                int64
 		Cost                  float64
 		Turns, Out, CacheRead int64
+		CacheWrite            int64
 	}
 	gobCount struct {
 		Model         string
@@ -121,7 +122,7 @@ func toGobPart(p *sessionPart) gobPart {
 		g.Kinds = append(g.Kinds, gobKind{k.kind, k.n, k.tin, k.tout, k.cr, k.cw, k.cost, k.paid})
 	}
 	for _, m := range p.models {
-		g.Models = append(g.Models, gobModel{m.model, m.tokens, m.cost, m.turns, m.out, m.cacheRead})
+		g.Models = append(g.Models, gobModel{m.model, m.tokens, m.cost, m.turns, m.out, m.cacheRead, m.cacheWrite})
 	}
 	for _, c := range p.unpriced {
 		g.Unpriced = append(g.Unpriced, gobCount{c.model, c.turns, c.tokens})
@@ -158,7 +159,7 @@ func fromGobPart(g gobPart, names interner) *sessionPart {
 		p.kinds = append(p.kinds, kindPart{names.of(k.Kind), k.N, k.Tin, k.Tout, k.Cr, k.Cw, k.Cost, k.Paid})
 	}
 	for _, m := range g.Models {
-		p.models = append(p.models, modelPart{names.of(m.Model), m.Tokens, m.Cost, m.Turns, m.Out, m.CacheRead})
+		p.models = append(p.models, modelPart{names.of(m.Model), m.Tokens, m.Cost, m.Turns, m.Out, m.CacheRead, m.CacheWrite})
 	}
 	for _, c := range g.Unpriced {
 		p.unpriced = append(p.unpriced, countPart{names.of(c.Model), c.Turns, c.Tokens})

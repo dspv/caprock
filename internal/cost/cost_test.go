@@ -110,6 +110,93 @@ func TestSavingsFormulaMatchesLegacy(t *testing.T) {
 	}
 }
 
+// The meter weighs each model's cache at its own row's rates (#1113): Opus
+// 5.5 and Sonnet 5.5 read at $0.20/$4 and $0.10/$2, 0.05x, not the 0.10x
+// every older Claude row has.
+func TestSavingsWeightsComeFromTheRow(t *testing.T) {
+	tb, err := Embedded()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		model       string
+		read, write float64
+	}{
+		{"claude-opus-5-5", 0.05, 1.25},
+		{"claude-sonnet-5-5-20261001", 0.05, 1.25},
+		{"claude-opus-5", 0.10, 1.25},
+		{"claude-fable-5-1", 0.025, 1.25},
+		// No write surcharge on the row: a written token costs fresh input.
+		{"gpt-5", 0.10, 1.0},
+		// No row at all: the fallback.
+		{"no-such-model", 0.10, 1.25},
+		{"", 0.10, 1.25},
+	} {
+		r, w := tb.SavingsWeights(c.model)
+		if math.Abs(r-c.read) > 1e-9 || math.Abs(w-c.write) > 1e-9 {
+			t.Errorf("%s: weights %v/%v, want %v/%v", c.model, r, w, c.read, c.write)
+		}
+	}
+	if r, w := (*Table)(nil).SavingsWeights("claude-opus-5-5"); r != 0.10 || w != 1.25 {
+		t.Errorf("nil table: %v/%v, want the fallback", r, w)
+	}
+}
+
+func TestSavingsForOneModelAndAMix(t *testing.T) {
+	tb, err := Embedded()
+	if err != nil {
+		t.Fatal(err)
+	}
+	near := func(got, want float64) bool { return math.Abs(got-want) < 1e-6 }
+
+	// A 5.5 session: 1M cache reads at 0.05x, not 0.10x.
+	s := tb.SavingsFor(1000, 1_000_000, 10_000, []CacheUse{{Model: "claude-opus-5-5", CacheRead: 1_000_000, CacheWrite: 10_000}})
+	if want := 1000 + 1.25*10_000 + 0.05*1_000_000; !near(s.BilledWith, want) {
+		t.Fatalf("opus 5.5 billed_with %v, want %v", s.BilledWith, want)
+	}
+	if want := float64(1000 + 1_000_000 + 10_000); !near(s.BilledWithout, want) || !near(s.Saved, s.BilledWithout-s.BilledWith) {
+		t.Fatalf("opus 5.5: %+v", s)
+	}
+	if old := ComputeSavings(1000, 1_000_000, 10_000); s.Saved <= old.Saved {
+		t.Fatalf("opus 5.5 saved %v, not more than the fixed 0.10 weight's %v", s.Saved, old.Saved)
+	}
+
+	// A range of two models: each at its own rate, summed.
+	mix := tb.SavingsFor(500, 3_000_000, 30_000, []CacheUse{
+		{Model: "claude-sonnet-5-5", CacheRead: 2_000_000, CacheWrite: 20_000},
+		{Model: "claude-haiku-4-5", CacheRead: 1_000_000, CacheWrite: 10_000},
+	})
+	if want := 500 + 0.05*2_000_000 + 1.25*20_000 + 0.10*1_000_000 + 1.25*10_000; !near(mix.BilledWith, want) {
+		t.Fatalf("mix billed_with %v, want %v", mix.BilledWith, want)
+	}
+	if want := 3_000_000.0 / 3_030_500; !near(mix.HitRate, want) {
+		t.Fatalf("mix hit rate %v", mix.HitRate)
+	}
+
+	// What no entry names is weighed at the fallback, and an entry past
+	// the totals is cut to fit them.
+	part := tb.SavingsFor(0, 2_000_000, 0, []CacheUse{{Model: "claude-opus-5-5", CacheRead: 1_000_000}})
+	if want := 0.05*1_000_000 + 0.10*1_000_000; !near(part.BilledWith, want) {
+		t.Fatalf("partly named billed_with %v, want %v", part.BilledWith, want)
+	}
+	over := tb.SavingsFor(0, 1_000, 0, []CacheUse{{Model: "claude-opus-5-5", CacheRead: 5_000}})
+	if want := 0.05 * 1_000; !near(over.BilledWith, want) {
+		t.Fatalf("over-named billed_with %v, want %v", over.BilledWith, want)
+	}
+
+	// No model known, or no table: exactly the legacy formula.
+	legacy := ComputeSavings(2, 20589, 17332)
+	for name, got := range map[string]Savings{
+		"no models":   tb.SavingsFor(2, 20589, 17332, nil),
+		"nil table":   (*Table)(nil).SavingsFor(2, 20589, 17332, []CacheUse{{Model: "claude-opus-5-5", CacheRead: 20589}}),
+		"unknown row": tb.SavingsFor(2, 20589, 17332, []CacheUse{{Model: "no-such-model", CacheRead: 20589, CacheWrite: 17332}}),
+	} {
+		if got != legacy {
+			t.Errorf("%s: %+v, want the legacy %+v", name, got, legacy)
+		}
+	}
+}
+
 func TestLoadOverride(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "pricing.json")

@@ -26,6 +26,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dspv/caprock/internal/config"
@@ -61,6 +62,7 @@ const (
 type input struct {
 	SessionID string `json:"session_id"`
 	Model     *struct {
+		ID          string `json:"id"`
 		DisplayName string `json:"display_name"`
 	} `json:"model"`
 	Cost *struct {
@@ -264,9 +266,14 @@ func renderWidth(in input, st *stats, width int) string {
 		// width the useful counters need. The share of the bill the cache cut
 		// varies (83–90% across the same sessions) because it weighs reads and
 		// writes by what they are actually charged — so it is computed by the
-		// same cost.ComputeSavings the Cost screen uses, not a second formula
-		// that could drift from it.
-		if sv := cost.ComputeSavings(st.TokensIn, st.CacheRead, st.CacheWrite); sv.CutPct > 0 {
+		// same cost.SavingsFor the Cost screen uses, not a second formula
+		// that could drift from it, at the session model's own cache rates
+		// (Opus 5.5 reads at 0.05x of input, most models at 0.10x).
+		var uses []cost.CacheUse
+		if in.Model != nil && in.Model.ID != "" {
+			uses = []cost.CacheUse{{Model: in.Model.ID, CacheRead: st.CacheRead, CacheWrite: st.CacheWrite}}
+		}
+		if sv := pricingTable().SavingsFor(st.TokensIn, st.CacheRead, st.CacheWrite, uses); sv.CutPct > 0 {
 			add(rankCache, fmt.Sprintf("cache −%.0f%%", sv.CutPct))
 		}
 		if st.TokensIn > 0 || st.TokensOut > 0 {
@@ -399,6 +406,20 @@ func terminalWidth() int {
 	}
 	return n
 }
+
+// pricingTable is the table compiled into the binary, parsed once, for the
+// cache segment's per-model weights. Not the user's pricing.json override:
+// the status line reads nothing from the data directory before printing, so
+// a model priced only by an override falls back to the 0.10/1.25 weights
+// here. nil, which weighs everything at the fallback, if the embedded table
+// fails to parse.
+var pricingTable = sync.OnceValue(func() *cost.Table {
+	t, err := cost.Embedded()
+	if err != nil {
+		return nil
+	}
+	return t
+})
 
 // fetchStats asks the daemon for the session counters. Every failure path
 // returns nil, which renders the plain line — the daemon being down, slow or

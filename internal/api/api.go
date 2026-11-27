@@ -1415,7 +1415,16 @@ func (s *Server) summarizeAt(ctx context.Context, sess store.Session, rec *recen
 		// turn; the requests it carries are the count shown beside the turns.
 		st.Turns, st.Requests = max(0, st.Turns-u[0]), u[1]
 	}
-	sum := SessionSummary{Session: sess, Stats: st, Activity: act, Savings: cost.ComputeSavings(st.TokensIn, st.CacheRead, st.CacheWrite), Loop: la}
+	// The session's cache is weighed at its model's own rates (Opus 5.5 and
+	// Sonnet 5.5 read at 0.05x of input, most rows at 0.10x). Its model, not a
+	// per-model read: the session pages show the hit rate, which no weight
+	// moves, and a query per listed session for a figure no row shows is not
+	// worth its cost.
+	var uses []cost.CacheUse
+	if sess.Model != "" {
+		uses = []cost.CacheUse{{Model: sess.Model, CacheRead: st.CacheRead, CacheWrite: st.CacheWrite}}
+	}
+	sum := SessionSummary{Session: sess, Stats: st, Activity: act, Savings: s.d.Table.SavingsFor(st.TokensIn, st.CacheRead, st.CacheWrite, uses), Loop: la}
 	sum.TurnOpen = sess.Status != store.StatusEnded && sess.HasHooks && (sess.Agent == "" || sess.Agent == "claude") && narrate.TurnOpen(last)
 	sum.Description, sum.DescriptionSource = describeWith(sess, func() ([]string, error) {
 		return readOnce(&rec.mu, &rec.prompts, func() ([]string, error) {
@@ -2546,6 +2555,16 @@ func (s *Server) sparkSpec(label string, from int64) store.SparkSpec {
 	return store.SparkSpec{}
 }
 
+// summarySavings is a range's cache savings, each model's cache weighed at
+// its own rates (cost.SavingsFor) from the summary's model mix.
+func summarySavings(t *cost.Table, sum store.Summary) cost.Savings {
+	uses := make([]cost.CacheUse, 0, len(sum.Models))
+	for _, m := range sum.Models {
+		uses = append(uses, cost.CacheUse{Model: m.Model, CacheRead: m.CacheRead, CacheWrite: m.CacheWrite})
+	}
+	return t.SavingsFor(sum.TokensIn, sum.CacheRead, sum.CacheWrite, uses)
+}
+
 func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	from, label := s.rangeFrom(r.URL.Query().Get("range"))
@@ -2573,7 +2592,7 @@ func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 	// on a copy: writing them in place would race other readers of the entry.
 	sum.Projects = append([]store.ProjectShare{}, sum.Projects...)
 	s.linkProjects(ctx, sum.Projects)
-	resp := SummaryResponse{Summary: sum, Savings: cost.ComputeSavings(sum.TokensIn, sum.CacheRead, sum.CacheWrite)}
+	resp := SummaryResponse{Summary: sum, Savings: summarySavings(s.d.Table, sum)}
 	if s.d.Table != nil {
 		resp.Pricing = s.d.Table.Version
 	}
@@ -3034,7 +3053,7 @@ func (s *Server) buildHistory(ctx context.Context, from int64, label string) (Hi
 	if daily == nil {
 		daily = []store.DailyStat{}
 	}
-	resp := HistoryResponse{Range: label, Totals: tot, Tools: tools, Daily: daily, Summary: sum, Savings: cost.ComputeSavings(sum.TokensIn, sum.CacheRead, sum.CacheWrite)}
+	resp := HistoryResponse{Range: label, Totals: tot, Tools: tools, Daily: daily, Summary: sum, Savings: summarySavings(s.d.Table, sum)}
 	if s.d.Table != nil {
 		models := make([]contexttax.ModelTax, 0, len(sum.Models))
 		for _, m := range sum.Models {
