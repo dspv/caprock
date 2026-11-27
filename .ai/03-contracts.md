@@ -514,6 +514,36 @@ the target runs its ordinary Host and gate, and pairs it as a computer
   gate's `401` for a relayed request with network access off) and are on no
   device's allowlist, so a phone or a computer paired with this machine
   gets `403` there. `501` in a build without them.
+- **Send secrets** (ADR-107, `internal/api/secretshare.go`,
+  `internal/daemon/secretshare.go`). Credentials this machine keeps, copied
+  into a computer's secret store on the owner's click, through its channel;
+  no value is ever in an answer, a log, an event, the database or a frame.
+  - **`GET /v1/machines/secrets`** (loopback only, `501` without computers
+    or the feature) answers `{secrets: [{name, label, set, note?}]}`: `github`
+    (the token Caprock keeps — pasted or device flow; with the GitHub CLI's
+    sign-in it is `set: false` with a `note`), `deepseek`, `kimi`. Never a
+    value. The Telegram bot token is not offered.
+  - **`POST /v1/machines/{id}/secrets`** `{names: [..]}` (loopback only)
+    reads those from this machine's store and posts them, in one request,
+    to that computer's `POST /v1/secrets/receive` through `peers.Manager.Do`
+    (60 s at most), and answers what it said: `{stored: [names], failed:
+    [{name, error}]}`. `400` for no names, more than 16, an unknown one or
+    one not set here (named); `404` unknown computer; `501` when that
+    computer answers `404`/`405` (*a Caprock from before Send secrets*); the
+    channel's errors as the proxy's (`503`, `502`, `504`); any other refusal
+    there passes through with its status and `error`.
+  - **`POST /v1/secrets/receive`** `{secrets: [{name, value}]}` (at most 16,
+    64 KiB) is on the computer allowlist and refused (`403`) without a
+    paired device of kind `machine` — this machine's own clients and every
+    phone included. Each value, one line of at most 4096 bytes, goes into
+    this machine's store the way Settings writes it (the GitHub token through
+    Settings → GitHub's pasted-token path, kept once GitHub accepts it);
+    each is kept or refused on its own. Answers `{stored, failed}`, names
+    only. A send that kept anything is recorded, names only, in
+    `secrets-received.json` (0600, the newest 20).
+  - **`GET /v1/secrets/received`** (loopback only) answers `{arrivals:
+    [{from_id, from, names, at}]}`, newest first: `from_id` the sending
+    computer's device id here, `at` unix ms.
 - **The CLI** (`cmd/caprock/machines.go`), against the local daemon:
   `caprock machines` / `ls` (the computers this one reaches, checked, and
   the computers that reach this one from `GET /v1/pair/state`), `add

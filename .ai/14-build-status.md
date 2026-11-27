@@ -77,6 +77,19 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-11-27 — unreleased: send secrets to a linked computer (ADR-107)
+
+One slice of #1095: a computer's page has *Send secrets* — the GitHub token
+Caprock keeps, the DeepSeek and Kimi keys, each ticked by hand and sent on
+**Send** through the computer's end-to-end encrypted link (`POST
+/v1/machines/{id}/secrets` here, `POST /v1/secrets/receive` there, a
+computer-only route), written straight into that computer's secret store and
+named, never shown, in its Settings → Computers. No SSH for credentials any
+more. Walked end to end by the two-daemon smoke test over a loopback relay,
+which also checks the value is in no log, answer or other file on either
+machine. Not done: the rest of #1095 (tools from the join key, PATH, the
+port).
+
 ### 2026-11-26 — unreleased: a session refused a guarded folder (ADR-106)
 
 Sessions on 0.197.0 were refused `~/Downloads` with no prompt, and an image

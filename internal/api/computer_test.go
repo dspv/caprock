@@ -38,6 +38,7 @@ var computerMayAlso = map[string]bool{
 	"GET /v1/projects/{id}/branches":     true, "GET /v1/projects/{id}/copies": true, "POST /v1/projects/{id}/copies/remove": true,
 	"GET /v1/projects/{id}/cleanup": true, "POST /v1/projects/{id}/cleanup": true, "POST /v1/projects/{id}/cleanup/restore": true,
 	"GET /v1/projects/scan": true, "POST /v1/projects/merge": true, "POST /v1/projects/{id}/split": true,
+	"POST /v1/secrets/receive": true,
 }
 
 // What stays the machine's own whatever the device (ADR-067): named, so a
@@ -49,6 +50,7 @@ var neverAComputer = []string{
 	"POST /v1/update/check", "POST /v1/hooks/install", "POST /v1/sessions/{id}/open-terminal", "GET /v1/editors",
 	"POST /v1/editors/open", "PUT /v1/telegram/token", "POST /v1/github/connect", "PUT /v1/agents/custom",
 	"POST /v1/subscriptions", "GET /v1/machines", "GET /v1/machines/sessions", "POST /v1/machines", "PATCH /v1/machines/{id}", "DELETE /v1/machines/{id}",
+	"GET /v1/machines/secrets", "POST /v1/machines/{id}/secrets", "GET /v1/secrets/received",
 }
 
 // pairedComputer adds to ps a computer that redeemed a code for one and,

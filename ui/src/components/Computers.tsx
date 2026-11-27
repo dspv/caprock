@@ -46,6 +46,7 @@ import { fmtAgo } from '@/lib/format'
 import { href } from '@/lib/router'
 import { extTitle } from '@/lib/externalLinks'
 import { live } from '@/lib/live'
+import { latestByComputer, secretNames, secretsApi, type SecretArrival } from '@/lib/secretshare'
 import { COMPUTERS_SECTION } from './Pairing'
 import { SetupChecklist } from './SetupChecklist'
 import { MachineReadiness } from './MachineReadiness'
@@ -151,6 +152,9 @@ export function Computers() {
   const refreshPair = pair.refresh
   useEffect(() => live.onFrame((f) => { if (f.type === 'devices') refreshPair() }), [refreshPair])
   const here = reachedBy(pair.data?.devices)
+  // Which keys each of those computers sent here, by name (ADR-107).
+  const received = useApi(() => secretsApi.received(), [], { live: false, intervalMs: 10_000, active: here.length > 0 })
+  const sentHere = latestByComputer(received.data)
 
   const [chosen, setChosen] = useState<ComputerRole | null>(readRole)
   const role = chosen ?? defaultRole(machines.length, here.length)
@@ -178,7 +182,7 @@ export function Computers() {
               <span className="text-fg-muted" data-this-role>· this one · {ROLE_LABEL[role]}</span>
             </li>
             {machines.map((m) => <ComputerRow key={m.id} m={m} now={now} onChanged={list.refresh} />)}
-            {here.map((d) => <ReachesHereRow key={d.id} d={d} now={now} onChanged={refreshPair} />)}
+            {here.map((d) => <ReachesHereRow key={d.id} d={d} now={now} sent={sentHere.get(d.id)} onChanged={refreshPair} />)}
           </ul>
           {total === 0 && list.data && <div className="text-[12.5px] text-fg-faint">No other computer yet. {role === 'main' ? 'Add one below.' : 'Finish the checklist below, then start agents here from your laptop.'}</div>}
         </div>
@@ -564,7 +568,7 @@ function ComputerRow({ m, now, onChanged }: { m: Machine; now: number; onChanged
 }
 
 /** A computer that paired this one as a computer: it reaches this one. */
-function ReachesHereRow({ d, now, onChanged }: { d: PairedDevice; now: number; onChanged: () => void }) {
+function ReachesHereRow({ d, now, sent, onChanged }: { d: PairedDevice; now: number; sent?: SecretArrival; onChanged: () => void }) {
   const [confirm, setConfirm] = useState(false)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
@@ -584,6 +588,11 @@ function ReachesHereRow({ d, now, onChanged }: { d: PairedDevice; now: number; o
         <span className="block text-[11px] text-fg-faint">
           {d.last_seen ? `connected ${fmtAgo(d.last_seen, now)}` : d.paired_at ? `paired ${fmtAgo(d.paired_at, now)}` : 'not connected yet'}
         </span>
+        {sent && (
+          <span className="block text-[11px] text-fg-muted" data-secrets-arrived title="Kept in this computer's secret store; the values are never shown">
+            sent the {secretNames(sent.names)} here {fmtAgo(sent.at, now)}
+          </span>
+        )}
         {err && <span role="alert" className="mt-0.5 block text-[12px] text-danger">{err}</span>}
       </span>
       {confirm ? (

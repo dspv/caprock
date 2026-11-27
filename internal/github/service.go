@@ -441,6 +441,19 @@ func (s *Service) Status() Status {
 	return st
 }
 
+// StoredToken is the token Caprock itself keeps in its secret store — a
+// pasted or device-flow one — for Send secrets to another computer
+// (ADR-107). "" when the source is the GitHub CLI's login, which Caprock
+// does not hold, or when nothing is connected. It sends nothing.
+func (s *Service) StoredToken(ctx context.Context) (string, error) {
+	s.init()
+	src := s.source()
+	if (src != SourceToken && src != SourceOAuth) || s.Store == nil {
+		return "", nil
+	}
+	return s.Store.Get(ctx)
+}
+
 // publishAccount tells every open window the connection changed.
 func (s *Service) publishAccount() {
 	if s.Bus != nil {

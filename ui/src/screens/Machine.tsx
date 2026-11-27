@@ -33,6 +33,7 @@ import { keys } from '@/lib/appkeys'
 import { basename, fmtAgo } from '@/lib/format'
 import { Empty, Skeleton } from '@/components/ui'
 import { RemoteSetup } from '@/components/RemoteSetup'
+import { SendSecrets } from '@/components/SendSecrets'
 
 export function MachineScreen({ id, session, tab }: { id: string; session?: string; tab?: string }) {
   const list = useMachines()
@@ -128,6 +129,8 @@ function MachineSessions({ m }: { m: Machine }) {
       </header>
       {/* What it still needs, each step run there on a click (#1088). */}
       {st.online && <RemoteSetup m={m} />}
+      {/* Keys copied there on a click, through the link (ADR-107, #1095). */}
+      {st.online && <SendSecrets m={m} />}
       {!failure?.status && look.detail && look.tone !== 'ok' && look.tone !== 'muted' && <p className="text-[13px] text-fg-muted">{look.detail}</p>}
       {sessions.error && (
         <p role="alert" className="text-[13px] text-danger" data-machine-error={failure?.status ?? 'error'} title={failure?.error}>
