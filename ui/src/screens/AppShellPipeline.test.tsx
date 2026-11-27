@@ -374,6 +374,16 @@ describe('reopening a closed tab', () => {
     await waitFor(() => expect(tab()).toBeTruthy())
   })
 
+  // Owner, 2026-11-27: every way a tab closes puts its agent on the list.
+  it('lists the tabs a project\'s Close tabs closed', async () => {
+    localStorage.setItem('caprock.app.recently-closed-open', 'open')
+    await openAgent()
+    fireEvent.click(screen.getAllByRole('button', { name: /^More for .*close its tabs/ })[0]!)
+    fireEvent.click(await screen.findByRole('menuitem', { name: /^Close its/ }))
+    await waitFor(() => expect(tab()).toBeNull())
+    await waitFor(() => expect(document.querySelector('[data-closed-row="agent-1"]')).toBeTruthy())
+  })
+
   it('says so on ⇧⌘T with nothing closed', async () => {
     await openAgent()
     act(() => { fireEvent.keyDown(window, { key: 'T', code: 'KeyT', metaKey: true, shiftKey: true }) })

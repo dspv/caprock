@@ -1698,10 +1698,12 @@ export function AppShell() {
     const { tabs, sessionsById, endedChats } = closeCtx.current
     const chats = planTabsChatClose(tabs.filter((t) => t.projectId === projectId), sessionsById, ...chatTests(endedChats))
     setChangesView((cur) => (cur?.projectId === projectId ? null : cur))
+    // Each agent conversation in them goes on Recently closed, as with ⌘W.
+    for (const t of tabs) if (t.projectId === projectId) noteClosed(t.id)
     dispatch({ type: 'close-project', projectId })
     stopChats(chats.stop)
     if (chats.busy.length > 0) setClosing({ kind: 'chats', busy: chats.busy })
-  }, [stopChats])
+  }, [stopChats, noteClosed])
   const onOpenProjectInEditor = useCallback((path: string, label: string, editorId: string) => openInEditor(path, label, editorId), [openInEditor])
   const { archiveLocal } = data
   /** Unlists a project — the daemon's list, or this page's when it keeps none. Its files are never touched. */
@@ -2312,9 +2314,9 @@ export function AppShell() {
     const s = sessionsById.get(id)
     if (!s?.owned) return
     const t = findTabBySession(wsRef.current, id)
-    if (t && leaves(t.root).length === 1) dispatch({ type: 'close', tabId: t.id })
+    if (t && leaves(t.root).length === 1) { noteClosed(t.id); dispatch({ type: 'close', tabId: t.id }) }
     stopChats([id])
-  }, [sessionsById, stopChats])
+  }, [sessionsById, stopChats, noteClosed])
   // What the page gets from the app (lib/pipelineHost): the sessions already
   // held, an agent's worktrees for its fix actions, a toast, and the way back.
   const pipelineHost = useMemo<PipelineHost>(() => ({

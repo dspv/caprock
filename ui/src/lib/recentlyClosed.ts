@@ -56,7 +56,8 @@ function valid(x: unknown): x is ClosedTab {
 export function parseRecentlyClosed(raw: string | null): ClosedTab[] {
   try {
     const v = JSON.parse(raw ?? 'null') as unknown
-    return Array.isArray(v) ? v.filter(valid).slice(0, RECENTLY_CLOSED_MAX) : []
+    // Sorted on read too: a list stored before 2026-11-27 kept the order things were added.
+    return Array.isArray(v) ? withClosed([], v.filter(valid)) : []
   } catch {
     return []
   }
@@ -71,10 +72,22 @@ function save(list: readonly ClosedTab[]) {
   try { window.dispatchEvent(new Event(RECENTLY_CLOSED_EVENT)) } catch { /* no window */ }
 }
 
-/** `entries` in front of `list`, newest first, each session once, capped. Pure. */
+/**
+ * `entries` merged into `list`, each session once (the new entry wins),
+ * ordered by when it closed, newest first, capped. Sorted rather than put in
+ * front: a session that ended unexpectedly is recorded when the app notices,
+ * with the time it ended, and must not sit above tabs closed after it
+ * (owner, 2026-11-27: "in Recently closed, at the top, by the time they were
+ * closed", translated). Pure; equal times keep the new entries first.
+ */
 export function withClosed(list: readonly ClosedTab[], entries: readonly ClosedTab[]): ClosedTab[] {
   const ids = new Set(entries.map((e) => e.sessionId))
-  return [...entries, ...list.filter((e) => !ids.has(e.sessionId))].slice(0, RECENTLY_CLOSED_MAX)
+  const all = [...entries, ...list.filter((e) => !ids.has(e.sessionId))]
+  return all
+    .map((e, i) => ({ e, i }))
+    .sort((a, b) => b.e.closedAt - a.e.closedAt || a.i - b.i)
+    .map((x) => x.e)
+    .slice(0, RECENTLY_CLOSED_MAX)
 }
 
 /** Keeps the closed tabs at the front of the stored list. */
