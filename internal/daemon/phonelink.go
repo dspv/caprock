@@ -35,7 +35,7 @@ func (d *Daemon) SendPhoneLink(ctx context.Context, app string) error {
 	text := PhoneLinkMessage(app)
 	var err error
 	if d.tg != nil {
-		_, err = d.tg.Out.Send(ctx, telegram.Out{Text: text})
+		err = d.tg.SendNow(ctx, telegram.Out{Text: text})
 	} else {
 		cfg := d.config()
 		err = d.sender().SendFormatted(ctx, cfg.ReportBotToken, cfg.ReportChatID, text, "")

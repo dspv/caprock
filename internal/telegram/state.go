@@ -44,6 +44,20 @@ type Ref struct {
 	Order   []string          `json:"order,omitempty"`
 	Chosen  string            `json:"chosen,omitempty"`
 	Answers int               `json:"answers,omitempty"`
+
+	// One bot for several computers (hub.go, ADR-047 amended 2026-11-27).
+	// On the holder, a "hub" message posted for another computer: Machine
+	// is that computer's device id here, MachineName its name, Remote the
+	// id that computer gave the message, Actions its buttons' actions by
+	// index (the callback data is "h:<index>"), and HubReply that a reply
+	// to it is carried back. On a computer that sends through a holder,
+	// Remote is the id of a message it handed over (MessageID 0): what a
+	// press coming back is about.
+	Remote      string   `json:"remote,omitempty"`
+	Machine     string   `json:"machine,omitempty"`
+	MachineName string   `json:"machine_name,omitempty"`
+	Actions     []string `json:"actions,omitempty"`
+	HubReply    bool     `json:"hub_reply,omitempty"`
 }
 
 // State is the bridge's persisted state.
@@ -73,6 +87,24 @@ type State struct {
 	// ForwardReply is the forward picker's *Reply here* switch, as the
 	// owner last left it (ADR-081); off until turned on.
 	ForwardReply bool `json:"forward_reply,omitempty"`
+	// Carries are the other computers that post through this machine's
+	// bot, by their device id here: their name and when they last did
+	// (hub.go). MovedTo is set when the bot was handed to another computer:
+	// its name and when, so Settings says where the bot went.
+	Carries map[string]Carried `json:"carries,omitempty"`
+	MovedTo *Moved             `json:"moved_to,omitempty"`
+}
+
+// Carried is a computer that posts through this machine's bot.
+type Carried struct {
+	Name   string `json:"name"`
+	LastAt int64  `json:"last_at"`
+}
+
+// Moved is where this machine's bot went.
+type Moved struct {
+	Name string `json:"name"`
+	At   int64  `json:"at"`
 }
 
 // Store keeps State in memory and on disk. Safe for concurrent use.
@@ -101,6 +133,16 @@ func (s *Store) Get() State {
 	cp.Muted = make(map[string]int64, len(s.st.Muted))
 	for k, v := range s.st.Muted {
 		cp.Muted[k] = v
+	}
+	if s.st.Carries != nil {
+		cp.Carries = make(map[string]Carried, len(s.st.Carries))
+		for k, v := range s.st.Carries {
+			cp.Carries[k] = v
+		}
+	}
+	if s.st.MovedTo != nil {
+		m := *s.st.MovedTo
+		cp.MovedTo = &m
 	}
 	if s.st.ModulePins != nil {
 		cp.ModulePins = make(map[string]int64, len(s.st.ModulePins))
@@ -152,9 +194,10 @@ func (s *Store) Reset() error {
 	return nil
 }
 
-// Remember records what a sent message is about.
+// Remember records what a sent message is about: one sent here (MessageID),
+// or one handed to the holder (Remote).
 func (s *Store) Remember(r Ref) {
-	if r.MessageID == 0 {
+	if r.MessageID == 0 && r.Remote == "" {
 		return
 	}
 	if r.At == 0 {
@@ -204,6 +247,23 @@ func (s *Store) NextAnswer(messageID int64) int {
 		}
 	})
 	return n
+}
+
+// LookupRemote finds a message by the id it was handed over under: on a
+// computer that sends through a holder, machine is "" and remote the id this
+// machine gave it; on the holder, machine is the sender's device id here.
+func (s *Store) LookupRemote(machine, remote string) (Ref, bool) {
+	if remote == "" {
+		return Ref{}, false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := len(s.st.Refs) - 1; i >= 0; i-- {
+		if r := s.st.Refs[i]; r.Remote == remote && r.Machine == machine {
+			return r, true
+		}
+	}
+	return Ref{}, false
 }
 
 // IsMuted reports whether a session sends nothing.

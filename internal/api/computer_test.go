@@ -39,6 +39,9 @@ var computerMayAlso = map[string]bool{
 	"GET /v1/projects/{id}/cleanup": true, "POST /v1/projects/{id}/cleanup": true, "POST /v1/projects/{id}/cleanup/restore": true,
 	"GET /v1/projects/scan": true, "POST /v1/projects/merge": true, "POST /v1/projects/{id}/split": true,
 	"POST /v1/secrets/receive": true,
+	// One Telegram bot for all the owner's computers (ADR-047, amended 2026-11-27).
+	"GET /v1/telegram/hub": true, "POST /v1/telegram/hub/messages": true, "GET /v1/telegram/hub/presses": true,
+	"POST /v1/telegram/hub/results": true, "POST /v1/telegram/hub/handover": true,
 }
 
 // What stays the machine's own whatever the device (ADR-067): named, so a
@@ -48,7 +51,8 @@ var neverAComputer = []string{
 	"PUT /v1/pair/devices/{id}/role", "POST /v1/pair/devices/{id}/allow", "POST /v1/pair/lan", "POST /v1/pair/remote",
 	"GET /v1/pair/state", "POST /v1/footprint/orphans/stop", "POST /v1/resources/reap", "POST /v1/system/memory/end-idle", "POST /v1/system/memory/restart", "POST /v1/shutdown",
 	"POST /v1/update/check", "POST /v1/hooks/install", "POST /v1/sessions/{id}/open-terminal", "GET /v1/editors",
-	"POST /v1/editors/open", "PUT /v1/telegram/token", "POST /v1/github/connect", "PUT /v1/agents/custom",
+	"POST /v1/editors/open", "PUT /v1/telegram/token", "PUT /v1/telegram/via", "DELETE /v1/telegram/via", "POST /v1/telegram/via/take", "GET /v1/telegram/holders",
+	"POST /v1/github/connect", "PUT /v1/agents/custom",
 	"POST /v1/subscriptions", "GET /v1/machines", "GET /v1/machines/sessions", "POST /v1/machines", "PATCH /v1/machines/{id}", "DELETE /v1/machines/{id}",
 	"GET /v1/machines/secrets", "POST /v1/machines/{id}/secrets", "GET /v1/secrets/received",
 }

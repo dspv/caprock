@@ -691,6 +691,17 @@ var computerRoutes = map[string]bool{
 	// Credentials the owner sent from that computer on a click (ADR-107):
 	// written into this one's secret store, never answered back.
 	"POST /v1/secrets/receive": true,
+	// One Telegram bot for all the owner's computers (ADR-047, amended
+	// 2026-11-27): a computer with no bot of its own posts its messages
+	// through this machine's, takes back the presses under them, and may
+	// move the bot to itself. Not a settings write a computer may not make:
+	// the bot keeps going to the chat the owner paired, and a move is said
+	// in that chat. A phone never sends through: it has no alerts to send.
+	"GET /v1/telegram/hub":           true,
+	"POST /v1/telegram/hub/messages": true,
+	"GET /v1/telegram/hub/presses":   true,
+	"POST /v1/telegram/hub/results":  true,
+	"POST /v1/telegram/hub/handover": true,
 }
 
 // deviceVerdict is what a role may do with one request.

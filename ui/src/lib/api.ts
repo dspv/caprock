@@ -1226,6 +1226,36 @@ export interface TelegramStatus {
   last_error?: string
   mute_all?: boolean
   muted?: number
+  /** The computer this one sends through, when it has no bot of its own (one bot for all computers). */
+  via?: TelegramVia
+  /** Other computers that send through this computer's bot, newest first. */
+  carries?: { name: string; last_ms: number }[]
+  /** Where this computer's bot went, when it was moved to another. */
+  moved_to?: { name: string; at: number }
+}
+
+/** A computer sending its Telegram messages through another computer's bot. */
+export interface TelegramVia {
+  machine: string
+  name: string
+  /** Messages waiting for it. */
+  queued: number
+  /** The last try to reach it failed: they wait until it is back. */
+  waiting?: boolean
+  last_error?: string
+  last_sent_ms?: number
+  /** Messages that waited past a day or past 200 and were dropped. */
+  dropped?: number
+}
+
+/** A computer this one reaches, as Settings → Telegram lists them. */
+export interface TelegramCandidate {
+  id: string
+  name: string
+  holder: boolean
+  bot_username?: string
+  chat_name?: string
+  error?: string
 }
 
 export type KeepAwakeMode = 'off' | 'working' | 'always'
@@ -1312,6 +1342,8 @@ export interface Settings {
   telegram_chat?: boolean
   /** Replies sent to Telegram keep their code blocks; off unless turned on. */
   telegram_code?: boolean
+  /** The computer this one sends its Telegram messages through (read-only here; /v1/telegram/via sets it). */
+  telegram_via?: string
   /** The Morning summary (ADR-092): one Telegram message a day, off unless
    *  turned on; its local time, "HH:MM", 08:00 until chosen. The last send's
    *  time and error are read-only. */
@@ -2908,6 +2940,14 @@ export const api = {
   telegramDisconnect: () => post<TelegramStatus>('/v1/telegram', {}, 'DELETE'),
   /** A share card to the owner's own paired chat, on their click: `png` is base64, `caption` plain text. */
   telegramPhoto: (png: string, caption: string) => post<{ sent: boolean }>('/v1/telegram/photo', { png, caption }),
+  /** The computers this one reaches, each asked whether it holds a bot to send through. */
+  telegramHolders: () => get<{ computers: TelegramCandidate[] }>('/v1/telegram/holders'),
+  /** Send this computer's Telegram messages through another computer's bot. */
+  telegramSetVia: (machine: string) => post<TelegramStatus>('/v1/telegram/via', { machine }, 'PUT'),
+  /** Stop sending through the other computer; what waited is dropped. */
+  telegramClearVia: () => post<TelegramStatus>('/v1/telegram/via', {}, 'DELETE'),
+  /** Move the bot here from that computer (the one sent through when omitted): same bot, same chat. */
+  telegramTake: (machine?: string) => post<TelegramStatus>('/v1/telegram/via/take', machine ? { machine } : {}),
   /** Runs `caprock hooks install` in the daemon; answers with what is registered after. */
   installHooks: () => post<{ hooks: HooksStatus; backup?: string }>('/v1/hooks/install', {}),
   /** The user accepted Caprock's copy of Claude Code's bypass warning (ADR-041). */

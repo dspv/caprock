@@ -197,6 +197,9 @@ type Daemon struct {
 	// tg is the Telegram bridge (ADR-047); nil in tests that build a daemon
 	// by hand, which then send alerts the old way.
 	tg *telegram.Bridge
+	// via is this machine's link to the computer whose bot it sends through
+	// (telegramvia.go); made with tg.
+	via *viaState
 	// mail is Caprock Mail; idle until the user adds an account (internal/mail).
 	mail *mail.Service
 	// talk keeps a conversation's messages from being sent twice.
@@ -855,7 +858,7 @@ func (d *Daemon) run(ctx context.Context) error {
 		Browsers: &browser.Opener{
 			Env: func() []string { return userenv.Environ(d.log) },
 		},
-		Pairing: d.pairing, LANURL: d.lanURL, Started: d.start, LAN: d, Remote: d, Machines: d.machines, DevShare: d.devShare, Secrets: &secretShare{d: d},
+		Pairing: d.pairing, LANURL: d.lanURL, Started: d.start, LAN: d, Remote: d, Machines: d.machines, TelegramVia: d, DevShare: d.devShare, Secrets: &secretShare{d: d},
 		Projects: d.projs, Templates: tpls, Shells: &shellAdapter{m: d.mgr, live: d.livePIDs}, GitHub: d.gh,
 		Obsidian: vaults, Mail: d.mail.Handler(), BrainAuto: &brainAdapter{d: d, eng: d.brain},
 		TLDR:              d.newTLDRRunner(),
@@ -871,6 +874,9 @@ func (d *Daemon) run(ctx context.Context) error {
 	// The Telegram bridge calls the agent manager and the API, so it starts
 	// once both exist (ADR-047).
 	d.goBg(func() { d.tg.Run(ctx) })
+	// What waits for the computer whose bot this one sends through, and the
+	// presses that come back (ADR-047, amended 2026-11-27).
+	d.goBg(func() { d.runTelegramVia(ctx) })
 
 	// Ingest.
 	if !d.opt.DisableIngest {
@@ -1967,6 +1973,7 @@ func (a *settingsAdapter) Get() api.Settings {
 		AlertDone:           c.AlertDoneOn(),
 		TelegramChat:        c.TelegramChatOn(),
 		TelegramCode:        c.TelegramCodeOn(),
+		TelegramVia:         c.TelegramVia,
 		NotifyApproval:      c.NotifyApprovalOn(),
 		NotifyFinished:      c.NotifyFinishedOn(),
 		Prompts:             maps.Clone(c.Prompts),

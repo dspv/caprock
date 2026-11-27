@@ -2784,6 +2784,68 @@ the user's click, after the sheet names every field.
 messages forwarded to the bot are asked about once and go to a session
 Caprock started, or a new chat, as one message through the message queue.
 
+*Amended 2026-11-27 — one bot for all the owner's computers (issue #1100).*
+The owner moves work between computers and wants to keep one bot; Telegram
+lets one process at a time read a bot's updates, so a second computer
+could only make a second bot or take the first one's away. Decided, without
+asking him (he asked for concrete answers to be picked):
+
+- **One computer holds the bot.** It is the computer where the bot is set
+  up, exactly as above; nothing about it changes. Every other computer that
+  *reaches* it (ADR-067: it pasted the holder's link and the holder's owner
+  allowed it) may **send through** it instead of having a bot: Settings →
+  Telegram there lists the computers it reaches that hold one and offers
+  *Send through <name>*. The holder needs no step: a computer it allowed
+  already has full control there, which is wider than posting to its chat.
+  The direction is the link's — the sender calls the holder, never the
+  reverse — so a laptop that reaches the Mac mini sends through the Mac
+  mini's bot with no second pairing. Rejected: an automatic holder (a
+  machine choosing where its messages go is the user's choice, rule 4), and
+  holders that call their senders (pairing is one-way by decision, ADR-067).
+- **What crosses the link**, end-to-end encrypted (ADR-058's channel): each
+  message as it would have been sent — its text, its buttons as *approve*,
+  *deny*, *mute* or a URL — under an id of the sender's; back, each press or
+  Telegram reply under one of its messages, and the outcome the sender
+  reports. The holder posts every one under a first line naming the
+  computer, *🖥 MacBook*, taken from its own device record of that computer,
+  never from the request. Nothing goes to Telegram that would not have gone
+  from the sender's own bot, and no new destination exists.
+- **The asking computer decides.** A press or a reply is handed back to the
+  computer that asked, and it acts with its own rules: Approve and Deny need
+  a licence and two-way chat switched on *there* and go through its own
+  `AnswerPermission`; a reply is typed there as above; rule 7 is its agent
+  manager's. The holder asks no licence for them and never touches a
+  session of another computer. The holder's own commands (`/sessions`,
+  `/new`, `/stop`, forwards) still reach only the holder's sessions.
+- **Holder offline: queued on the sender, said on the sender.** Messages
+  wait in the sender's database (migration 0096), oldest first, at most 200
+  and none older than a day, and go when the holder is back, marked *N min
+  late*. Settings → Telegram on the sender says *N messages wait for <name>:
+  delivery resumes when it is back*, with why. The 30-second expiry of a
+  local alert does not apply to them: the owner asked for nothing to be lost
+  silently, and a late question's buttons are refused by its prompt id
+  there, as any stale answer is (ADR-035). A press is handed over once; one
+  lost on the way is lost rather than acted on twice.
+- **Moving the holder without a new bot.** *Make this computer the holder*
+  (on a sender) or *Move the bot here* asks the holder for its token, chat
+  and update offset; the holder forgets the bot as Disconnect does, stops
+  reading and says where it went; the new holder keeps them as its own, so
+  the paired chat keeps working, and says so in the chat. The token crosses
+  only the encrypted link. When the old holder reaches the new one (its
+  `machines.json` holds the computer the token was bound to), it sends
+  through it from then on by itself. This is a settings change made on the
+  holder by another computer — the class ADR-067 keeps for the machine — and
+  it is allowed for this one route because the computer already has full
+  control there (it can run a shell), the bot keeps going to the chat the
+  owner paired, and the move is said in that chat.
+- **Unchanged:** one paired chat; the weekly report still needs a bot on
+  the machine that sends it; a phone never sends through (it has no alerts
+  of its own to send).
+
+The wire, the queue's bounds and the status fields are in
+[03-contracts.md § One bot for all computers](03-contracts.md); the screens
+in [04-ui.md § Settings](04-ui.md).
+
 ---
 
 ## ADR-048 — Several sign-ins per agent, each in a config directory of Caprock's; three per agent are free
@@ -5112,6 +5174,14 @@ hosted machine of ours, for now.
 rather than phones; a user needs a computer that may manage the target's
 pairing (a fleet); or a short typed code turns out to be needed — that is a
 PAKE on the relay and its own decision.
+
+*Amended 2026-11-27 by [ADR-047](#adr-047--the-owner-talks-to-his-agents-through-his-own-telegram-bot-integrations-he-turns-on-may-leave-the-machine)
+(one bot for all computers):* a computer's scope gains the Telegram hub's
+five routes (`/v1/telegram/hub…`), so a computer with no bot sends its
+alerts through the bot of the computer it reaches, takes back the presses
+under them, and may move that bot to itself — the one settings change a
+computer may make on the target, argued there. Still one-way: the target
+never calls the computer.
 
 ## ADR-068 — The dashboard bundle is rebuilt on master, never carried by a pull request
 

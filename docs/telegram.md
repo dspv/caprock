@@ -129,6 +129,40 @@ in your own terminal is watched — you get its alerts — but Caprock never typ
 into a process it did not start. A reply to one answers *I can only watch this
 one*; continue it in Caprock to talk to it from Telegram.
 
+## One bot for all your computers
+
+Telegram lets one computer at a time read a bot, so you set the bot up on one
+computer — the one that is on the most, a Mac mini at home, say — and your
+other computers send through it:
+
+1. Link the computers first (Settings → Computers, see
+   [machines.md](machines.md)) on the computer that will send: it must reach
+   the one with the bot.
+2. On that computer, Settings → Telegram lists the computers it reaches that
+   have a bot. Press **Send through Mac mini**.
+
+From then on its alerts and questions reach the same chat, each with a first
+line saying which computer it is from (*🖥 MacBook*). Approve, Deny, Mute and
+your replies go back to the computer that asked, which acts on them with its
+own settings: answering from Telegram needs Premium and *Let my paired chat
+talk to sessions* on **that** computer. `/sessions`, `/new` and `/stop` still
+reach only the computer that has the bot.
+
+**When the computer with the bot is asleep or offline**, nothing is lost:
+the messages wait on the computer that sent them (at most 200, none older
+than a day) and go out when it is back, marked as late. Settings → Telegram
+on the sending computer says how many wait and why.
+
+**To move the bot** to the computer you are on — no new bot, no new pairing
+code — press **Make this computer the holder** (or **Move the bot here**).
+The old computer forgets the bot, the chat stays paired, and the chat hears
+that the bot moved. If the old computer reaches the new one, it starts
+sending through it by itself.
+
+What crosses between your computers goes through your machine-to-machine
+link, end-to-end encrypted: the relay in between cannot read it. Moving the
+bot carries its token the same way.
+
 ## What is sent to Telegram
 
 Telegram can read everything the bot sends. That is:

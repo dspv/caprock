@@ -5,12 +5,14 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { TelegramBotFields } from './TelegramBot'
-import type { TelegramStatus } from '@/lib/api'
+import type { TelegramCandidate, TelegramStatus } from '@/lib/api'
 
 const tg = vi.hoisted(() => ({
   state: { bot_set: false, chat_set: false, polling: false } as TelegramStatus,
   tokens: [] as string[],
   refuse: '',
+  holders: [] as TelegramCandidate[],
+  calls: [] as string[],
 }))
 
 vi.mock('@/lib/api', async (orig) => {
@@ -28,6 +30,22 @@ vi.mock('@/lib/api', async (orig) => {
       },
       telegramPair: async () => {
         tg.state = { ...tg.state, pairing: { code: '482913', link: 'https://t.me/my_bot?start=482913', expires_ms: Date.now() + 600_000 } }
+        return tg.state
+      },
+      telegramHolders: async () => ({ computers: tg.holders }),
+      telegramSetVia: async (machine: string) => {
+        tg.calls.push('via ' + machine)
+        tg.state = { bot_set: false, chat_set: false, polling: false, via: { machine, name: 'Mac mini', queued: 0 } }
+        return tg.state
+      },
+      telegramTake: async (machine?: string) => {
+        tg.calls.push('take ' + (machine ?? ''))
+        tg.state = { bot_set: true, bot_username: 'my_bot', chat_set: true, chat_name: 'Dima', polling: true }
+        return tg.state
+      },
+      telegramClearVia: async () => {
+        tg.calls.push('clear')
+        tg.state = { bot_set: false, chat_set: false, polling: false }
         return tg.state
       },
     },
@@ -101,5 +119,54 @@ describe('TelegramBotFields', () => {
     tg.state = { bot_set: true, chat_set: true, manual_chat: true, polling: false }
     render(<TelegramBotFields onSaved={() => {}} />)
     expect(await screen.findByText(/typed in by hand/)).toBeInTheDocument()
+  })
+})
+
+describe('One bot for all computers', () => {
+  it('offers the bot another computer holds, instead of a second bot', async () => {
+    tg.calls = []
+    tg.state = { bot_set: false, chat_set: false, polling: false }
+    tg.holders = [
+      { id: 'mini', name: 'Mac mini', holder: true, bot_username: 'my_bot', chat_name: 'Dima' },
+      { id: 'box', name: 'Linux box', holder: false },
+    ]
+    const saved = vi.fn()
+    render(<TelegramBotFields onSaved={saved} />)
+    expect(await screen.findByText('Use the bot you already have')).toBeInTheDocument()
+    expect(screen.queryByText('Linux box')).toBeNull()
+    // The own-bot card is still there, under it.
+    expect(screen.getByText('Connect your Telegram bot')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Send through Mac mini' }))
+    expect(await screen.findByText(/Sent through/)).toHaveTextContent('Sent through Mac mini')
+    expect(screen.getByRole('button', { name: 'Stop sending through Mac mini' })).toBeInTheDocument()
+    expect(tg.calls).toEqual(['via mini'])
+    expect(saved).toHaveBeenCalled()
+  })
+
+  it('says messages wait while the holder is offline, and moves the bot here', async () => {
+    tg.calls = []
+    tg.holders = []
+    tg.state = {
+      bot_set: false, chat_set: false, polling: false,
+      via: { machine: 'mini', name: 'Mac mini', queued: 3, waiting: true, last_error: 'Mac mini cannot be reached: offline' },
+    }
+    render(<TelegramBotFields onSaved={() => {}} />)
+    const waiting = await screen.findByRole('status')
+    expect(waiting).toHaveTextContent('3 messages wait for Mac mini: delivery resumes when it is back.')
+    expect(waiting).toHaveTextContent('cannot be reached')
+    fireEvent.click(screen.getByRole('button', { name: 'Make this computer the holder' }))
+    expect(await screen.findByText('Dima')).toBeInTheDocument()
+    expect(tg.calls).toEqual(['take '])
+  })
+
+  it('says where the bot went, and which computers it carries', async () => {
+    tg.holders = []
+    tg.state = { bot_set: false, chat_set: false, polling: false, moved_to: { name: 'MacBook', at: Date.now() - 5 * 60_000 } }
+    const { unmount } = render(<TelegramBotFields onSaved={() => {}} />)
+    expect(await screen.findByText(/This computer's bot moved to/)).toHaveTextContent('MacBook 5 min ago')
+    unmount()
+    tg.state = { bot_set: true, bot_username: 'my_bot', chat_set: true, chat_name: 'Dima', polling: true, carries: [{ name: 'MacBook', last_ms: Date.now() }] }
+    render(<TelegramBotFields onSaved={() => {}} />)
+    expect(await screen.findByText(/Also carries the messages of MacBook/)).toBeInTheDocument()
   })
 })

@@ -10,12 +10,14 @@ import (
 	"net/http"
 
 	"github.com/dspv/caprock/internal/agents"
+	"github.com/dspv/caprock/internal/pairing"
 	"github.com/dspv/caprock/internal/telegram"
 )
 
 // TelegramController is the bridge to the owner's own Telegram bot
-// (ADR-047), as Settings drives it. Every route here is the machine's: none
-// is on a paired device's allowlist (ADR-034, "outbound calls").
+// (ADR-047), as Settings drives it. Every route here is the machine's but
+// /v1/telegram/hub…, which only another computer of the owner's reaches
+// (computerRoutes): none is on a phone's allowlist (ADR-034).
 type TelegramController interface {
 	Status() telegram.Status
 	Connect(ctx context.Context, token string) (telegram.User, error)
@@ -29,6 +31,110 @@ type TelegramController interface {
 	// EditModule changes a message that module sent
 	// (PATCH /v1/x/{id}/telegram/{message_id}).
 	EditModule(ctx context.Context, e telegram.ModuleEdit) error
+	// The holder's half of one bot for several computers
+	// (/v1/telegram/hub…, ADR-047 amended 2026-11-27).
+	telegram.Hub
+}
+
+// TelegramVia is the other half, on a computer with no bot of its own: the
+// computers it reaches that hold one, sending through one, and moving that
+// bot here (/v1/telegram/holders, /v1/telegram/via…). Machine-only routes:
+// what this machine sends where is its owner's choice (rule 4).
+type TelegramVia interface {
+	TelegramHolders(ctx context.Context) []telegram.Candidate
+	SetTelegramVia(ctx context.Context, id string) error
+	ClearTelegramVia(ctx context.Context) error
+	TakeTelegram(ctx context.Context, id string) error
+}
+
+// handleTelegramHub serves the holder's routes to another computer of the
+// owner's (telegram.ServeHub): only to a computer the owner allowed here
+// (ADR-067) — the gate lets nothing else reach these patterns, and this
+// says so again, because the request's Sender is that computer's device
+// record, its name what the chat shows. A phone never sends through, and
+// the machine itself has no use for its own hub.
+func (s *Server) handleTelegramHub(w http.ResponseWriter, r *http.Request) {
+	if !s.requireTelegram(w) {
+		return
+	}
+	dev := deviceFrom(r)
+	if dev == nil || dev.Kind != pairing.KindMachine || dev.Pending {
+		s.failCode(w, http.StatusForbidden, errors.New("only another computer of yours, allowed here, sends through this computer's bot"))
+		return
+	}
+	telegram.ServeHub(s.d.Telegram, telegram.Sender{ID: dev.ID, Name: dev.Name, Key: dev.Key}, w, r)
+}
+
+func (s *Server) requireVia(w http.ResponseWriter) bool {
+	if s.d.TelegramVia == nil || !s.requireTelegram(w) {
+		if s.d.TelegramVia == nil {
+			s.failCode(w, http.StatusNotImplemented, errors.New("sending through another computer is unavailable"))
+		}
+		return false
+	}
+	return true
+}
+
+// handleTelegramHolders is GET /v1/telegram/holders: the computers this one
+// reaches, each asked whether it holds a bot to send through.
+func (s *Server) handleTelegramHolders(w http.ResponseWriter, r *http.Request) {
+	if !s.requireVia(w) {
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"computers": s.d.TelegramVia.TelegramHolders(r.Context())})
+}
+
+// handleTelegramSetVia is PUT /v1/telegram/via {"machine": id}: send this
+// machine's messages through that computer's bot. 409 when this machine has
+// a bot of its own or that computer holds none; 502 when it cannot be
+// reached.
+func (s *Server) handleTelegramSetVia(w http.ResponseWriter, r *http.Request) {
+	if !s.requireVia(w) {
+		return
+	}
+	var body struct {
+		Machine string `json:"machine"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<12)).Decode(&body); err != nil || body.Machine == "" {
+		s.failCode(w, http.StatusBadRequest, errors.New(`body must be {"machine": "<a computer's id>"}`))
+		return
+	}
+	if err := s.d.TelegramVia.SetTelegramVia(r.Context(), body.Machine); err != nil {
+		s.failCode(w, http.StatusConflict, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, s.d.Telegram.Status())
+}
+
+// handleTelegramClearVia is DELETE /v1/telegram/via: stop sending through
+// the other computer; what waited for it is dropped.
+func (s *Server) handleTelegramClearVia(w http.ResponseWriter, r *http.Request) {
+	if !s.requireVia(w) {
+		return
+	}
+	if err := s.d.TelegramVia.ClearTelegramVia(r.Context()); err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, s.d.Telegram.Status())
+}
+
+// handleTelegramTake is POST /v1/telegram/via/take {"machine"?: id}: the bot
+// moves here from that computer (the one this machine sends through when
+// omitted), with its chat and offset — no new bot, no new pairing.
+func (s *Server) handleTelegramTake(w http.ResponseWriter, r *http.Request) {
+	if !s.requireVia(w) {
+		return
+	}
+	var body struct {
+		Machine string `json:"machine"`
+	}
+	_ = json.NewDecoder(io.LimitReader(r.Body, 1<<12)).Decode(&body)
+	if err := s.d.TelegramVia.TakeTelegram(r.Context(), body.Machine); err != nil {
+		s.failCode(w, http.StatusConflict, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, s.d.Telegram.Status())
 }
 
 func (s *Server) requireTelegram(w http.ResponseWriter) bool {

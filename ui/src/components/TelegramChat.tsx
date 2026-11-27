@@ -22,7 +22,7 @@ export function TelegramChat() {
   const [patch, setPatch] = useState<Partial<Settings>>({})
   const [error, setError] = useState('')
   const s: Settings | undefined = settings.data ? { ...settings.data, ...patch } : undefined
-  const paired = !!s?.report_bot_set && !!s?.report_chat_id
+  const paired = (!!s?.report_bot_set && !!s?.report_chat_id) || !!s?.telegram_via
 
   const toggle = (key: 'telegram_chat' | 'telegram_code', on: boolean) => {
     setPatch((p) => ({ ...p, [key]: on }))
