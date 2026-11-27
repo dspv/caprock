@@ -1,5 +1,5 @@
 /**
- * Ask Gemini — the second paid feature, and the first that spends money.
+ * Ask Gemini — a second model, on the user's own key (free since 2026-11-27).
  *
  * The shape of it is set by one decision (ADR-023): the key is not ours. It
  * lives in the daemon's environment, Caprock never stores it and this page
@@ -7,14 +7,8 @@
  * worse first run — you set a variable and restart — and the panel says so
  * plainly rather than pretending a field is missing.
  *
- * Two things can be absent, and they are different problems with different
- * fixes, so the panel never merges them into one dead button:
- *
- *  - **No key.** Nothing to do with money. The feature is simply not set up on
- *    this machine, and the answer is a variable name.
- *  - **No licence.** The key works, the feature is bought rather than built.
- *    The server refuses the call, so this is not a decoration over a working
- *    button — see the 402 in internal/api/gemini.go.
+ * One thing can be absent: **the key.** The feature is simply not set up on
+ * this machine, and the answer is a variable name or the field below.
  *
  * What it costs is shown after every answer, from the response's own token
  * counts. That figure is what Caprock sent, not what Google billed: there is
@@ -39,9 +33,8 @@ function fmtCents(usd: number): string {
 
 export function GeminiPanel() {
   // Fetched once, not polled: the key comes from the daemon's environment and
-  // cannot change while it runs, and the licence is already polled by the
-  // premium chip. A timer here bought nothing and outlived the test that
-  // mounted it, firing into a torn-down jsdom.
+  // cannot change while it runs. A timer here bought nothing and outlived
+  // the test that mounted it, firing into a torn-down jsdom.
   const status = useApi(() => api.gemini(), [], { live: false })
   const [prompt, setPrompt] = useState('')
   const [draftKey, setDraftKey] = useState('')

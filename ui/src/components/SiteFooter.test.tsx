@@ -15,15 +15,10 @@ import { SiteFooter } from './SiteFooter'
 describe('SiteFooter', () => {
   beforeEach(() => localStorage.clear())
 
-  it('names the premium page without turning the footer into a checkout', () => {
+  // No plan for one person is sold (2026-11-27): no premium link, no price.
+  it('links to no premium page and quotes no price', () => {
     render(<SiteFooter />)
-    const link = screen.getByRole('link', { name: /^premium$/i })
-    expect(link).toHaveAttribute('href', 'https://caprock.dev/premium')
-    // It names a destination and what is there. The price and the card field
-    // live on that page — a dashboard footer that quotes a figure is one step
-    // from being a storefront, which is not what people installed.
-    expect(link.textContent).not.toMatch(/buy|upgrade|subscribe/i)
-    expect(link.getAttribute('title')).toMatch(/daily spend cap/i)
+    expect(screen.queryByRole('link', { name: /premium/i })).toBeNull()
     expect(document.body.textContent).not.toMatch(/\$\d/)
   })
 

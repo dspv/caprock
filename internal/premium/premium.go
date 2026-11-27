@@ -1,4 +1,8 @@
-// Package premium holds what the paid plan costs and where to buy it.
+// Package premium holds what the paid plan for one person cost and where it
+// was sold. Nothing in the dashboard reads it since 2026-11-27, when that plan
+// was withdrawn (ADR-022 amended); it is kept with GET /v1/premium for the
+// licence code the team tier reuses, and the test below still holds it to the
+// site's pricing file. What follows is why it was built this way.
 //
 // The dashboard has to state a price: a dialog that explains a paid feature
 // and then sends someone away to find out what it costs is asking them to

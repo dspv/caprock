@@ -1,5 +1,5 @@
 /**
- * What the Premium and Teams dialogs show in the iOS app, which sells
+ * What the Teams dialog shows in the iOS app, which sells
  * nothing and points to no place where anything is sold (ADR-083): the
  * feature's name and a plain fact, no price, no link, no call to buy.
  */

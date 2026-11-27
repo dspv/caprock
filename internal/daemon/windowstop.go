@@ -14,7 +14,6 @@ import (
 	"github.com/dspv/caprock/internal/alerts"
 	"github.com/dspv/caprock/internal/bus"
 	"github.com/dspv/caprock/internal/cap"
-	"github.com/dspv/caprock/internal/license"
 	"github.com/dspv/caprock/internal/store"
 )
 
@@ -32,7 +31,7 @@ func (d *Daemon) startWindowStop(ctx context.Context) {
 	d.winStop = &cap.WindowGuard{
 		Settings: func() cap.WindowSettings {
 			c := d.config()
-			return cap.WindowSettings{Pct: c.WindowStop(), Licensed: license.Parse(c.LicenseKey, time.Now()).Active}
+			return cap.WindowSettings{Pct: c.WindowStop()}
 		},
 		Windows: d.planWindows,
 		Sig:     defaultSubSessions{d: d},
@@ -161,7 +160,6 @@ type windowStopPaused struct {
 // windowStopStatus is GET /v1/window-stop.
 type windowStopStatus struct {
 	Pct       int                `json:"pct"`
-	Licensed  bool               `json:"licensed"`
 	FreshForS int                `json:"fresh_for_s"`
 	Windows   []windowStopFigure `json:"windows"`
 	Paused    []windowStopPaused `json:"paused"`
@@ -172,7 +170,7 @@ func (d *Daemon) windowStopStatus(ctx context.Context) any {
 	c := d.config()
 	now := time.Now()
 	out := windowStopStatus{
-		Pct: c.WindowStop(), Licensed: license.Parse(c.LicenseKey, now).Active,
+		Pct:       c.WindowStop(),
 		FreshForS: int(cap.FreshFor / time.Second),
 		Windows:   []windowStopFigure{}, Paused: []windowStopPaused{},
 	}

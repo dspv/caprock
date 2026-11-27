@@ -110,7 +110,7 @@ type Config struct {
 	// reason its owner could not explain. See internal/cap.
 	CapUSDPerDay float64 `json:"cap_usd_per_day,omitempty"`
 	// WindowStopPct is the share of a Claude plan window (five-hour or
-	// weekly) at which Premium pauses the Claude Code sessions Caprock started,
+	// weekly) at which Caprock pauses the Claude Code sessions it started,
 	// until the window resets. Off until chosen, like the daily cap: a pause
 	// nobody asked for would stop work for a reason its owner could not
 	// explain. 0 or nil is off. See internal/cap/window.go.
@@ -238,7 +238,7 @@ type Config struct {
 	// OwnLabels names the user's own sign-in per agent, when renamed.
 	OwnLabels map[string]string `json:"own_labels,omitempty"`
 	// Prompts records when each of the dashboard's own offers was last
-	// answered — the GitHub star strip, the Premium and Teams nudges, the
+	// answered — the GitHub star strip, the Teams nudges, the
 	// share prompt — keyed by prompt id, in Unix ms. Kept here rather than in
 	// the browser so an answer given in the desktop app holds in a browser
 	// tab too, and the other way round. See .ai/04-ui.md, "Product-led

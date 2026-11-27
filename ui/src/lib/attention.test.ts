@@ -211,30 +211,19 @@ describe('plan-limit alerts', () => {
 })
 
 /**
- * The plan-window stop (Premium). The free row above is unchanged; on an
- * install without a licence it carries the offer, and once the stop has
- * paused something the row becomes the notice: which sessions, and when.
+ * The plan-window stop. The row above is unchanged until the stop has paused
+ * something; then the row becomes the notice: which sessions, and when.
  */
 describe('the plan-window stop', () => {
   const soon = (h: number) => (NOW + h * 3600 * 1000) / 1000
   const limits = { five_hour: { used_percentage: 92, resets_at: soon(1) } }
   const base = { pct: 90, fresh_for_s: 600, windows: [], paused: [] }
 
-  it('offers the stop on the free row only when the install has no licence', () => {
-    const free = findAttention({ sessions: [], alerts: [], now: NOW, limits, windowStop: { ...base, licensed: false } })
-    expect(free[0]?.offerWindowStop).toBe(true)
-    const paid = findAttention({ sessions: [], alerts: [], now: NOW, limits, windowStop: { ...base, licensed: true } })
-    expect(paid[0]?.offerWindowStop).toBe(false)
-    // Unknown is not "unlicensed": nobody is sold what they may already own.
-    const unknown = findAttention({ sessions: [], alerts: [], now: NOW, limits })
-    expect(unknown[0]?.offerWindowStop).toBeFalsy()
-  })
-
   it('names the paused sessions and when they resume, in place of the limit row', () => {
     const out = findAttention({
       sessions: [], alerts: [], now: NOW, limits,
       windowStop: {
-        ...base, licensed: true,
+        ...base,
         paused: [
           { session_id: 'a1', project: 'acme-api', window: 'five_hour', resume_at: soon(1), paused_at: NOW - 60_000 },
           { session_id: 'b2', project: 'acme-web', window: 'five_hour', resume_at: soon(1), paused_at: NOW - 60_000 },

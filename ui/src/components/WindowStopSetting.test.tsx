@@ -35,7 +35,7 @@ vi.mock('@/lib/api', async (orig) => {
 import { WindowStopSetting } from './WindowStopSetting'
 
 function stop(over: Partial<WindowStop> = {}): WindowStop {
-  return { pct: 90, licensed: true, fresh_for_s: 600, windows: [], paused: [], ...over }
+  return { pct: 90, fresh_for_s: 600, windows: [], paused: [], ...over }
 }
 
 describe('WindowStopSetting', () => {

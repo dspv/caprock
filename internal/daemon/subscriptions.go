@@ -561,7 +561,7 @@ func (a *subsAdapter) Update(ctx context.Context, id string, p api.SubscriptionP
 		return api.Subscription{}, errors.New(`say whose own sign-in: "agent" is "claude" or "codex"`)
 	}
 	if own && p.SetPlan {
-		return api.Subscription{}, errors.New("your own sign-in's plan is the main plan: set it in Settings → Plan & licence")
+		return api.Subscription{}, errors.New("your own sign-in's plan is the main plan: set it in Settings → Plan")
 	}
 	d.cfgMu.Lock()
 	cfg := d.opt.Config

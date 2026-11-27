@@ -19,9 +19,7 @@ import { localDay } from '@/components/Nudges'
 import { addDays } from '@/lib/week'
 import { costBasis, costBasisLong, costLabel } from '@/components/CostBasis'
 import { usePlan } from '@/components/PlanPicker'
-import { PremiumBanner } from '@/components/PremiumBanner'
 import { TeamsBanner } from '@/components/TeamsBanner'
-import { Locked } from '@/components/Locked'
 import { WeeklyReport } from '@/components/WeeklyReport'
 import { ModelCost, UnpricedNote } from '@/components/Unpriced'
 import { Donut, ShareBar, sharePct, sliceColors, topN, type Segment } from '@/components/Donut'
@@ -175,14 +173,7 @@ export function HistoryScreen() {
       {/* Lifetime figures over a history still moving in are the newest of it alone. */}
       <MovingLine className="px-0.5" />
 
-      {/* Below the range row, above the figures: this screen is where someone
-        * came to think about what all of this has cost, which is the one
-        * moment a paid spend control is a relevant thing to mention. */}
-      {measured && d && (
-        <PremiumBanner costUSD={d.totals.cost_usd} days={d.totals.days} now={Date.now()} />
-      )}
-      {/* The team card, when a second person commits to the same code; the
-        * Premium banner above and this one share the single offer slot. */}
+      {/* The team card, when a second person commits to the same code. */}
       {measured && d && (
         <TeamsBanner fact={{ costUSD: d.totals.cost_usd, projects: d.summary?.projects?.filter((p) => p.cost_usd > 0).length ?? 0, window: 'all time' }} now={Date.now()} />
       )}
@@ -368,15 +359,9 @@ export function HistoryScreen() {
               </div>
             )}
           </Panel>
-          {/* The weekly report belongs beside the figures it would contain: this
-            * screen already answers "where did it go", and the paid half is
-            * having that answer arrive without coming here to look. Its
-            * preview shows the shape of the message and no figures — those
-            * are free on this screen, and putting them behind glass would take
-            * something away rather than preview something new. */}
-          {!isPairedDevice() && <Locked feature="report" title="Get this every Monday, without opening the dashboard">
-            <WeeklyReport />
-          </Locked>}
+          {/* The weekly report belongs beside the figures it would contain:
+            * the same answer, arriving without coming here to look. */}
+          {!isPairedDevice() && <WeeklyReport />}
         </div>
       </div>
     </div>

@@ -298,7 +298,7 @@ type Daemon struct {
 	// cap is the daily spend guard. Nil until run() builds it, because it needs
 	// the owned-session manager.
 	cap *cap.Guard
-	// winStop is the plan-window stop (Premium), built beside the cap.
+	// winStop is the plan-window stop, built beside the cap.
 	winStop *cap.WindowGuard
 	// awake keeps the computer from idle-sleeping while agents work
 	// (keepawake.go); never nil once run() has started.

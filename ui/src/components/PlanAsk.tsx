@@ -10,7 +10,7 @@
  *
  *   How do you pay for Claude?   [Pro $20] [Max $100] [Ultra $200] [API key]   Not now
  *
- * A chip saves exactly what Settings → Plan & licence and the header chip save
+ * A chip saves exactly what Settings → Plan and the header chip save
  * (the same presets, components/PlanPicker), through the same settings PUT.
  * Under the chips, only when Claude Code's status line has reported the 5-hour
  * or weekly window — which exist only for subscription sign-ins — a hint says

@@ -12,7 +12,6 @@ import type { Project } from '@/lib/projects'
 export interface Fixture {
   status: Status
   pairMe: PairMe
-  premium: unknown
   projects: Project[]
   sessions: SessionSummary[]
   chats: SessionSummary[]
@@ -183,7 +182,6 @@ export function buildFixture(now: number): Fixture {
     status,
     pairMe: { role: 'controller', id: 'demo-phone', name: 'This iPhone', via: 'relay' as PairMe['via'] },
     // A licence that is on and no plans: nothing on any screen offers a sale.
-    premium: { license: { active: true, in_grace: false } },
     projects,
     sessions,
     chats,

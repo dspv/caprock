@@ -1293,10 +1293,10 @@ it off. It is separate from the Telegram alerts in
 [Phone alerts](../README.md#hear-about-it-on-your-phone--and-answer-from-telegram), which stay off until
 you turn them on.
 
-With Premium's plan-window stop on (Settings → *Pause at the plan limit*), a
+With the plan-window stop on (Settings → *Pause at the plan limit*), a
 notification names the sessions it paused and the time they resume, and a
 second one says when they have. These come whenever the stop acts; there is
-no switch for them. See [Premium](../README.md#premium).
+no switch for them. See [the README](../README.md#spend-controls-gemini-and-the-weekly-report).
 
 ## GitHub
 
@@ -1849,7 +1849,7 @@ What the phone opens to:
   **Delete** removes it.
 - **Full dashboard**, the last row, or **⋯** at the top right, opens
   everything else: a new session, all projects and sessions, Settings,
-  Feedback and Premium.
+  and Feedback.
 
 On Android, holding the icon also offers **New chat** and **Save**, and
 **Share** from another app can send text or a link to Caprock's Save. Both

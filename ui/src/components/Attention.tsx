@@ -15,7 +15,6 @@ import { href } from '@/lib/router'
 import { PipelineHostContext } from '@/lib/pipelineHost'
 import { openSession, typeable } from '@/lib/sessionJump'
 import { sessionTitle } from '@/lib/sidebar'
-import { PremiumHint } from './PremiumHint'
 import { LoopAlertCard } from './LoopAlertCard'
 import { useLoopHidden } from '@/lib/loopalert'
 import { NeedChip } from './NeedChip'
@@ -170,12 +169,6 @@ function Row({ it, now, session }: {
         >
           {it.sessionId ? 'open' : 'details'}
         </a>
-        )}
-        {/* The plan-window stop is the thing that does act here: it pauses
-          * Caprock's own sessions before the limit and resumes them after the
-          * reset. Offered only on an install known to be without it. */}
-        {it.id.startsWith('limit-') && it.offerWindowStop && (
-          <PremiumHint feature="window" reason="Premium pauses Caprock's sessions here" now={now} />
         )}
       </span>
     </div>

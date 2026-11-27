@@ -30,13 +30,6 @@ vi.mock('@/lib/api', async (orig) => {
       status: async () => ({ version: 'v0.9.4' }),
       update: async () => undefined,
       settings: async () => ({ update_checks: false, plan_kind: '', plan_label: '', plan_usd_per_month: 0 }),
-      premium: async () => ({
-        yearly: { per_month_usd: 2.5, charged_usd: 30, period: 'year', url: 'https://buy/y' },
-        monthly: { per_month_usd: 5, charged_usd: 5, period: 'month', url: 'https://buy/m' },
-        lifetime: { per_month_usd: 0, charged_usd: 100, period: 'once', url: 'https://buy/l' },
-        info_url: 'https://caprock.dev/premium/',
-        license: { active: false, in_grace: false },
-      }),
     },
   }
 })

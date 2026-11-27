@@ -218,38 +218,25 @@ func reportDaemon(t *testing.T, host string, cfg config.Config) (*Daemon, *store
 	return d, st
 }
 
-// The paid gate lives in the daemon, not only in the UI, because this is the
-// one feature that reaches the network on a schedule with nobody watching
-// (ADR-023). A UI-only gate would keep sending to anyone whose licence lapsed —
-// a free tier quietly getting a paid feature forever, and one no screen would
-// ever reveal because the messages arrive on a phone.
-func TestTheReportIsGatedOnAPaidLicence(t *testing.T) {
+// No licence is asked (2026-11-27, ADR-022 amended): whatever the key says,
+// a configured bot gets the report.
+func TestTheReportNeedsNoLicence(t *testing.T) {
 	for _, c := range []struct {
-		name    string
-		key     string
-		wantOut bool
+		name string
+		key  string
 	}{
-		{"no key at all", "", false},
-		{"a licence that lapsed", expiredKey(), false},
-		{"not a Caprock key", "sk-not-ours-1234567890", false},
-		{"a paid licence", activeKey(), true},
+		{"no key at all", ""},
+		{"a licence that lapsed", expiredKey()},
+		{"a licence", activeKey()},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			tg := &telegramStub{}
-			d, st := reportDaemon(t, tg.start(t), config.Config{
+			d, _ := reportDaemon(t, tg.start(t), config.Config{
 				ReportBotToken: "tok", ReportChatID: "chat", LicenseKey: c.key,
 			})
 			d.weeklyOnce(context.Background())
-
-			if got := tg.count() > 0; got != c.wantOut {
-				t.Errorf("sent = %v, want %v", got, c.wantOut)
-			}
-			// An unlicensed daemon must also leave the marker alone. Burning the
-			// week here would mean that paying on Tuesday costs the customer the
-			// report for the week they just paid for.
-			marker, _ := st.GetMeta(context.Background(), store.MetaReportWeek)
-			if !c.wantOut && marker != "" {
-				t.Errorf("an ungated week was consumed anyway: %q", marker)
+			if tg.count() == 0 {
+				t.Error("nothing was sent")
 			}
 		})
 	}
@@ -367,7 +354,6 @@ func TestSendNowReportsWhyItCouldNotSend(t *testing.T) {
 	}{
 		{"no bot at all", config.Config{LicenseKey: activeKey()}, "no bot configured"},
 		{"a chat id but no token", config.Config{ReportChatID: "chat", LicenseKey: activeKey()}, "no bot configured"},
-		{"a bot but no licence", config.Config{ReportBotToken: "tok", ReportChatID: "chat"}, "premium"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			tg := &telegramStub{}

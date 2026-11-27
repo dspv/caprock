@@ -1,6 +1,6 @@
 /**
- * The frame both upsell dialogs share — Caprock for Teams and Caprock Premium —
- * so they read as one thing: a picture of what you get first, a few short
+ * The frame of the upsell dialog — Caprock for Teams (Premium, which shared
+ * it, is gone since 2026-11-27): a picture of what you get first, a few short
  * lines after it, then the two ways forward.
  *
  * The picture is drawn in the Week card's language (the same ground, the same
@@ -25,7 +25,7 @@ export function useDialogFocus() {
       [...(panel.current?.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), [tabindex]') ?? [])]
         .filter((el) => el.getAttribute('tabindex') !== '-1')
     // The first control that is not the × (Enter on an opened dialog must not
-    // close it) nor inside a row marked data-dialog-later, such as Premium's
+    // close it) nor inside a row marked data-dialog-later, such as a row of
     // other features: focus lands on what the dialog is for.
     const first = focusables().find((el) => !el.hasAttribute('data-dialog-close') && !el.closest('[data-dialog-later]')) ?? focusables()[0]
     first?.focus()

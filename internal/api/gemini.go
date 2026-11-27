@@ -9,16 +9,14 @@ import (
 	"strings"
 
 	"github.com/dspv/caprock/internal/gemini"
-	"github.com/dspv/caprock/internal/license"
 )
 
 // handleGeminiStatus says whether the feature is usable here, without ever
-// revealing the key. It answers the two questions the UI has — is there a key,
-// and is this a paying user — so the screen can say which one is missing
-// instead of showing a dead button.
+// revealing the key: whether there is a key, so the screen can say so instead
+// of showing a dead button. No licence is asked (2026-11-27: Caprock is free
+// for one person, ADR-022 amended).
 func (s *Server) handleGeminiStatus(w http.ResponseWriter, r *http.Request) {
 	cfg := s.d.Settings.Get()
-	st := license.Parse(cfg.LicenseKey, s.d.Now())
 
 	// The choosable models, priced. A twenty-five-fold spread separates the
 	// cheapest from the dearest, and it is the reader's money — so the price of
@@ -53,7 +51,6 @@ func (s *Server) handleGeminiStatus(w http.ResponseWriter, r *http.Request) {
 		// the field changes nothing when the environment is winning.
 		"from_env": gemini.EnvKeyValue() != "",
 		"env_var":  gemini.EnvKey,
-		"licensed": st.Active,
 		"model":    gemini.DefaultModel,
 		"models":   models,
 	})
@@ -61,12 +58,8 @@ func (s *Server) handleGeminiStatus(w http.ResponseWriter, r *http.Request) {
 
 // handleGeminiAsk sends one prompt to Google on the user's key.
 //
-// The licence is checked HERE, on the server, which the spend cap deliberately
-// does not do. The difference is what the two features cost when the check is
-// skipped: a cap spends nothing, while this spends the user's Gemini quota and
-// opens an outbound connection. ADR-023 records the reasoning and the limit —
-// server-side checks belong to features that spend money or reach the network,
-// not to features that draw a panel.
+// It needs a key and nothing else: no licence since 2026-11-27 (ADR-022
+// amended: Caprock is free for one person).
 func (s *Server) handleGeminiAsk(w http.ResponseWriter, r *http.Request) {
 	if s.d.AskGemini == nil {
 		http.Error(w, "gemini not configured", http.StatusNotImplemented)
@@ -77,13 +70,6 @@ func (s *Server) handleGeminiAsk(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusPreconditionFailed, map[string]string{
 			"error":  "no Gemini key",
 			"detail": "add one on the Cost screen — it works straight away, no restart",
-		})
-		return
-	}
-	if st := license.Parse(s.d.Settings.Get().LicenseKey, s.d.Now()); !st.Active {
-		writeJSON(w, http.StatusPaymentRequired, map[string]string{
-			"error":  "premium required",
-			"detail": "asking Gemini is a paid feature; the key stays yours either way",
 		})
 		return
 	}

@@ -34,7 +34,7 @@ describe('GeminiPanel', () => {
   // instruction at all for anyone who ran `caprock service install` — which is
   // the setup the product recommends (ADR-025).
   it('offers a field to paste the key into', async () => {
-    status.value = { available: false, env_var: 'GEMINI_API_KEY', licensed: true, model: 'gemini-3.5-flash-lite' }
+    status.value = { available: false, env_var: 'GEMINI_API_KEY', model: 'gemini-3.5-flash-lite' }
     render(<GeminiPanel />)
     await waitFor(() => expect(screen.getByPlaceholderText('AIza…')).toBeInTheDocument())
     expect(screen.getByRole('button', { name: /save key/i })).toBeInTheDocument()
@@ -43,7 +43,7 @@ describe('GeminiPanel', () => {
 
   it('saves the key and asks for nothing else', async () => {
     saved.calls = []
-    status.value = { available: false, env_var: 'GEMINI_API_KEY', licensed: true, model: 'm' }
+    status.value = { available: false, env_var: 'GEMINI_API_KEY', model: 'm' }
     render(<GeminiPanel />)
     const field = await screen.findByPlaceholderText('AIza…')
     fireEvent.change(field, { target: { value: 'AIza-test' } })
@@ -54,20 +54,14 @@ describe('GeminiPanel', () => {
   })
 
   it('says where the key lives and who bills for it', async () => {
-    status.value = { available: false, env_var: 'GEMINI_API_KEY', licensed: true, model: 'm' }
+    status.value = { available: false, env_var: 'GEMINI_API_KEY', model: 'm' }
     render(<GeminiPanel />)
     await waitFor(() => expect(screen.getByText(/never sent back to this page/i)).toBeInTheDocument())
     expect(screen.getByText(/pay Google directly/i)).toBeInTheDocument()
   })
 
-  it('shows the setup step whether or not they have paid', async () => {
-    status.value = { available: false, env_var: 'GEMINI_API_KEY', licensed: false, model: 'm' }
-    render(<GeminiPanel />)
-    await waitFor(() => expect(screen.getByPlaceholderText('AIza…')).toBeInTheDocument())
-  })
-
   it('offers the box once a key is set', async () => {
-    status.value = { available: true, env_var: 'GEMINI_API_KEY', licensed: true, model: 'gemini-3.5-flash-lite' }
+    status.value = { available: true, env_var: 'GEMINI_API_KEY', model: 'gemini-3.5-flash-lite' }
     render(<GeminiPanel />)
     await waitFor(() => expect(screen.getByRole('button', { name: /^ask$/i })).toBeInTheDocument())
     expect(screen.getByPlaceholderText(/ask about your sessions/i)).toBeInTheDocument()
@@ -77,7 +71,7 @@ describe('GeminiPanel', () => {
   })
 
   it('will not send an empty question', async () => {
-    status.value = { available: true, env_var: 'GEMINI_API_KEY', licensed: true, model: 'm' }
+    status.value = { available: true, env_var: 'GEMINI_API_KEY', model: 'm' }
     render(<GeminiPanel />)
     expect(await screen.findByRole('button', { name: /^ask$/i })).toBeDisabled()
   })
@@ -86,13 +80,13 @@ describe('GeminiPanel', () => {
   // way keeps working — and the panel says which source it is using, or
   // editing a field that changes nothing is baffling.
   it('says when the environment is supplying the key', async () => {
-    status.value = { available: true, from_env: true, env_var: 'GEMINI_API_KEY', licensed: true, model: 'm' }
+    status.value = { available: true, from_env: true, env_var: 'GEMINI_API_KEY', model: 'm' }
     render(<GeminiPanel />)
     await waitFor(() => expect(screen.getByText(/takes precedence/i)).toBeInTheDocument())
   })
 
   it('says when the stored key is the one in use', async () => {
-    status.value = { available: true, from_env: false, env_var: 'GEMINI_API_KEY', licensed: true, model: 'm' }
+    status.value = { available: true, from_env: false, env_var: 'GEMINI_API_KEY', model: 'm' }
     render(<GeminiPanel />)
     await waitFor(() => expect(screen.getByText(/key you saved here/i)).toBeInTheDocument())
   })
@@ -100,7 +94,7 @@ describe('GeminiPanel', () => {
 
 describe('choosing a model', () => {
   const withModels = (): GeminiStatus => ({
-    available: true, env_var: 'GEMINI_API_KEY', licensed: true,
+    available: true, env_var: 'GEMINI_API_KEY',
     model: 'gemini-3.5-flash-lite',
     models: [
       { id: 'gemini-2.5-flash-lite', display: 'Gemini 2.5 Flash Lite', input: 0.1, output: 0.4, typical_usd: 0.0004 },
@@ -119,7 +113,7 @@ describe('choosing a model', () => {
   })
 
   it('offers no picker when the daemon sent no models', async () => {
-    status.value = { available: true, env_var: 'GEMINI_API_KEY', licensed: true, model: 'm' }
+    status.value = { available: true, env_var: 'GEMINI_API_KEY', model: 'm' }
     render(<GeminiPanel />)
     await screen.findByRole('button', { name: /^ask$/i })
     expect(screen.queryByLabelText('Model')).not.toBeInTheDocument()

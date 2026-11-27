@@ -3,8 +3,8 @@
  *
  * Owner, 2026-10-11 (translated): "Banners like this must be gorgeous, with a
  * picture — small but perfect. Use your own designs." So every banner — the
- * team card, the Premium offers, the setup and star strips, the update and
- * hooks notices, the locked panels' foot — is this one shape: a small scene
+ * team card, the setup and star strips, the update and hooks notices — is
+ * this one shape: a small scene
  * drawn from the product's own characters on the left, a title in a
  * confident weight, one short line, one primary button and a quiet dismiss.
  * One row on a desktop, the actions under the words when narrow (a container
@@ -18,7 +18,7 @@ import type { ButtonHTMLAttributes, ReactNode } from 'react'
 import { Body, type Character } from './Characters'
 import './Banner.css'
 
-export type BannerTone = 'accent' | 'premium' | 'warn' | 'ok'
+export type BannerTone = 'accent' | 'warn' | 'ok'
 
 export function Banner({
   id,
@@ -67,8 +67,8 @@ export function Banner({
   )
 }
 
-/** The one primary button. `premium` for a paid feature, ultramarine; `ghost` for a second action. */
-export function BannerButton({ kind = 'accent', className = '', ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { kind?: 'accent' | 'premium' | 'ghost' }) {
+/** The one primary button; `ghost` for a second action. */
+export function BannerButton({ kind = 'accent', className = '', ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { kind?: 'accent' | 'ghost' }) {
   const fill = kind === 'accent' ? 'bg-accent text-bg' : ''
   return <button type="button" data-kind={kind} className={`bn-btn ${fill} ${className}`} {...rest} />
 }

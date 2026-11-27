@@ -100,8 +100,7 @@
 [data-theme="light"] .brain-hero { --character-outline: var(--color-border-strong); }
 
 /* "Free" (FreePill): an accent tint and hairline, the label pulled towards
- * the palette's text so it reads on every tint — the quiet register of Get
- * premium (.premium-cta), in the accent, not a solid block. In the
+ * the palette's text so it reads on every tint, not a solid block. In the
  * components layer, so a caller's size utilities win over these defaults. */
 @layer components {
   .brain-free {

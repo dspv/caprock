@@ -22,12 +22,6 @@ vi.mock('@/lib/api', async (orig) => {
       ...actual.api,
       subscriptions: m.list, addSubscription: m.add, removeSubscription: m.remove, updateSubscription: m.update,
       settings: m.settings, saveSettings: m.save,
-      premium: async () => ({
-        yearly: { per_month_usd: 2.5, charged_usd: 30, period: 'year', url: 'https://buy/y' },
-        lifetime: { per_month_usd: 0, charged_usd: 100, period: 'once', url: 'https://buy/l' },
-        info_url: 'https://caprock.dev/premium/',
-        license: { active: false, in_grace: false },
-      }),
     },
   }
 })

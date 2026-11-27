@@ -31,8 +31,8 @@ export function isNativeApp(): boolean {
 
 /**
  * Whether the page may offer anything for sale. Never in the iOS app: it
- * neither sells Premium nor points to where it is sold (ADR-083), so every
- * price, buy link and upgrade prompt asks this first.
+ * neither sells Caprock for Teams nor points to where it is sold (ADR-083),
+ * so every price, buy link and upgrade prompt asks this first.
  */
 export function sellsHere(): boolean {
   return !isNativeApp()

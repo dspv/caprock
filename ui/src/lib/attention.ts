@@ -47,13 +47,6 @@ export interface AttentionItem {
   owned?: boolean
   /** Age of the condition, unix ms, when known. */
   since?: number
-  /**
-   * A plan-window item on an install without Premium: the place to offer the
-   * plan-window stop, which would pause Caprock's own sessions here and resume
-   * them after the reset. Never set on a licensed install — nobody is sold
-   * what they already have.
-   */
-  offerWindowStop?: boolean
   /** A Needs you row: why the session waits (lib/needs.ts), drawn as a chip. */
   need?: Need
   /**
@@ -265,11 +258,10 @@ export function findAttention({ sessions, alerts, now, limits, windowStop, waiti
       detail: `resets ${resetClock(resetMs, now)} — in ${countdown(resetMs - now)}; at 100% Claude Code pauses until then${w.forecast ? ` · ${w.forecast}` : ''}`,
       // Only when the answer is known to be "no licence": an unknown state
       // offers nothing rather than selling a stop to someone who owns it.
-      offerWindowStop: windowStop ? !windowStop.licensed : undefined,
     })
   }
 
-  // 5. The plan-window stop has paused Caprock's own sessions (Premium). The
+  // 5. The plan-window stop has paused Caprock's own sessions. The
   // notice the feature promises: which sessions, and when they carry on. It
   // stands in for the plain limit row rather than repeating it.
   const paused = Array.isArray(windowStop?.paused) ? windowStop!.paused.filter(Boolean) : []

@@ -57,14 +57,13 @@ Percentages are deliberately coarse — they answer "is this track started, half
   The Now filter is `all / claude / opencode / gemini / codex / deepseek /
   hermes`. See [16-opencode.md](16-opencode.md), [19-codex.md](19-codex.md),
   [20-deepseek.md](20-deepseek.md) and [24-hermes.md](24-hermes.md).
-- **The paid tier is live.** The daily spend cap (`internal/cap`) pauses the
-  sessions Caprock started when the day crosses a limit; the plan-window
-  pause, the weekly report, Ask Gemini on the user's own key and the tool
-  drill-down are paid surfaces too. Any number of subscriptions, custom
-  agents, talking to agents from Telegram and Second Brain are free with no
-  cap (owner, 2026-11-27: parity with Orca). Payment is a licence key
-  checked locally ([ADR-022](08-decisions.md)); one repository, one binary,
-  everything Apache-2.0.
+- **Free for one person, all of it** (owner, 2026-11-27;
+  [ADR-022](08-decisions.md) amended). The daily spend cap (`internal/cap`),
+  the plan-window pause, the weekly report, Ask Gemini on the user's own key,
+  the tool drill-down, any number of subscriptions, custom agents, Telegram
+  and Second Brain need no licence. Paid is the team tier only; the offline
+  licence code is kept for it. One repository, one binary, everything
+  Apache-2.0.
 - **Context cost is visible rather than implied.** The session card states what
   the next call's cache read costs, Lifetime breaks out the context tax, and a
   loop alert prices the repeated context reads it can attach to turns. Unlinked
@@ -79,6 +78,22 @@ Percentages are deliberately coarse — they answer "is this track started, half
 - Toolchain versions in [10-infrastructure.md](10-infrastructure.md) were checked on 2026-08-18 and are now exercised in CI.
 
 ## Log
+
+### 2026-11-27 — unreleased: no paid plan for one person (ADR-022 amended)
+
+Owner (translated): "nobody paid, I gave everyone keys free; good time." The
+rest of Premium follows the four features above: the daily cap, the
+plan-window pause, the weekly report, Ask Gemini and the tool drill-down are
+free. The daemon drops every licence gate (`POST /v1/gemini/ask`'s `402`,
+the weekly report's and the window stop's checks, the drill's `locked` and
+`teaser`; `licensed` leaves `GET /v1/gemini` and `GET /v1/window-stop`). The
+dashboard drops `Locked`, `PremiumModal`, the header and strip chips, the
+Premium banner, hints, nudges and the Lifetime cap hint, and Settings →
+Plan & licence becomes Plan with no key field (an admin key's state stays,
+set by `caprock license set`). `internal/license`, `caprock license`,
+`GET /v1/premium` and `TestPricingMatchesTheSite` stay for the team
+licence. `Paywall.test.tsx` now asserts that nothing is locked. The site
+still sells Premium until caprock-web changes.
 
 ### 2026-11-27 — unreleased: subscriptions, custom agents, Telegram and Second Brain are free (Orca parity)
 

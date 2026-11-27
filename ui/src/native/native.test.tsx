@@ -26,7 +26,6 @@ import { roleWords } from './Settings'
 import { scanFailure } from './scan'
 import { errorCode } from './speech'
 import { speechHint, speechSupport, speechWhere } from '@/lib/speech'
-import { PremiumModal } from '@/components/PremiumModal'
 import { PhoneBar } from '@/components/PhoneBar'
 import { resetNudgeSlots, useNudgeSlot } from '@/lib/nudges'
 
@@ -193,14 +192,6 @@ describe('voice in the app', () => {
 describe('nothing for sale in the app', () => {
   beforeEach(() => resetNudgeSlots())
 
-  it('the Premium dialog names the feature with no price and no link', () => {
-    native(true)
-    render(<PremiumModal feature="cap" onClose={() => {}} />)
-    const box = screen.getByTestId('not-sold-here')
-    expect(box.textContent).not.toMatch(/\$/)
-    expect(box.querySelector('a')).toBeNull()
-  })
-
   it('the phone bar has the app settings and no Get premium', () => {
     native(true)
     const link = { phase: 'live', attempt: 0, nextAt: 0, offlineSince: 0 } as unknown as Parameters<typeof PhoneBar>[0]['link']
@@ -212,11 +203,11 @@ describe('nothing for sale in the app', () => {
 
   it('a selling offer never wins the slot; others still do', () => {
     native(true)
-    function Offer({ id }: { id: 'premium-hint' | 'star' }) {
+    function Offer({ id }: { id: 'teams-nudge' | 'star' }) {
       return useNudgeSlot(id, true) ? <p>{id}</p> : null
     }
-    const { unmount } = render(<Offer id="premium-hint" />)
-    expect(screen.queryByText('premium-hint')).toBeNull()
+    const { unmount } = render(<Offer id="teams-nudge" />)
+    expect(screen.queryByText('teams-nudge')).toBeNull()
     unmount()
     render(<Offer id="star" />)
     expect(screen.getByText('star')).toBeTruthy()

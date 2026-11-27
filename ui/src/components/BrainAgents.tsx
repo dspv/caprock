@@ -188,7 +188,7 @@ export function BrainHero({ agents, className = '' }: { agents: DrawnAgent[]; cl
   )
 }
 
-/** "Free", said plainly: an accent tint, not a fill (like Get premium's). */
+/** "Free", said plainly: an accent tint, not a fill. */
 export function FreePill({ className = '' }: { className?: string }) {
   return <span className={`brain-free ${className}`} data-brain-free>Free</span>
 }

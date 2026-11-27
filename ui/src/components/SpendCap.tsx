@@ -93,7 +93,7 @@ export function SpendCap({ suggestion }: { suggestion?: number }) {
     <Panel
       title="Daily spend cap"
       right={
-        <span className={on ? 'text-premium-strong' : 'text-fg-faint'}>{on ? 'on' : 'off'}</span>
+        <span className={on ? 'text-accent' : 'text-fg-faint'}>{on ? 'on' : 'off'}</span>
       }
     >
       <div className="grid gap-2.5 px-3 py-3 text-[13px]">
@@ -115,7 +115,7 @@ export function SpendCap({ suggestion }: { suggestion?: number }) {
           <button
             onClick={submit}
             disabled={saving}
-            className="rounded-sm bg-premium px-3 py-1 text-[12px] font-medium text-white hover:brightness-110 disabled:opacity-50"
+            className="rounded-sm bg-accent px-3 py-1 text-[12px] font-medium text-panel hover:brightness-110 disabled:opacity-50"
           >
             {saving ? 'Saving…' : 'Save'}
           </button>
@@ -138,7 +138,7 @@ export function SpendCap({ suggestion }: { suggestion?: number }) {
             Your days run about {fmtUSD(suggestion / 2)}.{' '}
             <button
               onClick={() => void save(suggestion)}
-              className="text-premium-strong hover:underline"
+              className="text-accent hover:underline"
             >
               Use {fmtUSD(suggestion)}
             </button>{' '}

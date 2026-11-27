@@ -238,6 +238,9 @@ committed to a release yet; each item still needs its own DoD before it starts.
   whether anyone pays *before* spending on traffic: buying an audience for a
   funnel that has never converted once is the expensive way to find out it
   does not.
+  **Answered 2026-11-27: nobody paid.** The owner gave the keys away and
+  withdrew the plan for one person; everything in it is free and the team
+  tier is the only thing sold ([ADR-022](08-decisions.md) amended).
 
   What was sold, and therefore what has to be built: a daily cost threshold
   that **pauses the sessions Caprock spawned** when the day crosses it; a

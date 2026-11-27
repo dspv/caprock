@@ -23,7 +23,6 @@ import { useSyncExternalStore } from 'react'
 
 export type PromptKind =
   | 'share-week' | 'share-month'
-  | 'premium-hint' | 'premium-banner' | 'premium-limit' | 'premium-cap'
   | 'teams-banner' | 'teams-nudge'
   | 'star-dismissed' | 'star-done'
   | 'setup-later' | 'setup-phone-skip' | 'setup-telegram-skip' | 'setup-collapsed' | 'setup-expanded'
@@ -51,18 +50,9 @@ const DAY = 24 * 60 * 60 * 1000
 const PERIOD_MS: Record<PromptKind, number> = {
   'share-week': 7 * DAY,
   'share-month': 30 * DAY,
-  // Dismissed for a month, not a week. This one is an advertisement inside a
-  // tool someone installed for its own sake, and the tolerance for seeing it
-  // again is lower than for being offered a card of your own numbers.
-  'premium-hint': 30 * DAY,
-  'premium-banner': 30 * DAY,
-  // The contextual Premium nudges come back sooner, because they only appear
-  // while the problem they answer is happening — a plan window nearly spent,
-  // a day well above this machine's normal.
-  'premium-limit': 14 * DAY,
-  'premium-cap': 14 * DAY,
-  // The team card shows only to someone whose repositories have other committers, the one reader it
-  // fits, so it comes back after two weeks like the contextual Premium nudges (owner, 2026-11-26).
+  // The team card shows only to someone whose repositories have other
+  // committers, the one reader it fits, so it comes back after two weeks
+  // (owner, 2026-11-26).
   'teams-banner': 14 * DAY,
   'teams-nudge': 14 * DAY,
   'star-dismissed': 30 * DAY,

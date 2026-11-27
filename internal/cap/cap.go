@@ -19,13 +19,10 @@
 // would be simpler and would throw away work that has already been paid for,
 // which is a strange thing for a tool that exists to stop waste.
 //
-// # What happens when the licence lapses
+// # No licence
 //
-// The cap keeps working; the threshold becomes read-only. Switching off
-// someone's overspend protection the moment their card expires is the worst
-// possible timing for it — they are least able to notice and most likely to be
-// hurt. Selling protection and then removing it on a technicality is not what
-// was sold. See ADR-022 for why the key is a convenience rather than a lock.
+// The cap needs no licence: Caprock is free for one person since 2026-11-27
+// (ADR-022 amended).
 //
 // [Rule 7]: ../../CLAUDE.md
 package cap

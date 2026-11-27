@@ -4,7 +4,7 @@
  * for debugging, so they live in the version's tooltip and nowhere on the bar.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { StatusStrip } from './StatusStrip'
 
 afterEach(() => vi.unstubAllGlobals())
@@ -45,30 +45,14 @@ describe('the status strip', () => {
     expect(bar.textContent).not.toContain('100×37')
   })
 
-  describe('Premium on the strip', () => {
-    const premium = (active: boolean) => vi.fn((url: string) => {
-      if (url !== '/v1/premium') return new Promise(() => {})
-      const body = { yearly: { url: 'https://example.test/buy', charged_usd: 30, per_month_usd: 2.5, period: 'year' }, license: active ? { active: true, expires_at: '2027-10-17T00:00:00Z' } : { active: false, reason: 'no key' } }
-      return Promise.resolve(new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } }))
-    })
-    const summary = (pct: number) => ({ cost_usd: 1, rate_limits: { five_hour: { used_percentage: pct } } }) as unknown as Parameters<typeof StatusStrip>[0]['summary']
-
-    it('carries the way to buy, and offers the window stop only while a window is close', async () => {
-      vi.stubGlobal('fetch', premium(false))
-      const { container, rerender } = render(<StatusStrip version="0.94.1" summary={summary(40)} />)
-      expect(await screen.findByRole('button', { name: 'Premium' })).toBeInTheDocument()
-      expect(container.querySelector('[data-window-hint]')).toBeNull()
-      rerender(<StatusStrip version="0.94.1" summary={summary(75)} />)
-      expect(await screen.findByText('pause before the limit')).toBeInTheDocument()
-    })
-
-    it('says Premium, the plan in its title, and offers nothing, once Premium is on', async () => {
-      vi.stubGlobal('fetch', premium(true))
-      const { container } = render(<StatusStrip version="0.94.1" summary={summary(95)} />)
-      await waitFor(() => expect(container.querySelector('[data-premium-chip]')?.textContent).toBe('Premium'))
-      expect(container.querySelector('[data-premium-chip]')?.getAttribute('title')).toMatch(/yearly/)
-      expect(screen.queryByRole('button', { name: 'Premium' })).toBeNull()
-      expect(container.querySelector('[data-window-hint]')).toBeNull()
-    })
+  // Nothing is sold (2026-11-27, ADR-022 amended): no Premium chip, no
+  // "pause before the limit" offer, however close a window is.
+  it('carries no way to buy, even with a window nearly spent', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})))
+    const summary = { cost_usd: 1, rate_limits: { five_hour: { used_percentage: 95 } } } as unknown as Parameters<typeof StatusStrip>[0]['summary']
+    const { container } = render(<StatusStrip version="0.94.1" summary={summary} />)
+    expect(container.querySelector('[data-premium-chip]')).toBeNull()
+    expect(container.querySelector('[data-window-hint]')).toBeNull()
+    expect(screen.queryByRole('button', { name: /premium/i })).toBeNull()
   })
 })

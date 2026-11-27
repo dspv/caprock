@@ -437,6 +437,33 @@ the weekly report's delivery — is enforced by that infrastructure and needs no
 key at all, which is the tier boundary [ADR-021](#adr-021--the-team-tier-is-self-hosted-and-the-free-product-is-not-carved-up)
 already draws.
 
+**Amended 2026-11-27: no paid plan for individuals.** The owner (translated):
+"nobody paid, I gave everyone keys free; good time." Caprock is free for one
+person, all of it: the daily spend cap, the plan-window pause, the weekly
+report, Ask Gemini and the tool drill-down join subscriptions, custom
+agents, Telegram and Second Brain (ADR-046, ADR-047, ADR-048 and ADR-063,
+amended the same day for parity with Orca). Paid is the team tier
+([ADR-021](#adr-021--the-team-tier-is-self-hosted-and-the-free-product-is-not-carved-up))
+only. What changes:
+
+- **Every gate goes.** `POST /v1/gemini/ask` never answers `402`, the weekly
+  report sends without a key, the plan-window stop pauses without one, and
+  `GET /v1/tools/drill` sends the whole drill (`locked` and `teaser` are
+  gone). `GET /v1/gemini` and `GET /v1/window-stop` drop `licensed`.
+- **Nothing is sold in the dashboard.** No lock, no Premium dialog, no *Get
+  premium* chip in the header or the status strip, no Premium banner, hint
+  or nudge, and no licence field in Settings (renamed *Plan*); an admin key
+  for private modules (ADR-076) is set with `caprock license set` and only
+  its state is shown. `Paywall.test.tsx` now fails if any of it comes back.
+- **The licence code is kept for teams.** `internal/license`, `caprock
+  license` and `GET /v1/premium` (with `internal/premium` and
+  `TestPricingMatchesTheSite`) stay, unused by the dashboard, so a team
+  licence can reuse the same offline key. A key already issued keeps
+  working; it unlocks nothing that is not already free.
+
+The rules above about the key itself — offline, no cryptography, seven days
+of grace — stand for the team licence.
+
 ---
 
 ## ADR-023 — Gemini runs on a key Caprock never holds, read from the environment

@@ -1,10 +1,10 @@
 /**
  * The phone home's header (owner, 2026-10-13: the phone home should feel like
  * an app, not the desktop dashboard squeezed). The desktop header — six nav
- * tabs, Share, Get premium, Feedback, the plan chip, the theme, the version,
+ * tabs, Share, Feedback, the plan chip, the theme, the version,
  * Settings — wrapped to three rows at 390 px. Here it is one row: the mark
  * and the connection's state on the left, one ⋯ on the right holding
- * Dashboard, Settings, Feedback and Get premium — and, on a phone the owner
+ * Dashboard, Settings and Feedback — and, on a phone the owner
  * made a controller, each private module the machine's admin key opens
  * (ADR-076). Every other screen keeps the desktop header (components/Shell.tsx),
  * whose nav lists the modules too.
@@ -16,14 +16,12 @@ type LinkStatus = ReturnType<typeof useLiveLink>
 import { BugIcon, CaprockMark, ChatIcon, DashboardIcon, MoreIcon, SettingsIcon } from './AppIcons'
 import { ConnectionState } from './ConnectionState'
 import { FeedbackDialog } from './Feedback'
-import { PremiumModal } from './PremiumModal'
 import { useModules } from '@/lib/modules'
 import { isNativeApp } from '@/native/platform'
 
 export function PhoneBar({ link, heardAt }: { link: LinkStatus; heardAt: () => number }) {
   const [open, setOpen] = useState(false)
   const [feedback, setFeedback] = useState(false)
-  const [premium, setPremium] = useState(false)
   const mods = useModules()
   const box = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -34,7 +32,7 @@ export function PhoneBar({ link, heardAt }: { link: LinkStatus; heardAt: () => n
     document.addEventListener('keydown', esc)
     return () => { document.removeEventListener('pointerdown', away); document.removeEventListener('keydown', esc) }
   }, [open])
-  // The iOS app (ADR-083): its own Settings beside the menu, and no Get premium.
+  // The iOS app (ADR-083): its own Settings beside the menu.
   const native = isNativeApp()
   const item = 'flex min-h-12 w-full items-center gap-3 px-4 text-left text-[16px] text-fg no-underline hover:no-underline active:bg-panel-2'
   return (
@@ -79,16 +77,10 @@ export function PhoneBar({ link, heardAt }: { link: LinkStatus; heardAt: () => n
             <button type="button" role="menuitem" className={item} onClick={() => { setOpen(false); setFeedback(true) }}>
               <BugIcon size={18} className="text-accent" /> Feedback
             </button>
-            {!native && (
-              <button type="button" role="menuitem" className={item.replace("text-fg ", "text-premium-strong ")} onClick={() => { setOpen(false); setPremium(true) }}>
-                <span aria-hidden className="w-[18px] text-center">★</span> Get premium
-              </button>
-            )}
           </div>
         )}
       </div>
       {feedback && <FeedbackDialog screen="phone home" onClose={() => setFeedback(false)} />}
-      {premium && <PremiumModal feature="cap" onClose={() => setPremium(false)} />}
     </header>
   )
 }

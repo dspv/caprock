@@ -367,7 +367,7 @@ type Settings struct {
 	// too old to have the field, and the panel cannot tell "you turned this
 	// off" from "this build cannot do it".
 	CapUSDPerDay float64 `json:"cap_usd_per_day"`
-	// WindowStopPct is the share of a Claude plan window at which Premium
+	// WindowStopPct is the share of a Claude plan window at which Caprock
 	// pauses the Claude Code sessions Caprock started until the window resets;
 	// 0 is off. Like the cap it has no omitempty: 0 is a state the control
 	// must read. Without a licence it is stored and shown but pauses nothing.
@@ -473,8 +473,8 @@ type Settings struct {
 	// finished off unless turned on (WP-09).
 	NotifyApproval bool `json:"notify_approval"`
 	NotifyFinished bool `json:"notify_finished"`
-	// Prompts is when each of the dashboard's own offers (star strip, Premium
-	// and Teams nudges, share prompt) was last answered: prompt id → Unix ms.
+	// Prompts is when each of the dashboard's own offers (star strip, Teams
+	// nudges, share prompt) was last answered: prompt id → Unix ms.
 	// On the daemon so the answer holds across the app and a browser tab.
 	Prompts map[string]int64 `json:"prompts,omitempty"`
 	// AlertLastError is why the last alert failed to send, empty when it did
@@ -2138,8 +2138,8 @@ func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	st := s.d.Settings.Get()
 	if s.fromPairedDevice(r) {
-		// A paired device reads figures; it does not get the key that pays for
-		// them. Whether the plan is active is GET /v1/premium's answer.
+		// A paired device reads figures; it does not get the stored key
+		// (kept for the team licence, ADR-022 amended 2026-11-27).
 		st.LicenseKey = ""
 	}
 	writeJSON(w, http.StatusOK, st)

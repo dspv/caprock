@@ -1,32 +1,30 @@
 /**
  * The product-led surfaces: who may speak, when, and only one at a time.
  *
- * Caprock is free and sells two things — Premium and Caprock for Teams — and
- * asks for one favour, a GitHub star. Every one of those asks is honest on its
+ * Caprock is free for one person and sells one thing — Caprock for Teams —
+ * and asks for one favour, a GitHub star (no Premium since 2026-11-27,
+ * ADR-022 amended). Every one of those asks is honest on its
  * own; together, stacked on one screen, they turn a tool into a page that
  * wants something. So:
  *
  *  - **One at a time.** Every offer registers here while it is eligible, and
  *    only the highest-priority one renders. Answering it lets the next one in.
  *  - **Only on the reader's own facts.** Each offer has a rule below, a pure
- *    function, tested: a plan window at 80%, a day in the top quarter of this
- *    machine's own days, two or more people committing to the same code.
- *  - **Never to a payer.** A Premium offer asks `useLicensed` first.
+ *    function, tested: two or more people committing to the same code, real
+ *    use for the star.
  *  - **Dismissal is remembered on the daemon** (lib/prompts.ts), so it holds
  *    across the app and a browser tab.
  *
  * .ai/04-ui.md § Product-led surfaces is the written version of these rules.
  */
 import { useEffect, useId, useSyncExternalStore } from 'react'
-import { api, isPairedDevice, type DailyStat, type RateLimits, type Settings } from '@/lib/api'
+import { api, isPairedDevice, type Settings } from '@/lib/api'
 import { hydratePrompts, syncPromptsWith } from '@/lib/prompts'
-import { useApi } from '@/lib/useApi'
 import { isTauri } from '@/lib/appmode'
 import { shell } from '@/lib/shell'
 import { sellsHere } from '@/native/platform'
 
 export type NudgeId =
-  | 'premium-limit' | 'premium-hint' | 'premium-cap' | 'premium-banner'
   | 'teams-nudge' | 'share-moment' | 'setup' | 'mail' | 'offer' | 'star'
 
 /**
@@ -35,20 +33,16 @@ export type NudgeId =
  * than answering a problem, comes last.
  */
 export const NUDGE_PRIORITY: Record<NudgeId, number> = {
-  'premium-limit': 70,
-  'premium-hint': 60,
-  'premium-cap': 50,
   'teams-nudge': 40,
   'share-moment': 30,
   // Above the general offers: it sets up the product, it does not sell it.
   setup: 25,
   // A new part of the product, offered once: below the offers tied to what is
-  // happening now, above the general Premium banner and the star.
+  // happening now, above the star.
   mail: 22,
   // A question about a feature that may be built (ADR-062): below every
-  // offer about something that exists, above the general Premium banner.
+  // offer about something that exists.
   offer: 21,
-  'premium-banner': 20,
   star: 10,
 }
 
@@ -63,7 +57,7 @@ export function pickNudge(entries: { key: string; id: NudgeId; order: number }[]
 }
 
 /** The offers that sell something: never in the iOS app. */
-const SELLING: ReadonlySet<NudgeId> = new Set<NudgeId>(['premium-limit', 'premium-hint', 'premium-cap', 'premium-banner', 'teams-nudge', 'offer'])
+const SELLING: ReadonlySet<NudgeId> = new Set<NudgeId>(['teams-nudge', 'offer'])
 
 const slots = new Map<string, { key: string; id: NudgeId; order: number }>()
 const listeners = new Set<() => void>()
@@ -108,16 +102,6 @@ export function resetNudgeSlots() {
   counter = 0
 }
 
-/**
- * Whether a Premium licence is active. Unknown reads as "not licensed": the
- * offers that use it all wait on other data first, by which time this has
- * answered, and the answer is kept between loads.
- */
-export function useLicensed(): boolean {
-  const p = useApi(() => api.premium(), [], { live: false, intervalMs: 300_000, cache: 'premium-license' })
-  return !!p.data?.license?.active
-}
-
 let syncing = false
 
 /**
@@ -158,34 +142,6 @@ export const STAR_MIN_DAYS = 3
 export const STAR_MIN_SESSIONS = 10
 export function starEligible(totals: { days: number; sessions: number } | undefined): boolean {
   return !!totals && totals.days >= STAR_MIN_DAYS && totals.sessions >= STAR_MIN_SESSIONS
-}
-
-/** The plan-window nudge: a Claude window at 80% or more. */
-export const LIMIT_NUDGE_PCT = 80
-export function limitNudge(limits: RateLimits | undefined): { name: string; pct: number } | null {
-  if (!limits) return null
-  const rows = [
-    { name: '5-hour', pct: limits.five_hour?.used_percentage },
-    { name: 'weekly', pct: limits.seven_day?.used_percentage },
-  ].filter((r): r is { name: string; pct: number } => typeof r.pct === 'number' && r.pct >= LIMIT_NUDGE_PCT)
-  if (rows.length === 0) return null
-  return rows.reduce((a, b) => (b.pct > a.pct ? b : a))
-}
-
-/**
- * The daily-cap nudge: today's spend is in the top quarter of this machine's
- * own days. Needs eight earlier days with spend, so a quartile means
- * something; today must also be above zero.
- */
-export const CAP_MIN_DAYS = 8
-export function capNudge(daily: Pick<DailyStat, 'day' | 'cost_usd'>[], today: string, todayCost: number): boolean {
-  if (!(todayCost > 0)) return false
-  const byDay = new Map<string, number>()
-  for (const d of daily) if (d.day !== today) byDay.set(d.day, (byDay.get(d.day) ?? 0) + d.cost_usd)
-  const past = [...byDay.values()].filter((v) => v > 0).sort((a, b) => a - b)
-  if (past.length < CAP_MIN_DAYS) return false
-  const q3 = past[Math.floor(past.length * 0.75)]!
-  return todayCost >= q3
 }
 
 /** The team nudge: two or more people committed to the listed repositories in 30 days. */

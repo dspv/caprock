@@ -17,7 +17,7 @@ type Subscription struct {
 	// CreatedAt is when it was added, in Unix ms.
 	CreatedAt int64 `json:"created_at"`
 	// Plan is how this sign-in is paid for, stated by the user in Settings →
-	// Plan & licence; nil means the main plan (PlanKind and its two fields)
+	// Plan; nil means the main plan (PlanKind and its two fields)
 	// stands for it too.
 	Plan *Plan `json:"plan,omitempty"`
 }

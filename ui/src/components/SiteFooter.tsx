@@ -22,7 +22,6 @@ import { extTitle } from '@/lib/externalLinks'
 import { sellsHere } from '@/native/platform'
 
 const REPO = 'https://github.com/dspv/caprock'
-const PREMIUM = 'https://caprock.dev/premium'
 
 export function SiteFooter() {
   const [teams, setTeams] = useState(false)
@@ -58,20 +57,6 @@ export function SiteFooter() {
         <span className="ml-auto inline-flex items-center gap-4">
           {/* The setup strip folded by its ×: "0 of 2", a click unfolds it. */}
           <SetupChip />
-          {/* Legible, but still not a second offer: the team line above keeps
-            * the accent colour and the arrow, this one reads at the weight of
-            * the links beside it. Phrased as a place rather than a question —
-            * "what should paid add?" was both too quiet to read and too vague
-            * to act on, since nothing said where it led. */}
-          {sells && <a
-            href={PREMIUM}
-            target="_blank"
-            rel="noreferrer"
-            className="text-fg-muted hover:text-fg no-underline"
-            title={extTitle('A daily spend cap — Caprock pauses its own sessions when the day passes a limit you set')}
-          >
-            premium
-          </a>}
           {!starred && (
             <a
               href={REPO}

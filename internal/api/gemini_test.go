@@ -76,26 +76,15 @@ func (e *geminiEnv) license(t *testing.T, key string) {
 	}
 }
 
-// The whole reason this endpoint checks the licence server-side, unlike the
-// spend cap: a call here spends the user's Gemini quota and opens an outbound
-// connection, so a React-only paywall would be a paywall a curl walks past.
-func TestAskRequiresALicenceOnTheServer(t *testing.T) {
+// No licence is asked (2026-11-27, ADR-022 amended): a key is enough.
+func TestAskNeedsNoLicence(t *testing.T) {
 	t.Setenv(gemini.EnvKey, "test-key")
 	e := newGeminiEnv(t)
-
-	if code := e.ask(t, "hello"); code != http.StatusPaymentRequired {
-		t.Fatalf("unlicensed ask: got %d, want 402", code)
-	}
-	if *e.called != 0 {
-		t.Error("an unlicensed request reached Google — the gate must run before the call")
-	}
-
-	e.license(t, license.Issue(time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC), license.RandomSuffix))
 	if code := e.ask(t, "hello"); code != http.StatusOK {
-		t.Fatalf("licensed ask: got %d, want 200", code)
+		t.Fatalf("ask without a licence: got %d, want 200", code)
 	}
 	if *e.called != 1 {
-		t.Errorf("licensed request did not reach the client (called=%d)", *e.called)
+		t.Errorf("the request did not reach the client (called=%d)", *e.called)
 	}
 }
 

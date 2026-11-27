@@ -42,7 +42,6 @@ export function answer(f: Fixture, method: string, u: URL): Response {
   switch (p) {
     case '/v1/status': return json(f.status)
     case '/v1/pair/me': return json(f.pairMe)
-    case '/v1/premium': return json(f.premium)
     case '/v1/projects': return json(f.projects)
     case '/v1/inbox': return json(f.inbox)
     case '/v1/stats/limits': return json(f.limits)

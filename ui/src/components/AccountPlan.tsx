@@ -1,8 +1,8 @@
 /**
  * The plan a session is set against: its account's own, when the user stated
- * one in Settings → Plan & licence, else the main plan.
+ * one in Settings → Plan, else the main plan.
  *
- * A tester, 2026-10-12 (translated): "Plan & licence then also needs redoing
+ * A tester, 2026-10-12 (translated): "Plan then also needs redoing
  * per account — I have different plans on the accounts and it's unclear what
  * to choose here." So each subscription (ADR-048) may carry its own plan, and
  * the main plan — the one the header chip sets — stays the plan of the user's
@@ -87,7 +87,7 @@ export function useSessionPlan(agent: string | undefined, subscription: string |
 }
 
 /**
- * Settings → Plan & licence with more than one Claude Code sign-in: a row per
+ * Settings → Plan with more than one Claude Code sign-in: a row per
  * account — its name and e-mail, the plan that applies, a way to change it.
  * The own sign-in's row is the main plan.
  */

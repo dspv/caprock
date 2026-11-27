@@ -27,8 +27,8 @@ describe('custom agents', () => {
     await waitFor(() => expect(m.save).toHaveBeenCalledWith([{ name: 'Aider', command: 'aider', args: ['--message', '{prompt}'], models: ['gpt-5.5'] }]))
     expect(await screen.findByRole('list', { name: 'Custom agents' })).toHaveTextContent('aider --message {prompt}')
 
-    m.save.mockRejectedValueOnce(new Error('premium required'))
+    m.save.mockRejectedValueOnce(new Error('could not save'))
     fireEvent.click(screen.getByRole('button', { name: 'Remove' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent('premium required')
+    expect(await screen.findByRole('alert')).toHaveTextContent('could not save')
   })
 })

@@ -51,8 +51,7 @@ func showLicense(cmd *cobra.Command) error {
 	s := license.Parse(cfg.LicenseKey, time.Now())
 	switch {
 	case cfg.LicenseKey == "":
-		fmt.Fprintln(out, "No licence key. Everything Caprock does today is free and stays free.")
-		fmt.Fprintln(out, "Premium: https://caprock.dev/premium/")
+		fmt.Fprintln(out, "No licence key. Caprock is free for one person; none is needed.")
 	case s.Active && s.InGrace:
 		fmt.Fprintf(out, "%s\n%s\n", cfg.LicenseKey, s.Reason)
 	case s.Active:
