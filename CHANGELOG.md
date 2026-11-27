@@ -12,6 +12,63 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.201.0] - 2026-11-27
+
+### Added
+
+- **machines:** link a new computer with one key (#1095). Settings →
+  Computers → **Add with a key** on the computer you work on (or `caprock
+  machines key`) shows a key that works once, for 15 minutes, with the
+  command for the new computer and the install command for each system.
+  `caprock join <key>` there, or the key pasted in its Settings → Computers →
+  **Join with a key**, turns on access from anywhere, lets your computer in
+  without an Allow, and says what it did and what is next. Your computer then
+  opens the new one's page, where its remaining setup steps and Send secrets
+  wait for your clicks. The key carries no secrets and grants nothing a pasted
+  link and Allow do not; it is in no log or file on either computer.
+
+### Changed
+
+- **chat:** a PDF or any other file dropped into a session reads as the
+  file, not its path, wherever Caprock draws it. In the chat's bubbles each
+  absolute file path is a chip with an icon for its kind (a PDF says PDF),
+  its name cut in the middle, and the whole path on hover or a click; the
+  words around it stay. The chat's field and the phone's New chat show an
+  attached PDF with the same icon. A session that opened with a dropped
+  file is named by the file and the words (`CV.pdf how is my CV`), not by
+  `Application Support/caprock/paste/drop-…`, in the sidebar, tabs, cards
+  and previews. Claude Code's own terminal still shows the path: Caprock
+  does not draw that text.
+- **premium:** Caprock is free for one person, all of it, with no licence key.
+  The daily spend cap, the pause at the plan limit, the weekly report, Ask
+  Gemini and the tool drill-down's output, failure rates and hints work for
+  everyone, as do any number of Claude Code and Codex sign-ins, custom agents
+  added by command, talking to your agents from Telegram (reply, approve,
+  deny, `/sessions`, `/new`, `/stop`, forwards, once *Let my paired chat talk
+  to sessions* is on) and Second Brain. There is no Premium dialog, lock,
+  *Get premium* chip or banner any more, and Settings → *Plan & licence* is
+  now *Plan*, with no key field; an admin key for private modules is set with
+  `caprock license set`. Caprock for Teams is the paid product. For API
+  clients: `GET /v1/subscriptions` drops `licensed` and `free_per_agent`, the
+  agent catalog drops `licensed` and `locked`, `GET /v1/gemini` and
+  `GET /v1/window-stop` drop `licensed`, `GET /v1/tools/drill` drops `locked`
+  and `teaser`, and no route answers `402`.
+
+### Fixed
+
+- **sidebar:** Recently closed lists the tabs a project's *Close tabs* closed
+  and the tab *End* on a Home row closed, which it missed before, and orders
+  every entry by when it closed, newest first, so a session that ended
+  unexpectedly and was noticed late no longer sits above tabs closed after it.
+- **tabs:** a tab brought back from Recently closed or with ⇧⌘T returns to the
+  place in the tab strip it closed from, not to the end; a pane of a split
+  comes back as a tab beside the split.
+- **phone:** a session whose turn ended while a background subagent, command
+  or watch it started still runs no longer reads as done on the phone. Its
+  Continue row, its row in Chats, the chat's header, the session bar's dot and
+  the line under the conversation say *Background · 1 agent* as working, and
+  the phone home no longer counts it as done.
+
 ## [0.200.0] - 2026-11-27
 
 ### Added
