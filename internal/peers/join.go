@@ -44,6 +44,10 @@ const JoinTTL = 15 * time.Minute
 // JoinTries is how many wrong secrets burn a key.
 const JoinTries = 5
 
+// joinBurnGrace is how long a burned key's rendezvous stays connected,
+// refusing everything, so the try that burned it hears its refusal.
+const joinBurnGrace = 2 * time.Second
+
 // The states of a join key (JoinState.State).
 const (
 	JoinNone      = "none"      // no key was made, or it was withdrawn
@@ -238,7 +242,11 @@ func (j *JoinDesk) check(k *joinKey, secret []byte) (ok bool, why string) {
 		k.tries++
 		if k.tries >= JoinTries {
 			k.state, k.err = JoinFailed, "too many wrong keys were tried: make a new one"
-			go k.stop()
+			// Refused from now on (the state check above), but the rendezvous
+			// hangs up only after joinBurnGrace: stopped at once, it raced the
+			// answer to this very try, which then arrived as "not waiting"
+			// instead of a refusal (Windows CI, 2026-11-27).
+			time.AfterFunc(joinBurnGrace, k.stop)
 		}
 		return false, "that key is not this computer's"
 	}

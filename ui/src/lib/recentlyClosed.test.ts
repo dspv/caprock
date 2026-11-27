@@ -24,6 +24,18 @@ describe('the list', () => {
     expect(list.filter((e) => e.sessionId === 's10')).toHaveLength(1)
   })
 
+  // Owner, 2026-11-27: at the top, by the time they were closed.
+  it('orders by when each closed, not by when it was recorded', () => {
+    let list = withClosed([], [entry('closed-at-10', NOW + 10)])
+    list = withClosed(list, [entry('closed-at-30', NOW + 30)])
+    // An unexpected end noticed late carries the earlier time it ended.
+    list = withClosed(list, [{ ...entry('ended-at-20', NOW + 20), unexpected: true }])
+    expect(list.map((e) => e.sessionId)).toEqual(['closed-at-30', 'ended-at-20', 'closed-at-10'])
+    // A list stored in the old, insertion order is read sorted.
+    const old = JSON.stringify([entry('old', NOW + 1), entry('new', NOW + 5)])
+    expect(parseRecentlyClosed(old).map((e) => e.sessionId)).toEqual(['new', 'old'])
+  })
+
   it('survives a reload, says so on window, and drops one once reopened', () => {
     const heard = vi.fn()
     window.addEventListener(RECENTLY_CLOSED_EVENT, heard)

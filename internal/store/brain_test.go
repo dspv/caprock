@@ -314,11 +314,21 @@ func TestBrainGraphReadsFiveThousandNodesQuickly(t *testing.T) {
 	for _, f := range []BrainFilter{{}, {Query: "memory 49"}, {Project: "p3"}, {Since: 2500}} {
 		// The second read: the screen's, after the first warmed the cache.
 		_, _ = ReadBrainGraph(ctx, s.db, f)
-		start := time.Now()
-		g, err := ReadBrainGraph(ctx, s.db, f)
-		took := time.Since(start)
-		if err != nil {
-			t.Fatal(err)
+		// The best of three: a shared CI runner can stall one read for
+		// seconds (macOS, 2026-11-27, where a read takes ~30 ms), and a slow
+		// query is slow every time, so the fastest still catches it.
+		var g BrainGraph
+		took := time.Duration(1<<63 - 1)
+		for range 3 {
+			start := time.Now()
+			got, err := ReadBrainGraph(ctx, s.db, f)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if d := time.Since(start); d < took {
+				took = d
+			}
+			g = got
 		}
 		if len(g.Nodes) == 0 {
 			t.Fatalf("%+v: empty graph", f)
