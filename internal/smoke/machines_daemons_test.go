@@ -124,6 +124,10 @@ func TestTwoDaemonsOneControlsTheOther(t *testing.T) {
 		t.Fatalf("after allow: %d %+v", code, list)
 	}
 
+	// Send secrets (ADR-107): a key set on the controller lands in the
+	// target's store through the channel, and nowhere else on either side.
+	sendSecretsSmoke(t, cBase, tBase, st.ID, cData, tData, controller.log, target.log)
+
 	// The controller's proxy is its own machine's only: a request relayed
 	// onto its loopback by a tunnel is not the owner.
 	req, _ := http.NewRequest(http.MethodGet, proxy+"/v1/sessions", nil)
@@ -284,4 +288,83 @@ func (lt *localTerm) waitFor(t *testing.T, want string) {
 	lt.mu.Lock()
 	defer lt.mu.Unlock()
 	t.Fatalf("the terminal through the proxy never showed %q; it showed %q", want, lt.buf.String())
+}
+
+// sendSecretsSmoke sets a DeepSeek key on the controller, sends it to the
+// target on the owner's click (POST /v1/machines/{id}/secrets), and checks it
+// reached the target's file store (CAPROCK_SECRET_STORE=file), that the target
+// uses it and names it among what arrived, and that the value is in no answer,
+// log or other file on either machine.
+func sendSecretsSmoke(t *testing.T, cBase, tBase, id, cData, tData string, cLog, tLog func() string) {
+	t.Helper()
+	value := strings.Join([]string{"smoke", "deepseek", "value", "not", "a", "key"}, "-")
+	if code := callJSON(t, "PUT", cBase+"/v1/settings", `{"deepseek_api_key":`+strconv.Quote(value)+`}`, nil); code != 200 {
+		t.Fatalf("set the key on the controller: %d", code)
+	}
+	var here struct {
+		Secrets []struct {
+			Name string `json:"name"`
+			Set  bool   `json:"set"`
+		} `json:"secrets"`
+	}
+	if code := callJSON(t, "GET", cBase+"/v1/machines/secrets", "", &here); code != 200 {
+		t.Fatalf("what the controller can send: %d", code)
+	}
+	set := false
+	for _, s := range here.Secrets {
+		set = set || (s.Name == "deepseek" && s.Set)
+	}
+	if !set {
+		t.Fatalf("the controller does not offer its DeepSeek key: %+v", here)
+	}
+	var sent struct {
+		Stored []string `json:"stored"`
+		Failed []struct {
+			Name  string `json:"name"`
+			Error string `json:"error"`
+		} `json:"failed"`
+	}
+	if code := callJSON(t, "POST", cBase+"/v1/machines/"+id+"/secrets", `{"names":["deepseek"]}`, &sent); code != 200 || len(sent.Stored) != 1 || sent.Stored[0] != "deepseek" {
+		t.Fatalf("send: %d %+v\ncontroller log:\n%s\ntarget log:\n%s", code, sent, cLog(), tLog())
+	}
+	b, err := os.ReadFile(filepath.Join(tData, "deepseek-api-key"))
+	if err != nil || strings.TrimSpace(string(b)) != value {
+		t.Fatalf("the target's store does not hold the key: %v", err)
+	}
+	var tset struct {
+		Set bool `json:"deepseek_key_set"`
+	}
+	getJSONAt(t, tBase+"/v1/settings", &tset)
+	if !tset.Set {
+		t.Fatal("the target does not use the key it received")
+	}
+	var arrived struct {
+		Arrivals []struct {
+			Names []string `json:"names"`
+			At    int64    `json:"at"`
+		} `json:"arrivals"`
+	}
+	getJSONAt(t, tBase+"/v1/secrets/received", &arrived)
+	if len(arrived.Arrivals) != 1 || len(arrived.Arrivals[0].Names) != 1 || arrived.Arrivals[0].Names[0] != "deepseek" || arrived.Arrivals[0].At == 0 {
+		t.Fatalf("the target does not say what arrived: %+v", arrived)
+	}
+	if strings.Contains(cLog(), value) || strings.Contains(tLog(), value) {
+		t.Fatal("a daemon logged the value")
+	}
+	// The value is in each machine's store file and nowhere else: not the
+	// database, config.json, the record of arrivals or a log.
+	for _, dir := range []string{cData, tData} {
+		_ = filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
+			if err != nil {
+				return nil //nolint:nilerr // a file that vanished mid-walk holds nothing
+			}
+			if d.IsDir() || filepath.Base(p) == "deepseek-api-key" {
+				return nil
+			}
+			if raw, err := os.ReadFile(p); err == nil && strings.Contains(string(raw), value) {
+				t.Errorf("%s holds the value", p)
+			}
+			return nil
+		})
+	}
 }

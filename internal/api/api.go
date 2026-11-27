@@ -194,6 +194,9 @@ type Deps struct {
 	// Machines are the other computers this machine reaches (ADR-067,
 	// machines.go); nil in a build or test without them.
 	Machines Machines
+	// Secrets is Send secrets (ADR-107, secretshare.go): what this machine
+	// can send, and where what arrives is kept. Nil answers 501.
+	Secrets SecretShare
 	// DevShare opens a local dev server on a phone on the same Wi-Fi
 	// (ADR-087, devshare.go). Nil answers 501.
 	DevShare *devshare.Manager
@@ -858,6 +861,13 @@ func New(d Deps) *Server {
 	m.HandleFunc("PATCH /v1/machines/{id}", s.handlePatchMachine)
 	m.HandleFunc("DELETE /v1/machines/{id}", s.handleForgetMachine)
 	m.HandleFunc("/v1/m/{id}/{path...}", s.handleMachineProxy)
+	// Send secrets (ADR-107, secretshare.go): the two sending routes are
+	// loopback only, like the rest; the receiving one is for a computer
+	// allowed here alone (computerRoutes, and the handler checks the kind).
+	m.HandleFunc("GET /v1/machines/secrets", s.handleSecretsHere)
+	m.HandleFunc("POST /v1/machines/{id}/secrets", s.handleSendSecrets)
+	m.HandleFunc("POST /v1/secrets/receive", s.handleReceiveSecrets)
+	m.HandleFunc("GET /v1/secrets/received", s.handleSecretsReceived)
 	m.HandleFunc("POST /v1/update/check", s.handleUpdateCheck)
 	m.HandleFunc("GET /v1/update/busy", s.handleUpdateBusy)
 	m.HandleFunc("POST /v1/hooks/install", s.handleInstallHooks)

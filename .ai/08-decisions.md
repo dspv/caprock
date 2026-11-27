@@ -8685,3 +8685,70 @@ should be offered a restart, as voice is (ADR-101's strip).
 **Revisit if** the prompt does not come back with the usage strings (then
 try the app as the responsible process), or Claude Code installs at one
 path.
+
+## ADR-107 — Secrets travel from the laptop to a linked computer through the link, on a click, store to store
+
+**Date:** 2026-11-27 · **Status:** accepted (decided without the owner; he
+may overrule it). Builds on
+[ADR-067](#adr-067--your-computers-reach-each-other-through-the-same-relay-the-local-daemon-speaks-for-the-others)
+and [ADR-099](#adr-099--adding-a-computer-is-a-checklist-on-the-computer-that-runs-agents-and-the-laptop-reads-its-readiness);
+the channel is ADR-058's, unchanged. Contract: [03-contracts.md § Other
+computers](03-contracts.md), *Send secrets*. Issue #1095, one slice of it.
+
+**Context.** Moving day-to-day work onto his Windows PC, the owner needed
+the credentials his laptop's Caprock keeps — the GitHub token, the DeepSeek
+key — on the PC too. Nothing carried them, so he set up OpenSSH there: an
+administrator PowerShell, the network switched to Private, a firewall rule,
+a password, then a key login that failed with error 1312 in Credential
+Manager, against a LAN address that changes. He asked for the relay to stay
+the only control channel and for secrets to go machine to machine,
+end-to-end encrypted, never written to disk on the way (translated).
+
+**The decision.**
+
+- **What may be sent: what Caprock itself keeps.** The GitHub token Caprock
+  holds (a pasted or device-flow one; a GitHub connected through the GitHub
+  CLI's sign-in is not Caprock's to send, and the list says so), the
+  DeepSeek key and the Kimi key. Not the Telegram bot token: a bot answers
+  one poller, and two computers polling it take each other's messages. Not
+  Caprock Mail's provider keys yet: Mail is set up per computer.
+- **Only on a click, only what was ticked.** The computer's page has *Send
+  secrets*: one checkbox per credential, none ticked, those not set here
+  disabled with why, and **Send N to <name>**. There is no automatic send,
+  no "send all" default and no CLI for it yet.
+- **Through the link, as one request.** The laptop's daemon reads the
+  ticked values from its own store and posts them to the computer's `POST
+  /v1/secrets/receive` through `peers.Manager.Do` — the end-to-end encrypted
+  Noise channel every other request to that computer uses, so the relay
+  sees ciphertext only. No relay message type is added: the relay carries
+  this request as it carries any other. The page never holds a value; it
+  sends names (`POST /v1/machines/{id}/secrets`).
+- **Only a computer allowed there may hand it secrets.** The receiving route
+  is on the computer allowlist (`computerRoutes`), so the gate already
+  demands a device of kind machine, allowed, a controller, its token held
+  to the key its channel proved; the handler refuses anything without such
+  a device — its own clients and every phone, whatever the role.
+- **Store to store, and nowhere else.** Each arriving value goes straight
+  into the computer's secret store (`internal/secret`: the login keychain on
+  macOS, else the 0600 file in the data directory; `CAPROCK_SECRET_STORE=file`
+  in every test) through the same path as entering it in Settings there —
+  for the GitHub token, Settings → GitHub's pasted-token path, kept only once
+  GitHub accepts it, which switches that computer from the GitHub CLI's
+  sign-in to this token. Each is kept or refused on its own. No value is in
+  an API answer, a log line, an event, the database or a live frame, on
+  either side; answers and logs carry names.
+- **The computer says what arrived.** `secrets-received.json` in its data
+  directory keeps the last 20 sends that kept anything: which computer, the
+  names, when. Settings → Computers there shows, under the computer that
+  sent them, *sent the DeepSeek key here 2m ago*.
+- **CLAUDE.md rule 4 is unchanged.** Nothing new leaves the machine for
+  anyone but the user's own other computer, through the access from
+  anywhere they turned on; the relay's view is ADR-058's.
+
+**Not done here.** Removing a key there from here (it is removed in that
+computer's Settings), sending the GitHub CLI's own sign-in, and the rest
+of #1095 (bootstrapping tools from the join key, the port, PATH).
+
+**Revisit if** a credential appears that two computers must not share (as
+the bot token) — it stays off the list — or the owner wants Send secrets
+offered right after pairing.

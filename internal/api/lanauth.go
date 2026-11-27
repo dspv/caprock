@@ -687,6 +687,10 @@ var computerRoutes = map[string]bool{
 	// Claude Code's own warning screen, whose default answer is No, exit. A
 	// phone still cannot: the consent is a computer's, not a controller's.
 	"POST /v1/claude/bypass-consent": true,
+
+	// Credentials the owner sent from that computer on a click (ADR-107):
+	// written into this one's secret store, never answered back.
+	"POST /v1/secrets/receive": true,
 }
 
 // deviceVerdict is what a role may do with one request.
