@@ -36,6 +36,11 @@ describe('the list', () => {
     expect(parseRecentlyClosed(old).map((e) => e.sessionId)).toEqual(['new', 'old'])
   })
 
+  it('remembers where the tab stood, and reads it back', () => {
+    const e = { ...entry('a'), at: 3 }
+    expect(parseRecentlyClosed(JSON.stringify([e]))[0]!.at).toBe(3)
+  })
+
   it('survives a reload, says so on window, and drops one once reopened', () => {
     const heard = vi.fn()
     window.addEventListener(RECENTLY_CLOSED_EVENT, heard)

@@ -605,10 +605,10 @@ export function AppShell() {
     showWorkspace()
   }, [showWorkspace])
 
-  const openTab = useCallback((target: TabTarget, projectId: string, title: string) => {
+  const openTab = useCallback((target: TabTarget, projectId: string, title: string, at?: number) => {
     setChangesView(null)
     setCompare(null)
-    dispatch({ type: 'open', target, projectId, title })
+    dispatch({ type: 'open', target, projectId, title, ...(at !== undefined ? { at } : {}) })
     showWorkspace()
   }, [showWorkspace])
 
@@ -757,9 +757,9 @@ export function AppShell() {
    * translated: "why am I taken to something like the web version of the
    * dashboard instead of into the session?").
    */
-  const openSession = useCallback((s: SessionSummary, projectId: string) => {
+  const openSession = useCallback((s: SessionSummary, projectId: string, at?: number) => {
     const kind = s.kind === 'shell' ? 'shell' : attachable(s) ? 'session' : 'observe'
-    openTab({ kind, sessionId: s.session_id }, projectId, sessionTitle(s))
+    openTab({ kind, sessionId: s.session_id }, projectId, sessionTitle(s), at)
   }, [openTab])
 
   /**
@@ -1350,7 +1350,8 @@ export function AppShell() {
   const noteClosed = useCallback((tabId: string, paneId?: string) => {
     const { tabs, sessionsById, labels } = closeCtx.current
     const tab = tabs.find((t) => t.id === tabId)
-    if (tab) recordClosed(closedEntries(tab, paneId, sessionsById, labels.get(tabId)?.title ?? tab.title, sessionTitle))
+    // A whole tab remembers its place in the strip; a pane of a split reopens as a tab beside where the split is.
+    if (tab) recordClosed(closedEntries(tab, paneId, sessionsById, labels.get(tabId)?.title ?? tab.title, sessionTitle, Date.now(), tabs.indexOf(tab) + (paneId ? 1 : 0)))
   }, [])
   const finishClose = useCallback((tabId: string, paneId: string | undefined, stop: readonly ClosingShell[], chats: readonly string[] = []) => {
     noteClosed(tabId, paneId)
@@ -1487,13 +1488,13 @@ export function AppShell() {
     forgetClosed(entry.sessionId)
     const go = (plan: ReturnType<typeof reopenPlan>) => {
       if (plan.do === 'tab') { onActivateTab(open!.id); return }
-      if (plan.do === 'open') { openSession(plan.session, entry.projectId); return }
+      if (plan.do === 'open') { openSession(plan.session, entry.projectId, entry.at); return }
       if (plan.do === 'page') { goHash(`#/session/${encodeURIComponent(entry.sessionId)}`); return }
       const req: SpawnRequest = { cwd: plan.cwd, resume: entry.sessionId, fork: false, ...(plan.permissionMode ? { permission_mode: plan.permissionMode } : {}) }
       api.spawn(req)
-        .then((res) => { openTab({ kind: 'session', sessionId: res.session_id }, entry.projectId, entry.title); refresh() })
+        .then((res) => { openTab({ kind: 'session', sessionId: res.session_id }, entry.projectId, entry.title, entry.at); refresh() })
         // Refused after all: its conversation, read-only, says why (ObservePane).
-        .catch((e) => { openTab({ kind: 'observe', sessionId: entry.sessionId }, entry.projectId, entry.title); setToast(`Could not continue “${entry.title}”: ${errText(e)}`) })
+        .catch((e) => { openTab({ kind: 'observe', sessionId: entry.sessionId }, entry.projectId, entry.title, entry.at); setToast(`Could not continue “${entry.title}”: ${errText(e)}`) })
     }
     const plan = reopenPlan(entry, s, !!open)
     // Nothing yet said it can be continued: ask its page first, so one with

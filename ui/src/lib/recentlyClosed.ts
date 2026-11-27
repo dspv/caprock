@@ -45,6 +45,8 @@ export interface ClosedTab {
   unexpected?: boolean
   /** The project's name when it was put on the list, for the row. */
   project?: string
+  /** The tab's place in the strip when it closed (an index into the tabs), so it reopens there. */
+  at?: number
 }
 
 function valid(x: unknown): x is ClosedTab {
@@ -116,6 +118,7 @@ export function closedEntries(
   title: string,
   name: (s: SessionSummary) => string,
   now = Date.now(),
+  at?: number,
 ): ClosedTab[] {
   const all = leaves(tab.root)
   const closing = paneId ? all.filter((l) => l.id === paneId) : all
@@ -131,6 +134,7 @@ export function closedEntries(
       projectId: tab.projectId,
       ...(s?.cwd ? { cwd: s.cwd } : {}),
       closedAt: now,
+      ...(at !== undefined && at >= 0 ? { at } : {}),
     })
   }
   return out

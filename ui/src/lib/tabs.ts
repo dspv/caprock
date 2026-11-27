@@ -134,7 +134,7 @@ export interface Workspace {
 }
 
 export type WorkspaceAction =
-  | { type: 'open'; target: TabTarget; projectId: string; title: string }
+  | { type: 'open'; target: TabTarget; projectId: string; title: string; /** Where in the strip, as an index into `tabs` (a reopened tab goes back where it was); last when absent. */ at?: number }
   | { type: 'close'; tabId: string }
   /** Every tab of a project, splits included; the sessions and shells in them keep running. */
   | { type: 'close-project'; projectId: string }
@@ -324,9 +324,12 @@ export function workspaceReducer(ws: Workspace, a: WorkspaceAction): Workspace {
       if (existing) return { ...withActive(ws, existing.projectId, existing.id), activeProject: existing.projectId }
       const pane: PaneLeaf = { type: 'pane', id: newId('pane'), target: a.target }
       const tab: Tab = { id: newId('tab'), projectId: a.projectId, root: pane, focusedPaneId: pane.id, title: a.title }
-      // A page goes last; anything else goes last before the pages.
-      const at = a.target.kind === 'page' ? -1 : ws.tabs.findIndex(isPageTab)
-      const tabs = at < 0 ? [...ws.tabs, tab] : [...ws.tabs.slice(0, at), tab, ...ws.tabs.slice(at)]
+      // A page goes last; anything else goes last before the pages — or,
+      // reopened, back where it was, still before the pages.
+      const pages = a.target.kind === 'page' ? -1 : ws.tabs.findIndex(isPageTab)
+      const end = pages < 0 ? ws.tabs.length : pages
+      const at = a.at === undefined || a.target.kind === 'page' ? end : Math.max(0, Math.min(a.at, end))
+      const tabs = [...ws.tabs.slice(0, at), tab, ...ws.tabs.slice(at)]
       return { ...withActive({ ...ws, tabs }, a.projectId, tab.id), activeProject: a.projectId }
     }
     case 'close': {
