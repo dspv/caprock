@@ -117,6 +117,41 @@ the token, so a terms change removes the feature without leaving anything
 of ours holding credentials. Residual: a provider change between a release
 and the next shows only when a user meets it.
 
+**`RISK-13` — A trusted pair's agent says more than its owner meant.**
+In a Talk ([ADR-110](08-decisions.md)) each agent reads its owner's 2nd Brain
+and sessions and writes on its own, and for a pair the second-model check is
+off by default. Research seen 2026-11-27 found privacy attacks between
+conversing agents succeeding 37–88% of the time (ConVerse,
+arxiv.org/html/2511.05359v1) and output-only checks "fundamentally
+insufficient" (AgentLeak, arxiv.org/html/2602.11510). Mitigation: the first
+version is for people who trust each other; secret redaction and the
+literal never-share terms hold a message on every hit; the default brief
+forbids secrets and other people's private data; folders labelled Personal
+and unshared vaults are out of the agent's reach; incoming text cannot run
+anything; caps; *What left this machine* lists every envelope; the check is
+one toggle away and the team default. Residual: a sentence that is not a
+secret but was not meant to be shared is caught only by the brief and the
+check, and the check's miss rate is `OQ-35`.
+
+**`RISK-14` — The other side's Caprock is not ours to trust.**
+Caprock is Apache-2.0: the partner's build can be modified. Whatever one side
+sends, the other can keep, forward or show to anyone; the cost total it
+reports, its caps and its brief are its own claims; a Remove stops new
+envelopes, not copies already made. Mitigation: nothing is sent but what the
+log lists; the other side's cost is labelled as its own report; the person
+token reaches `personRoutes` only, so a hostile build can deliver text and
+nothing else; the transcript's hash chain shows when the two copies differ.
+Residual: by design, a shared word cannot be unshared.
+
+**`RISK-15` — An agent is argued into a worse outcome.**
+Buyer and seller agents play "an inherently imbalanced game"
+(arxiv.org/abs/2506.00073, seen 2026-11-27): a stronger model, or a side
+whose brief is sharper, can steer the other. Mitigation: agents propose and
+people agree — an outcome card binds nobody until both people press Accept;
+each side's brief carries its goal; the transcript is live for both.
+Residual: a person who accepts without reading accepts what their agent
+conceded.
+
 ## Open questions
 
 Anything the spec did not answer. Do not resolve these by inventing an answer. "Decided by" is a person, an event, or a task — never "later".
@@ -475,6 +510,19 @@ Anything the spec did not answer. Do not resolve these by inventing an answer. "
   the user presses Enter, and nothing runs by itself. A link tolerates
   whatever gap links tolerate today: no minimum version is enforced between
   computers, and a route the older side lacks answers 404.
+- `OQ-35` — **How often a Talk's guard lets a leak through**
+  ([ADR-110](08-decisions.md)). Nobody has measured what secret redaction
+  alone, and redaction with the second-model check, let through when the
+  other side probes, nor how often the check holds a message that broke
+  nothing. Decided by: P3's red-team set in [27-talks.md](27-talks.md) —
+  scripted probing partners against a set of briefs, the counts recorded
+  with a date. Owed before team rooms ship with the check as their default
+  safeguard, and before any public page says anything about leak protection
+  (rule 6).
+- `OQ-36` — **A guest in a team room.** Whether a person outside the team
+  (a client, a contractor) may join a team's room without a licence, and
+  what of the team's store and rules they see ([ADR-110](08-decisions.md)).
+  Decided by: the owner, before P5.
 
 ## What would falsify the whole plan
 

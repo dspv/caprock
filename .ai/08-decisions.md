@@ -9264,3 +9264,350 @@ open as `RISK-12`):
 **Revisit if** Anthropic's terms stop allowing a user's own sign-in on a
 hosted machine, a provider's API stops taking user data, or the owner wants
 the managed, paid server.
+
+## ADR-110 — Talks: agents speak for two people
+
+**Date:** 2026-11-28 · **Status:** accepted 2026-11-28 (decided without the
+owner from his ask of 2026-11-27, under his standing rule that the work is
+decided and done without his OK; reshaped the same day on two of his words,
+translated: approving each message "is unrealistic", and "this is for people
+who really trust each other; we need to start somewhere — it must be super
+convenient to use". Open questions decided the same day except two, below).
+Builds on
+[ADR-058](#adr-058--a-phone-reaches-the-machine-from-anywhere-through-a-relay-that-carries-only-ciphertext)
+(the relay, Noise end to end),
+[ADR-067](#adr-067--your-computers-reach-each-other-through-the-same-relay-the-local-daemon-speaks-for-the-others)
+(links between daemons),
+[ADR-108](#adr-108--a-new-computer-joins-with-one-key-made-on-the-computer-you-work-on-running-the-key-there-is-its-allow)
+(the rendezvous key),
+[ADR-063](#adr-063--second-brain-the-sessions-decisions-and-findings-kept-as-a-graph-on-this-machine-free)
+and [ADR-103](#adr-103--2nd-brain-reads-with-whichever-coding-agent-the-user-has-claude-code-codex-cursor-or-gemini-cli)
+(Second Brain, read by whichever agent the user has),
+[ADR-078](#adr-078--caprock-mcp-a-read-only-mcp-server-on-stdio-answered-from-the-daemons-loopback-api)
+(read-only tools over the user's data),
+[ADR-084](#adr-084--a-cost-also-says-what-it-was-of-the-plan-plan-dollars-and-a-share-of-the-week-per-sign-in)
+(plan dollars) and
+[ADR-047](#adr-047--the-owner-talks-to-his-agents-through-his-own-telegram-bot-integrations-he-turns-on-may-leave-the-machine)
+(what an integration the user turns on must say). The team part is the team
+tier of [ADR-021](#adr-021--the-team-tier-is-self-hosted-and-the-free-product-is-not-carved-up),
+unlocked by
+[ADR-022](#adr-022--the-licence-key-is-an-offline-string-with-an-expiry-and-nothing-more)'s
+key. Build plan: [27-talks.md](27-talks.md).
+
+**Context.** The owner (2026-11-27, translated and summarised): when he talks
+to a person in Slack or Telegram, each of them copies the other's messages
+into their own Claude (or any LLM), gets an answer, polishes it several times
+and pastes it back, while the goal stays the same — decide something, make a
+shared artifact, research a topic. He wants his Caprock and his partner's to
+let their agents talk to each other, each grounded in its owner's Second
+Brain, sessions and data, reach a decision or give both of them their
+opinion, and share artifacts; for a team the same among members, with a
+shared artifact store. Any LLM, any language or a mix. Quality first, tokens
+second, and the cost of a negotiation or an artifact always shown.
+
+**What was found, 2026-11-27** (pages seen that day):
+
+- No product lets agents of *different people* talk. T3 Code, Orca,
+  Conductor, Warp and Cursor all stop at one login or one organisation.
+  Claude Code's cross-session messaging is between the user's own sessions,
+  and an incoming message "can't approve anything"
+  (code.claude.com/docs/en/cross-session-messaging). Google's A2A is an open
+  agent-to-agent protocol under the Linux Foundation, which names 150+
+  supporting organisations (linuxfoundation.org press release).
+- Leakage between agents is the central hazard once the other side is not
+  trusted. Privacy attacks between conversing agents succeeded 37–88% of the
+  time in ConVerse (arxiv.org/html/2511.05359v1); AgentLeak finds
+  output-only checks "fundamentally insufficient"
+  (arxiv.org/html/2602.11510); buyer and seller agents play "an inherently
+  imbalanced game" (arxiv.org/abs/2506.00073).
+- The complaints behind the ask: no way to share a session in the Claude
+  Code CLI (github.com/anthropics/claude-code/issues/48828); a team's
+  CLAUDE.md drifting between members (dev.to, olivia_craft); Markdown that
+  breaks when Claude's answer is pasted into Slack
+  (unmarkdown.com/claude-to-slack).
+
+**The principle of the first version: super convenient, for a trusted pair
+first.** Two people who already work together and trust each other — the
+owner and a partner — are who Talks are for at first. Every step that a
+stranger would need and a partner does not is left out of the first version
+or switched off by default, and kept for the team phase, where the other
+side may be someone you have not met. The research above is the reason the
+heavier defences exist; the trust between the two people is the reason they
+are not in the way of a pair.
+
+**Friction is a number.** From "I want to talk to Ana" to Ana's and my agents
+exchanging their first message:
+
+- **A pair already linked:** at most **2 actions** — pick Ana (in Talks or
+  ⌘K *Talk with…*), type the goal in one line and press Enter.
+- **A new pair, both with Caprock:** at most **5 clicks** in all, typing and
+  pasting the link into the messenger they already use not counted —
+  inviter: *Talk with someone* → **Copy invite link** (2); partner: open the
+  link → **Accept** (2); inviter: type the goal, Enter (1).
+- Installing Caprock is outside the count; the invite page leads to it.
+- P1 is not done until a UI test walks both paths and counts (27-talks.md).
+
+**The decision.**
+
+- **A Talk** is one goal between two parties, each a person with their own
+  Caprock and their own agent. It holds: the goal (one line, by whoever
+  starts it); the two parties; each side's agent and model; each side's
+  brief (private to that side, optional); one transcript both sides hold; an
+  outcome card; shared artifacts with their versions; and the cost per side.
+- **Agents propose, people agree.** An agent can say anything its brief
+  allows, but it cannot commit its owner: an outcome card becomes *agreed*
+  only when both people press Accept.
+- **Auto is the only mode.** The agents talk on their own, turn by turn, and
+  every outgoing message passes the guard below. A message the guard stops
+  is **held**: its owner gets one notification — on the desktop, the phone,
+  and Telegram when that is on — with **Send**, **Edit** and **Drop**, and
+  the Talk waits on that message only; the other side sees *waiting for
+  Ana*. There is no mode that asks about every message (owner, 2026-11-28).
+- **A Talk looks like a chat.** It opens in the existing chat view, on the
+  desktop and the phone: three voices — my agent, theirs, and the two people
+  — each marked with its agent's glyph or the person's name, live on both
+  sides. Notifications come only for a hold and for an outcome card; nothing
+  pings per message.
+
+**The person link.** Two Caprocks of different people are linked once, and
+every Talk between them runs over that link.
+
+- **One link to invite, one click to accept** (ADR-108's rendezvous): *Talk
+  with someone* → **Copy invite link** gives
+  `https://caprock.dev/talk#<key>`. The key is in the fragment, which a
+  browser never sends to the server; the page opens Caprock with the key,
+  or says how to install it first and then does. The partner sees *Dima
+  invites you to Talks* and **Accept**. The key alone also works in Talks →
+  **Accept an invitation**. A key lives 24 hours (the partner may need to
+  install Caprock first), one is open at a time, five wrong secrets burn it,
+  and it is kept only as a hash in memory; the inviter's Caprock must be
+  running when it is accepted, and the partner's retries until the key
+  expires.
+- **Symmetric, two narrow tokens.** Through the rendezvous each side mints a
+  code for a *person* that pre-approves the other's proven relay key and no
+  other, and redeems the other's. Each daemon then lists the other as a
+  device of `kind: "person"`, role `talk`, its token bound to that key from
+  the first request (ADR-067 Phase 4). The kind travels with the code, never
+  with the redeeming request.
+- **The narrowest role.** A person device reaches `personRoutes` and nothing
+  else: deliver an envelope into a Talk the two share, and read that Talk's
+  delivery state. No session, terminal, brain, file, cost, settings or
+  pairing route; `computerRoutes` and `controllerRoutes` are untouched, and a
+  test asserts a person device gets 403 on every other route. Not
+  transitive: a person never reaches either side's computers or phones.
+- **Who starts a Talk.** Either side. Accepting an invitation sets **Let Ana
+  start talks with my agent**, on by default for the pair (the Accept screen
+  says it is on and what it spends: the caps below); with it on, a Talk Ana
+  starts begins on my side at once, with my default agent and brief, and
+  shows in my chat list with an unread mark. Off, it waits for my Accept.
+- **Who is on the other end.** The name is what the other person typed; the
+  partner's page shows a **safety code** (twelve digits from a hash of both
+  relay keys, the same on both sides) to compare if either wants to, never
+  a step. A changed key on the other side ends the link and asks for a new
+  invitation.
+- **Revocable from either side.** **Remove** ends the link on the next
+  request in both directions, closes its Talks as *ended by you* or *ended
+  by Ana*, and keeps each side's own copy of the transcript and artifacts.
+- **Access from anywhere** must be on on both sides (each side delivers to
+  the other); inviting or accepting turns it on, and the screen says so in a
+  line — the decision on the machine ADR-058 requires.
+- **Both online, no store-and-forward** (decided 2026-11-28). The relay
+  stores nothing (ADR-058) and stays so. An envelope the other side cannot
+  take waits in the sender's outbox and is retried; the Talk shows *Ana's
+  Caprock is offline*. Talks that run with the laptop closed run on a server
+  ([ADR-109](#adr-109--a-server-in-one-click-on-the-users-own-provider-account)).
+- **The envelope.** Kind (`message`, `human`, `artifact`, `outcome`,
+  `accept`, `state`), the Talk id, a per-sender sequence number, the hash of
+  the sender's previous envelope (so both transcripts can be checked equal),
+  the author (agent and model label, or the person), the body, and for a
+  message the sender's cost total if shared. Carried through the same
+  Noise channel `peers.Manager.Do` uses; ciphertext on the relay.
+
+**What leaves the machine.** Only the envelopes above: the messages this
+side's agent wrote and the guard let through (or the owner sent from a
+hold), what the owner typed, the artifact versions and outcome cards shared,
+accepts, and this side's cost total when shared. **Never** the Second Brain,
+a session, a transcript, a file, the brief, the agent's private notes to its
+owner, or a translation. Nothing goes to Caprock: the relay carries
+ciphertext, as for a phone. What an agent *says* can of course draw on what
+it read; that is what the brief, the guard and the log are for.
+
+**The agent on each side.**
+
+- **The owner's own agent, headless, per turn**, through the reader shape
+  ADR-103 built: Claude Code (`claude -p`), Codex (`codex exec`), Gemini CLI
+  or Cursor's CLI, signed in with the owner's own subscription, or an API key
+  the owner keeps in Caprock (Anthropic, OpenAI, DeepSeek, Kimi). Caprock
+  never pays for, resells or intermediates model use; the two sides may use
+  different agents and models.
+- **Quality first:** the default model is the strongest one the owner's
+  sign-in offers for that agent, not the cheap one 2nd Brain reads with; the
+  owner can pick any, per partner or per Talk.
+- **Grounded, read-only.** The turn's only tools are ADR-078's read-only
+  ones — memories and decisions, session summaries and prose — plus the
+  files the owner attached to the Talk. By default they answer from the
+  whole 2nd Brain and session history except folders labelled *Personal*
+  ([ADR-091](#adr-091--new-chat-asks-who-works-and-where-a-chat-may-run-in-a-folder-the-user-picked-marked-by-the-request-and-a-folder-may-be-labelled-work-or-personal))
+  and Obsidian vaults not shared with agents
+  ([ADR-079](#adr-079--obsidian-vaults-are-local-read-only-sources-in-second-brain-sharing-with-agents-is-per-vault-and-off-by-default)); the brief can narrow it to projects or
+  topics. No shell, no write, no web, no MCP server of the user's own (web
+  research is not in the first version).
+- **The other side's words are data.** Incoming messages go into the turn's
+  prompt quoted and marked as the other party's text, never into the system
+  prompt; and since the turn has no tool that acts, an incoming message
+  cannot run a tool, approve a prompt, start a session or type into one — by
+  construction, not by instruction (Claude Code's own rule for incoming
+  messages, and rule 7: a Talk never types into any session). Copying
+  something into a session is the owner's click, **Use in a session**.
+- **A turn's answer is structured:** the message to send, a private note to
+  the owner (never sent), the sources it read, and flags — *proposes an
+  outcome*, *needs my owner*, *done*. Only the message is a candidate to
+  leave.
+
+**The guard, on every outgoing message and artifact version.**
+
+1. **The brief — optional, pre-filled.** A Talk needs none to start. Each
+   side has a default brief, editable once in Settings → Talks and per Talk
+   from the chat header: *never share secrets, keys, credentials, or other
+   people's private data*. The owner can add *the goal for my side*, *may
+   share*, and *never share* in free text and as literal terms (a client's
+   name, a price floor, a path). The agent writes within it.
+2. **Redaction, always on.** `internal/redact` (credentials, card numbers,
+   IBANs) plus the brief's literal never-share terms, case-folded. **A hit
+   holds the message** with the value shown redacted, so the owner sees what
+   was caught and sends the redacted text, edits it or drops it. In the first
+   version a redaction hit is the only thing that holds a message besides
+   the caps.
+3. **A second-model check — off for a pair, a toggle per partner** (on by
+   default in team rooms). When on: a separate headless call on the owner's
+   agent, fresh context, no tools, given the brief, the draft and the
+   sources the turn read — **not** the other side's messages, so text the
+   other agent wrote cannot steer it — answering *pass* or *hold* with the
+   sentence that breaks the brief; it defaults to the talker's model
+   (decided 2026-11-28: quality first). Off for a trusted pair by default
+   (owner, 2026-11-28) because it doubles the calls per message and holds
+   messages a partner would have been happy to read.
+4. **Caps.** Per side, per Talk: 12 messages and a spend cap of $5 (plan
+   dollars for a subscription, ADR-084) — defaults the owner can change in
+   Settings → Talks, not estimates of what a Talk costs (decided 2026-11-28).
+   Reaching either is a hold: **Continue for 12 more** / **End**. Each side's
+   caps are its own.
+5. **The hold.** Send (as drafted, redacted), Edit (the owner's text goes as
+   the agent's message, marked *edited by Ana*), Drop (the agent is told the
+   message was not sent and why, and writes again or stops).
+
+**What was shared, visibly.** Each Talk has *What left this machine*, one tap
+from the chat header: every envelope this side sent, verbatim, when, the
+sources its turn read, what redaction caught, and whether it went by itself,
+from a hold, or was typed by the owner. It is a view of the transcript and
+the send log, kept as long as the Talk.
+
+**People watch and step in.** Either person can type into the chat — the
+message goes marked as theirs, through redaction — pause their agent, take
+over, or end the Talk. Each person reads in their own language: a
+translation made on the reader's side by the reader's agent, at the reader's
+cost, the original one tap away, and never sent. The agents write in the
+language of the goal unless a party sets another.
+
+**The outcome card and artifacts.**
+
+- **Outcome card:** the decision, the open points, who does what (person,
+  item, by when) and the sources each side chose to cite. Either agent may
+  propose one when it judges the goal met, or at a cap; it goes through the
+  guard like a message; it notifies both people, who Accept, or edit it
+  into a new version. Each side keeps every version. **Copy for Slack**
+  gives plain text that survives pasting there; **Keep in 2nd Brain** files
+  it as a decision with the Talk as its source, on that side only, on that
+  click.
+- **Shared artifacts:** a document, a plan, code, a table — text files in
+  the first version. Each version is content-hashed, carries its author and
+  goes through the guard; both sides keep the whole history, and a version
+  written against an older one is shown as a branch, never merged silently.
+
+**Cost, per side, always.** Each side prices its own turns, checks and
+translations from its own pricing table (`pricing/`) and the usage its agent
+reports, with plan dollars for a subscription (ADR-084), shown per message
+and per Talk, live, in the chat and on the outcome card. The other side's
+total is shown when they share it: a total only, on by default, one switch
+in Settings → Talks that says it is sent (decided 2026-11-28). A total the
+other side shares is their claim: Caprock shows it as *Ana's side, as her
+Caprock reports it*.
+
+**Free and paid.** A Talk between two people is free (owner, 2026-11-27):
+both must install Caprock, which is how it spreads. The team tier
+(ADR-021, ADR-022's key) adds **rooms** of three or more, a **shared
+artifact store**, and **team rules**: a team brief (never-share terms,
+may-share defaults, house style — the shared CLAUDE.md-like text) applied as
+a floor under every member's brief, which a member can narrow and not widen.
+The heavier defences are the team's defaults, because a room can hold people
+who do not know each other: the second-model check on, a brief required
+before a member's agent speaks, and a held message for every check flag. The
+team store lives on the team's self-hosted server (ADR-021; decided
+2026-11-28), never on anything of Caprock's.
+
+**What is not built first.** Rooms, the team store and team rules (the team
+tier, last phase); web search and fetch inside a turn; files other than
+text; A2A interop; starting a Talk from Telegram; store-and-forward; voice.
+
+**Rule 4.** A new destination the user turns on: the other person's
+Caprock, through the relay, after the user invited that person or accepted
+their invitation. The draft sentence for `CLAUDE.md` rule 4, to land with P1:
+
+> And Talks, with a person the user invited or whose invitation they
+> accepted: their two Caprocks exchange, through the relay as end-to-end
+> ciphertext, only what the Talk lists as sent — the messages the user's
+> agent wrote, past redaction, what the user typed or sent from a hold, the
+> artifacts and outcome cards shared, and their side's cost total unless
+> switched off — never their Second Brain, sessions or files themselves;
+> Remove ends the link from either side (ADR-110).
+
+In `CLAUDE.md`, *ADR-110* links to `.ai/08-decisions.md` as the rule's other
+ADRs do.
+
+**Alternatives rejected.**
+
+- *Adopting A2A now.* A2A is built for agents published as services and
+  called over HTTP across organisations; Caprock listens on loopback only and
+  reaches the other side through the relay, and what matters here — a person
+  link, a brief, redaction, a hold — is not what a transport protocol gives.
+  The envelope is kept mappable to A2A's messages and task states so a
+  bridge can be added later. Revisit when a user's partner runs a
+  non-Caprock agent over A2A and asks.
+- *A central Talk server of ours.* It would hold plaintext or the keys to
+  it, need accounts and storage, and be the first Caprock service that sees
+  content (rule 4). Its one gain, delivery while the other side is offline,
+  is had by running Caprock on a server (ADR-109).
+- *A Slack (or Telegram) bot as the medium.* It puts what agents write,
+  drawn from a person's Brain, in a third party's workspace; an
+  administrator must install it; two people in different workspaces cannot
+  share one. Slack stays an export target (*Copy for Slack*).
+- *Sharing a session with the partner.* It exposes everything the session
+  read; a Talk shows the other side only what was written for it.
+- *Asking the owner about every message.* Withdrawn on the owner's word
+  (2026-11-28): it keeps the copy-paste loop the feature exists to end.
+- *The full defences for a pair from day one* (check on, brief required).
+  Each is a step a trusted partner does not need, and the first version has
+  to be used to be worth hardening; they are the team phase's defaults and
+  one toggle away for a pair.
+
+**Open questions.** Decided 2026-11-28, above: no store-and-forward; caps of
+12 messages and $5 per side as defaults; the check off for a pair, on in
+rooms, defaulting to the talker's model; the other side's cost total shared
+by default; *Let Ana start talks* on by default; web tools not in the first
+version; the safety code shown, never required; the team store on the team
+server. Recorded in [12-risks.md](12-risks.md#open-questions):
+
+- **`OQ-35`** — how often redaction and the check let a leak through, and
+  how often the check holds a message it should not: a measurement, owed
+  before rooms ship with the check as their safeguard and before any public
+  page says anything about leak protection (rule 6).
+- **`OQ-36`** — whether a person outside the team (a client, a contractor)
+  may join a team room as a guest without a licence: the owner's call.
+
+Risks: `RISK-13` (a trusted pair's agent says more than its owner meant),
+`RISK-14` (the other side's Caprock is not ours to trust), `RISK-15` (an
+agent argued into a worse outcome).
+
+**Revisit if** a pair's Talks leak in ordinary use with the check off, a
+partner needs to talk to a non-Caprock agent, the friction counts above are
+missed, or the owner wants Talks to run while both sides are offline.
