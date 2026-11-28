@@ -627,15 +627,25 @@ the target runs its ordinary Host and gate, and pairs it as a computer
     each archive's SHA-256, signed, key, ssh_key}: a POSIX sh script for
     the Debian family — a system whose `/etc/os-release` `ID` or `ID_LIKE`
     names `debian` or `ubuntu` (Debian, Ubuntu, Kali, and the systems built
-    on them), any version; anything else stops at the top, naming the
-    family — run as root, each step printed as `==> caprock setup: <step>`
+    on them) and the Red Hat family, whose `ID` or `ID_LIKE` names
+    `fedora`, `rhel`, `centos`, `rocky` or `almalinux` (Fedora, Rocky Linux,
+    AlmaLinux, CentOS Stream, RHEL), any version; anything else stops at
+    the top, naming both families — run as root, each step printed as `==> caprock setup: <step>`
     and the failing one named on exit: packages from the distribution
     (`ca-certificates curl git tar gzip procps gnupg ufw
     unattended-upgrades`, `minisign` when signed); Node.js 18 or newer, the
     distribution's (`nodejs npm`) when its candidate is, otherwise
     NodeSource's signed repository (`node_22.x nodistro`, key in
     `/etc/apt/keyrings/nodesource.gpg`), and the step stops when the
-    installed one is still older; user `caprock` (`useradd`, `usermod
+    installed one is still older. The Red Hat family's steps are the same
+    with its own tools: `dnf install ca-certificates git tar gzip
+    procps-ng firewalld` (curl when none is there), `dnf-automatic` (or
+    `dnf5-plugin-automatic`) with `/etc/dnf/automatic.conf` set to
+    `upgrade_type = security` and `apply_updates = yes` and its timer
+    enabled, `minisign` from Fedora or EPEL when signed, Node.js from the
+    distribution or, when older than 18, its `nodejs:20` module stream,
+    and firewalld's `drop` zone as the default with sshd's ports added
+    when SSH stays on. Then, for both: user `caprock` (`useradd`, `usermod
     --lock`, out of `sudo` and `wheel`),
     `loginctl enable-linger caprock`, waiting for its user manager; APT's
     periodic unattended upgrades on; with `ssh_key`

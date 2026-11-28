@@ -86,6 +86,9 @@ func TestTheScriptSaysWhatItChecks(t *testing.T) {
 		"for 60 minutes",
 		"s/^ID_LIKE=//p",
 		"https://deb.nodesource.com/node_22.x nodistro main",
+		"fedora | rhel | centos | rocky | almalinux) family=redhat ;;",
+		"firewall-cmd --set-default-zone=drop",
+		"dnf -y module enable nodejs:20",
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("the script lacks %q", want)

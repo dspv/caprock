@@ -89,9 +89,16 @@ what it left open:
 - Supported systems (owner, 2026-11-28): the whole Debian family, found by
   `ID` or `ID_LIKE` in `/etc/os-release` naming `debian` or `ubuntu` —
   Debian 12 and 13, Ubuntu 22.04 and newer, Kali rolling and the systems
-  built on them — any version. The agents need Node.js 18 or newer: the
+  built on them — any version; and the Red Hat family (the second branch
+  of the same decision): `ID` or `ID_LIKE` naming `fedora`, `rhel`,
+  `centos`, `rocky` or `almalinux`, with `dnf`, firewalld's `drop` zone,
+  `dnf-automatic` (security updates, applied) and EPEL for `minisign` off
+  Fedora; the user, lingering and SSH steps are the same. The agents need
+  Node.js 18 or newer: the
   distribution's when its candidate is, otherwise NodeSource's signed
-  repository with Node.js 22 (Ubuntu 22.04's own is 12), and the step
+  repository with Node.js 22 (Ubuntu 22.04's own is 12) on the Debian
+  family, the `nodejs:20` module stream on the Red Hat family (EL 9
+  defaults to 16), and the step
   stops naming itself if what is installed is still older. Not Arch,
   Alpine or macOS; a Mac server is *Ask for it* on the New server screen,
   a GitHub issue filled in for the user to submit. Kali's
@@ -116,8 +123,9 @@ what it left open:
   container is behind build tags** (`smoke servercontainer`, `make
   server-container-test`, Linux with Docker; `CAPROCK_SERVER_IMAGE` picks the
   image, `debian:12` when unset): Ubuntu 24.04 (Hetzner's and DigitalOcean's
-  default), Ubuntu 22.04 (the NodeSource path), Debian 12 and 13 and Kali
-  rolling, each with systemd as
+  default), Ubuntu 22.04 (the NodeSource path), Debian 12 and 13, Kali
+  rolling, Fedora, Rocky Linux 9 and AlmaLinux 9 (the module-stream
+  path), each with systemd as
   PID 1 in a privileged container, the release served locally, the relay
   and file server reached through socat on the container's loopback, the
   agents skipped (`CAPROCK_SETUP_SKIP_AGENTS=1`), ending in the join and
@@ -125,7 +133,7 @@ what it left open:
   It is not in `make check` (minutes, a privileged container, package
   mirrors); CI runs it as `ci.yml`'s required `server-container` matrix
   (`ubuntu:24.04`, `ubuntu:22.04`, `debian:12`, `debian:13`,
-  `kalilinux/kali-rolling`) on
+  `kalilinux/kali-rolling`, `fedora`, `rockylinux:9`, `almalinux:9`) on
   ubuntu-latest when `internal/serverscript/`, `internal/peers/`,
   `cmd/caprock/`, the test or `ci.yml` change, and on `workflow_dispatch`.
   Its first runs (#1117) found two gaps the script now closes: it starts

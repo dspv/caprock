@@ -330,7 +330,8 @@ jobs:
   # internal/smoke/server_container_test.go), across the Debian family:
   # ubuntu:24.04 (Hetzner's and DigitalOcean's default image), ubuntu:22.04
   # (its Node.js is too old: the NodeSource path), debian:12, debian:13 and
-  # kalilinux/kali-rolling,
+  # kalilinux/kali-rolling, and the Red Hat family: fedora, rockylinux:9 and
+  # almalinux:9 (Node.js 16 by default: the nodejs:20 module stream path),
   # booted the same way. The agents' installs are skipped
   # (CAPROCK_SETUP_SKIP_AGENTS=1): no Claude Code or Codex download, no
   # sign-in. ubuntu-latest only, the runner with Docker; required.
@@ -341,7 +342,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        image: ["ubuntu:24.04", "ubuntu:22.04", "debian:12", "debian:13", "kalilinux/kali-rolling"]
+        image: ["ubuntu:24.04", "ubuntu:22.04", "debian:12", "debian:13", "kalilinux/kali-rolling", "fedora", "rockylinux:9", "almalinux:9"]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
