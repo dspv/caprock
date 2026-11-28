@@ -964,7 +964,7 @@ def parse_openrouter(text: str) -> list:
 OPENAI_IGNORE = (
     r"^gpt-4o", r"^gpt-3", r"-pro$", r"-\d{4}-\d{2}-\d{2}$", r"embedding", r"moderation",
     r"image", r"audio", r"realtime", r"transcribe", r"tts", r"search",
-    r"cyber", r"rosalind", r"-law$", r"chat-latest$", r"^sora", r"^dall-e",
+    r"cyber", r"rosalind", r"-law$", r"-healthcare$", r"chat-latest$", r"^sora", r"^dall-e",
     r"whisper", r"^computer-use", r"^codex-mini",
     # Generations before gpt-4.1 that no agent Caprock watches runs.
     r"^babbage", r"^davinci", r"^gpt-4$", r"^gpt-4-", r"^gpt-4\.5", r"^o1",
@@ -973,6 +973,8 @@ GOOGLE_IGNORE = (
     r"tts", r"image", r"embedding", r"robotics", r"live", r"transcribe",
     r"lyria", r"gemma", r"omni", r"decision", r"nano-banana", r"audio",
     r"veo", r"imagen",
+    # Genie is a world-generation model that streams video; no agent runs it.
+    r"^genie",
 )
 
 SOURCES = [
