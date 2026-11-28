@@ -177,7 +177,25 @@ export interface ServerScript extends JoinKeyState {
   signed: boolean
 }
 
+/**
+ * `POST /v1/machines/server-ssh`'s answer (I already have a server): a server
+ * key, and the ssh command for this computer's terminal, which reads the
+ * script from a 0600 file the daemon keeps until the key is spent.
+ */
+export interface ServerSSH extends JoinKeyState {
+  command: string
+  /** This computer's OS, whose shell the command is spelled for. */
+  os: string
+  version: string
+  signed: boolean
+  /** The folder the terminal tab opens in. */
+  home?: string
+}
+
 export const serverApi = {
+  /** I already have a server: the user's own ssh command, typed and not run. */
+  ssh: (target: { address: string; user: string; port?: number }) =>
+    call<ServerSSH>('/v1/machines/server-ssh', { method: 'POST', body: JSON.stringify(target) }),
   /** Makes a server key here (withdrawing any open key) and the script with it. */
   make: (sshKey: boolean) =>
     call<ServerScript>('/v1/machines/server-script', { method: 'POST', body: JSON.stringify({ ssh_key: sshKey }) }),

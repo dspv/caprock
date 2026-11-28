@@ -671,6 +671,30 @@ the target runs its ordinary Host and gate, and pairs it as a computer
     `caprock hooks install`, `caprock service install`, a wait for the
     daemon, and `caprock join` with the key on standard input (three tries,
     20 s apart). `release.yml`'s `linux-sign` job signs the Linux archives.
+    The steps after the values are one `{ … } </dev/null` group: `sh -s`
+    reads them whole before running any, and none reads standard input.
+  - **`POST /v1/machines/server-ssh {address, user, port?}`** (ADR-109,
+    amended 2026-11-28: *I already have a server*; same file and gates as
+    `server-script`: loopback only, `501` without the feature, on no
+    device's allowlist). `address` is an IPv4 or IPv6 address or a host
+    name, `user` a Linux user name, `port` 1–65535 (0 or absent is 22),
+    checked by `serverscript.SSHTarget.Check` before anything else: `400`
+    with the reason otherwise. It makes the script as `server-script` does
+    with `ssh_key: true` (same `502`/`409`), writes it to
+    `<data dir>/server-scripts/caprock-setup-*.sh` (directory 0700, file
+    0600), and answers `{state, expires_at, relay, relay_status, server:
+    true, command, os, version, signed, home}` with `Cache-Control:
+    no-store` — neither the script nor the key. `command` is
+    `serverscript.SSHCommand` for this machine's `os`: root, `ssh -p
+    <port> root@<address> 'sh -s' < '<file>'` (Windows: `cmd --% /c ssh -p
+    <port> root@<address> "sh -s" < "<file>"`); another user, `scp -P
+    <port> '<file>' <user>@<address>:caprock-setup.sh && ssh -t -p <port>
+    <user>@<address> 'sudo sh caprock-setup.sh; rm -f caprock-setup.sh'`
+    (Windows joins the two with `; if ($?) { … }`; an IPv6 address is
+    bracketed for `scp`). `home` is the folder the UI opens the terminal
+    tab in, the command typed and not run. The daemon removes the file once
+    the key is no longer `waiting` or `joining` (looked at every 5 s), and
+    every file in that directory at start.
 - **The CLI** (`cmd/caprock/machines.go`), against the local daemon:
   `caprock machines` / `ls` (the computers this one reaches, checked, and
   the computers that reach this one from `GET /v1/pair/state`), `add

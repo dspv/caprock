@@ -81,6 +81,40 @@ func TestTwoDaemonsJoinWithAServerScript(t *testing.T) {
 	main := startBinary(t, caprock, mEnv, mPort, mData, "main")
 	post(t, mBase+"/v1/pair/remote", `{"on":false,"relay":"`+relayURL+`"}`)
 
+	// I already have a server: the script saved to a 0600 file under the
+	// data directory, the command reading it, and the file gone once a new
+	// key replaces its own.
+	var viaSSH struct {
+		Command string `json:"command"`
+		OS      string `json:"os"`
+		Server  bool   `json:"server"`
+	}
+	if code := callJSON(t, "POST", mBase+"/v1/machines/server-ssh", `{"address":"203.0.113.7","user":"root","port":2222}`, &viaSSH); code != 200 || !viaSSH.Server || viaSSH.OS != runtime.GOOS {
+		t.Fatalf("server-ssh: %d %+v\nmain log:\n%s", code, viaSSH, main.log())
+	}
+	quote := "'"
+	if runtime.GOOS == "windows" {
+		quote = `"`
+	}
+	parts := strings.Split(viaSSH.Command, quote)
+	saved := parts[len(parts)-2]
+	if !strings.HasPrefix(viaSSH.Command, "ssh -p 2222 root@203.0.113.7") && !strings.HasPrefix(viaSSH.Command, "cmd --% /c ssh -p 2222 root@203.0.113.7") {
+		t.Fatalf("the command: %s", viaSSH.Command)
+	}
+	if filepath.Dir(saved) != filepath.Join(mData, "server-scripts") {
+		t.Fatalf("the script is at %s, not under the data directory", saved)
+	}
+	fi, err := os.Stat(saved)
+	if err != nil {
+		t.Fatalf("the saved script: %v", err)
+	}
+	if runtime.GOOS != "windows" && fi.Mode().Perm() != 0o600 {
+		t.Fatalf("the saved script is %v", fi.Mode().Perm())
+	}
+	if raw, _ := os.ReadFile(saved); !strings.Contains(string(raw), "CAPROCK_SSH_KEY=1") || !strings.Contains(string(raw), "CAPROCK_JOIN_KEY='cj1-") {
+		t.Fatalf("the saved script keeps SSH on and holds a key:\n%s", raw)
+	}
+
 	made := time.Now()
 	out := runCLI(t, caprock, mEnv, "machines", "server-script", "--ssh-key")
 	m := regexp.MustCompile(`CAPROCK_JOIN_KEY='(cj1-[A-Za-z0-9_-]+)'`).FindStringSubmatch(out)
@@ -116,6 +150,15 @@ func TestTwoDaemonsJoinWithAServerScript(t *testing.T) {
 	}
 	if left := time.UnixMilli(desk.ExpiresAt).Sub(made); !desk.Server || left < 59*time.Minute || left > 61*time.Minute {
 		t.Fatalf("the server key: %+v, open for %s", desk, left)
+	}
+	// The new script's key replaced the ssh one: its file goes.
+	for gone := time.Now().Add(30 * time.Second); ; time.Sleep(200 * time.Millisecond) {
+		if _, err := os.Stat(saved); os.IsNotExist(err) {
+			break
+		}
+		if time.Now().After(gone) {
+			t.Fatalf("the ssh script outlived its key: %s", saved)
+		}
 	}
 
 	// On the new computer, as the script's last step: the key on stdin.

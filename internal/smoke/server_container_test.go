@@ -48,6 +48,11 @@ func TestTheSetupScriptOnALinuxServer(t *testing.T) {
 	if image == "" {
 		image = "debian:12"
 	}
+	// CAPROCK_SERVER_VIA=ssh is I already have a server, as a customer's
+	// email has it: root with a password, the command Caprock types run as it
+	// is, ssh asking for the password (here through SSH_ASKPASS), and the
+	// script turning password login off while keeping the session it runs in.
+	viaSSH := os.Getenv("CAPROCK_SERVER_VIA") == "ssh"
 	const version = "0.0.0-servertest"
 	root := t.TempDir()
 	bin := filepath.Join(root, "bin")
@@ -103,12 +108,14 @@ func TestTheSetupScriptOnALinuxServer(t *testing.T) {
 		State  string `json:"state"`
 		Server bool   `json:"server"`
 	}
-	if code := callJSON(t, "POST", mBase+"/v1/machines/server-script", `{"ssh_key":false}`, &made); code != 200 || !made.Server {
-		t.Fatalf("server-script: %d %+v\n%s", code, made, main.log())
-	}
 	script := filepath.Join(root, "caprock-setup.sh")
-	if err := os.WriteFile(script, []byte(made.Script), 0o600); err != nil {
-		t.Fatal(err)
+	if !viaSSH {
+		if code := callJSON(t, "POST", mBase+"/v1/machines/server-script", `{"ssh_key":false}`, &made); code != 200 || !made.Server {
+			t.Fatalf("server-script: %d %+v\n%s", code, made, main.log())
+		}
+		if err := os.WriteFile(script, []byte(made.Script), 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	// Ubuntu or Debian with systemd as PID 1, as a cloud server boots; the same
@@ -128,9 +135,13 @@ func TestTheSetupScriptOnALinuxServer(t *testing.T) {
 	boot := "if command -v apt-get >/dev/null; then " +
 		"apt-get update && apt-get install -y --no-install-recommends systemd systemd-sysv dbus dbus-user-session libpam-systemd socat ca-certificates; " +
 		"else dnf -y install systemd systemd-pam dbus socat procps-ng && systemctl --root=/ unmask systemd-logind.service; fi && exec /sbin/init"
-	if out, err := run(10*time.Minute, "run", "-d", "--name", name, "--privileged", "--cgroupns=host",
+	runArgs := []string{"run", "-d", "--name", name, "--privileged", "--cgroupns=host",
 		"-v", "/sys/fs/cgroup:/sys/fs/cgroup:rw", "--tmpfs", "/run", "--tmpfs", "/run/lock",
-		"--add-host=host.docker.internal:host-gateway", image, "sh", "-c", boot); err != nil {
+		"--add-host=host.docker.internal:host-gateway"}
+	if viaSSH {
+		runArgs = append(runArgs, "-p", "127.0.0.1::22")
+	}
+	if out, err := run(10*time.Minute, append(runArgs, image, "sh", "-c", boot)...); err != nil {
 		t.Fatalf("docker run: %v\n%s", err, out)
 	}
 	t.Cleanup(func() { _, _ = run(time.Minute, "rm", "-f", name) })
@@ -152,13 +163,92 @@ func TestTheSetupScriptOnALinuxServer(t *testing.T) {
 			t.Fatalf("socat: %v\n%s", err, out)
 		}
 	}
-	if out, err := run(time.Minute, "cp", script, name+":/root/caprock-setup.sh"); err != nil {
-		t.Fatalf("docker cp: %v\n%s", err, out)
-	}
+	var out, sshPort, saved string
+	var sshAs func(timeout time.Duration, command string) (string, error)
+	if viaSSH {
+		// The rented server as a provider hands it over: sshd on, root with
+		// a password, password login allowed by a drop-in named as
+		// cloud-init names its own.
+		const password = "Tr0ub4dor-servertest"
+		sshd := "if command -v apt-get >/dev/null; then apt-get install -y --no-install-recommends openssh-server; " +
+			"else dnf -y install openssh-server shadow-utils; fi && mkdir -p /etc/ssh/sshd_config.d && " +
+			"printf 'PermitRootLogin yes\\nPasswordAuthentication yes\\n' >/etc/ssh/sshd_config.d/50-cloud-init.conf && " +
+			"echo 'root:" + password + "' | chpasswd && " +
+			"{ systemctl enable --now ssh.service 2>/dev/null || systemctl enable --now sshd.service; } && " +
+			"{ systemctl restart ssh.service 2>/dev/null || systemctl restart sshd.service; }"
+		if o, err := run(10*time.Minute, "exec", name, "sh", "-c", sshd); err != nil {
+			t.Fatalf("sshd in the container: %v\n%s", err, o)
+		}
+		p, err := run(time.Minute, "port", name, "22/tcp")
+		if err != nil {
+			t.Fatalf("docker port: %v\n%s", err, p)
+		}
+		_, sshPort, _ = strings.Cut(strings.Fields(p)[0], ":")
+		// ssh as a person runs it, but with no known_hosts or keys of the
+		// runner's, and the password from SSH_ASKPASS for the prompt.
+		tools := filepath.Join(root, "ssh-tools")
+		if err := os.MkdirAll(tools, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		realSSH, err := exec.LookPath("ssh")
+		if err != nil {
+			t.Fatal("no ssh client on this machine")
+		}
+		files := map[string]string{
+			"ssh": "#!/bin/sh\nexec " + realSSH + " -F /dev/null -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null " +
+				"-o PubkeyAuthentication=no -o PreferredAuthentications=password,keyboard-interactive -o NumberOfPasswordPrompts=1 \"$@\"\n",
+			"askpass": "#!/bin/sh\necho '" + password + "'\n",
+		}
+		for f, body := range files {
+			if err := os.WriteFile(filepath.Join(tools, f), []byte(body), 0o700); err != nil { //nolint:gosec // the test's own tools
+				t.Fatal(err)
+			}
+		}
+		sshAs = func(timeout time.Duration, command string) (string, error) {
+			ctx, cancel := context.WithTimeout(context.Background(), timeout)
+			defer cancel()
+			c := exec.CommandContext(ctx, "sh", "-c", command) //nolint:gosec // Caprock's own command, under test
+			c.Env = append(os.Environ(), "PATH="+tools+":"+os.Getenv("PATH"),
+				"SSH_ASKPASS="+filepath.Join(tools, "askpass"), "SSH_ASKPASS_REQUIRE=force", "DISPLAY=:0")
+			b, err := c.CombinedOutput()
+			return string(b), err
+		}
+		// Before: the password works.
+		if o, err := sshAs(time.Minute, "ssh -p "+sshPort+" root@127.0.0.1 true"); err != nil {
+			t.Fatalf("the password login before the script: %v\n%s", err, o)
+		}
 
-	out, err := run(35*time.Minute, "exec", name, "sh", "/root/caprock-setup.sh")
-	if err != nil {
-		t.Fatalf("the script failed: %v\n%s\nmain log:\n%s", err, out, main.log())
+		var ssh struct {
+			Command string `json:"command"`
+			Server  bool   `json:"server"`
+		}
+		if code := callJSON(t, "POST", mBase+"/v1/machines/server-ssh", `{"address":"127.0.0.1","user":"root","port":`+sshPort+`}`, &ssh); code != 200 || !ssh.Server {
+			t.Fatalf("server-ssh: %d %+v\n%s", code, ssh, main.log())
+		}
+		want := "ssh -p " + sshPort + " root@127.0.0.1 'sh -s' < '"
+		if !strings.HasPrefix(ssh.Command, want) {
+			t.Fatalf("the typed command: %s", ssh.Command)
+		}
+		saved = strings.TrimSuffix(strings.TrimPrefix(ssh.Command, want), "'")
+		raw, err := os.ReadFile(saved)
+		if err != nil {
+			t.Fatalf("the saved script: %v", err)
+		}
+		made.Script = string(raw)
+		t.Logf("running, as the user would press Enter: %s", ssh.Command)
+		out, err = sshAs(35*time.Minute, ssh.Command)
+		if err != nil {
+			t.Fatalf("the script over ssh failed: %v\n%s\nmain log:\n%s", err, out, main.log())
+		}
+	} else {
+		if o, err := run(time.Minute, "cp", script, name+":/root/caprock-setup.sh"); err != nil {
+			t.Fatalf("docker cp: %v\n%s", err, o)
+		}
+		var err error
+		out, err = run(35*time.Minute, "exec", name, "sh", "/root/caprock-setup.sh")
+		if err != nil {
+			t.Fatalf("the script failed: %v\n%s\nmain log:\n%s", err, out, main.log())
+		}
 	}
 	for _, want := range []string{"==> caprock setup: check the system", "SHA-256: good", "caprock " + version, "Joined.", "==> caprock setup: done"} {
 		if !strings.Contains(out, want) {
@@ -211,8 +301,34 @@ func TestTheSetupScriptOnALinuxServer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read /proc/net/tcp: %v\n%s", err, tcp)
 	}
-	if open := openPorts(tcp); len(open) > 0 {
+	var open []string
+	for _, o := range openPorts(tcp) {
+		if !viaSSH || !strings.HasSuffix(o, ":0016") { // 22, sshd, kept on over SSH
+			open = append(open, o)
+		}
+	}
+	if len(open) > 0 {
 		t.Errorf("listening off loopback: %v\n%s", open, tcp)
+	}
+
+	if viaSSH {
+		// sshd still on, keys only: the password the provider gave no longer
+		// logs in, and the script's file on the laptop is gone with its key.
+		if o, err := run(time.Minute, "exec", name, "sh", "-c", "systemctl is-active ssh.service || systemctl is-active sshd.service"); err != nil {
+			t.Errorf("sshd after the script: %v\n%s", err, o)
+		}
+		if o, err := sshAs(time.Minute, "ssh -p "+sshPort+" root@127.0.0.1 true"); err == nil {
+			t.Errorf("the password still logs in after the script:\n%s", o)
+		}
+		for gone := time.Now().Add(30 * time.Second); ; time.Sleep(500 * time.Millisecond) {
+			if _, err := os.Stat(saved); os.IsNotExist(err) {
+				break
+			}
+			if time.Now().After(gone) {
+				t.Errorf("the saved script outlived its key: %s", saved)
+				break
+			}
+		}
 	}
 
 	// The key is in no log or file on the laptop.

@@ -9208,6 +9208,7 @@ laptop shows the upgrade command, as for any computer).
 - *SSH from the laptop to set the server up* (Caprock as an SSH client):
   needs an open port, a key on the laptop and Caprock holding a root shell
   on the user's server; the relay already reaches the server once it joins.
+  Still rejected; *I already have a server* (amended below) is not this.
 - *Tailscale as the link* (Orca's shape): a second account and app the user
   must have, and the relay already works behind any NAT.
 - *Copying the laptop's Claude sign-in to the server*: Anthropic's terms
@@ -9222,6 +9223,27 @@ at the laptop's own relay, already in ADR-108. Path B adds one outbound
 destination the user turns on by pasting a token — the provider's API — and
 CLAUDE.md rule 4 needs a sentence naming it, landed with P2 (draft in
 [26-server.md § Rule 4](26-server.md#rule-4)).
+
+**Amended 2026-11-28: I already have a server.** A server the user already
+has, reached over SSH by its address and a user (root, or a user with sudo;
+port optional), is the second path on New server. **Set up** makes the
+script (SSH kept on, keys only), saves it to a 0600 file under the data
+directory, and opens a terminal tab on the user's own computer with the
+user's own `ssh` command typed in and not run — `ssh -p 22 root@<IP>
+'sh -s' < <file>` (on Windows OpenSSH's `ssh.exe` through `cmd`'s
+redirection; another user: `scp` the file, then `ssh -t … sudo sh`). The
+user presses Enter; ssh asks there for the password, uses their key or
+their agent. This is not the rejected *Caprock as an SSH client*: Caprock
+opens no connection, holds no key, password or shell, and stores no
+credential — the user's own ssh runs in a terminal they see and drive,
+exactly as if they had typed it, and the server is reached through the
+relay after it joins, as on path A. The file is removed once its key is
+spent, withdrawn or expired, and at the daemon's start. The address, user
+and port are checked against a strict character set (`serverscript.
+SSHTarget`) before anything is typed. A provider that hands over root with
+a password ends with password login off and SSH on for keys only (sshd
+reloaded, so the session the script runs in stays); the screen says the
+way in afterwards is Caprock, or SSH with a key.
 
 **Open questions, decided 2026-11-28** (recorded as closed in
 [12-risks.md](12-risks.md#open-questions); provider and terms churn stays

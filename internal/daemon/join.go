@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -117,6 +119,92 @@ func (a *joinAdapter) NewServerScript(ctx context.Context, req api.ServerScriptR
 	}
 	a.d.log.Info("a server's setup script was made", "component", "peers", "version", rel.Version, "signed", rel.Signed, "ssh_key", req.SSHKey)
 	return api.ServerScript{JoinState: k.JoinState, Script: script, Version: rel.Version, Signed: rel.Signed}, nil
+}
+
+// serverScriptDir holds the scripts I already have a server writes: one
+// 0600 file per key, gone once that key is spent, withdrawn or expired, and
+// all of them at the daemon's start.
+func (a *joinAdapter) serverScriptDir() string {
+	return filepath.Join(a.d.opt.DataDir, "server-scripts")
+}
+
+// serverScriptPoll is how often a saved script's key is looked at.
+var serverScriptPoll = 5 * time.Second
+
+// clearServerScripts removes every saved script: at start, none of their
+// keys can still be open.
+func (a *joinAdapter) clearServerScripts() {
+	if a.d.opt.DataDir != "" {
+		_ = os.RemoveAll(a.serverScriptDir())
+	}
+}
+
+// NewServerSSH is I already have a server (ADR-109, amended 2026-11-28): the
+// script with SSH kept on, keys only (the user logs in over SSH to run it,
+// and the script turns password login off), saved to a 0600 file, and the
+// user's own ssh command for this computer's terminal. The file is removed
+// as soon as the key is no longer open.
+func (a *joinAdapter) NewServerSSH(ctx context.Context, t serverscript.SSHTarget) (api.ServerSSH, error) {
+	if err := t.Check(); err != nil {
+		return api.ServerSSH{}, err
+	}
+	if a.d.opt.DataDir == "" {
+		return api.ServerSSH{}, errors.New("no data directory to keep the script in")
+	}
+	s, err := a.NewServerScript(ctx, api.ServerScriptRequest{SSHKey: true})
+	if err != nil {
+		return api.ServerSSH{}, err
+	}
+	dir := a.serverScriptDir()
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		a.mgr().Withdraw()
+		return api.ServerSSH{}, err
+	}
+	f, err := os.CreateTemp(dir, "caprock-setup-*.sh")
+	if err != nil {
+		a.mgr().Withdraw()
+		return api.ServerSSH{}, err
+	}
+	path := f.Name()
+	_, werr := f.WriteString(s.Script)
+	cerr := f.Close()
+	if err := errors.Join(werr, cerr, os.Chmod(path, 0o600)); err != nil {
+		_ = os.Remove(path)
+		a.mgr().Withdraw()
+		return api.ServerSSH{}, err
+	}
+	cmd, err := serverscript.SSHCommand(runtime.GOOS, t, path)
+	if err != nil {
+		_ = os.Remove(path)
+		a.mgr().Withdraw()
+		return api.ServerSSH{}, err
+	}
+	go a.removeWhenSpent(path, s.ExpiresAt)
+	a.d.log.Info("a server's setup script was saved for ssh", "component", "peers", "version", s.Version, "port", t.Port, "root", t.User == "root")
+	return api.ServerSSH{JoinState: s.JoinState, Command: cmd, OS: runtime.GOOS, Version: s.Version, Signed: s.Signed}, nil
+}
+
+// removeWhenSpent removes path once the key that opened at expires is no
+// longer waiting: joined, failed, withdrawn, replaced or expired.
+func (a *joinAdapter) removeWhenSpent(path string, expires int64) {
+	defer func() { _ = os.Remove(path) }()
+	base := a.d.baseCtx
+	if base == nil {
+		base = context.Background()
+	}
+	t := time.NewTicker(serverScriptPoll)
+	defer t.Stop()
+	for {
+		select {
+		case <-base.Done():
+			return
+		case <-t.C:
+			st := a.mgr().State()
+			if st.ExpiresAt != expires || (st.State != peers.JoinWaiting && st.State != peers.JoinJoining) {
+				return
+			}
+		}
+	}
 }
 
 // joinOnline bounds the wait for this computer's own relay connection

@@ -38,6 +38,8 @@ CAPROCK_MINISIGN_KEY='RWTX1RX33pVjQu6PgjfJjd9yG0IAEMskOZbDzsOMugDUiz5sTShBZ1rB'
 CAPROCK_SSH_KEY=1
 CAPROCK_JOIN_KEY='cj1-AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyAhIiMkJSYnKCkqKywtLi8wMTIzNDU2Nzg5Ojs8PT4_QEFCQ0RFRkdISUpLTE1OT1A'
 
+# Read whole before it runs; no step reads standard input.
+{
 set -eu
 umask 022
 
@@ -393,3 +395,4 @@ done
 STEP='done'
 echo
 echo '==> caprock setup: done. Sign in to Claude Code and Codex from this server page on the computer you work on.'
+} </dev/null
