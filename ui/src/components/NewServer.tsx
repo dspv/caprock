@@ -112,7 +112,7 @@ export function NewServer() {
         <span className="text-[13px] font-medium text-fg">New server — I&apos;ll create it myself</span>
         <span className="text-[12.5px] text-fg-muted">
           The script runs once on the new server as root: a user <code className="mono">caprock</code> with no password and no sudo, unattended security upgrades,
-          a firewall that admits nothing inbound, Git, Node.js, Claude Code with Anthropic&apos;s installer, Codex, Caprock at this computer&apos;s version, and then it links the server here.
+          a firewall that admits nothing inbound, Git, Node.js, Claude Code with Anthropic&apos;s installer, Codex, a headless Chromium for the agents, Caprock at this computer&apos;s version, and then it links the server here.
           {SERVER_SYSTEMS}.
         </span>
         <span className="text-[12.5px] text-fg-muted" data-new-server-mac>

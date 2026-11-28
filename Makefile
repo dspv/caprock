@@ -167,7 +167,7 @@ smoke: build-go ## Phase 0 DoD scenario + the Phase 2 e2e (what CI's smoke step 
 # in ci.yml's server-container job when its files change.
 .PHONY: server-container-test
 server-container-test: ## the server setup script in a container: CAPROCK_SERVER_IMAGE=ubuntu:24.04 or debian:12 (Linux + Docker)
-	go test -tags 'smoke servercontainer' -count=1 -timeout 40m -run TestTheSetupScriptOnALinuxServer -v ./internal/smoke/
+	go test -tags 'smoke servercontainer' -count=1 -timeout 60m -run TestTheSetupScriptOnALinuxServer -v ./internal/smoke/
 
 # The app's golden paths in a headless browser (ui/e2e, .ai/10-infrastructure.md
 # § E2E): this checkout's dashboard, built into a temp directory and served by

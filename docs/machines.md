@@ -75,7 +75,9 @@ fails, with its name in the provider's console log:
   distribution or, when its own is older, NodeSource's signed repository
   (Debian family) or the distribution's `nodejs:20` module stream (Red Hat
   family),
-  Claude Code with Anthropic's own installer, and Codex from npm;
+  Claude Code with Anthropic's own installer, Codex from npm, and a
+  headless Chromium for the agents (the distribution's, or Playwright's
+  headless shell on Ubuntu, whose own Chromium is a snap);
 - installs Caprock at your laptop's version from its GitHub release, its
   SHA-256 checked against the one your laptop read from that release's
   `checksums.txt`, and — for a release whose Linux archives are signed —

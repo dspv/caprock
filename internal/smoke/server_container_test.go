@@ -29,8 +29,9 @@ import (
 // with Docker, and ci.yml's server-container job on ubuntu-latest when its
 // files change. Not in `make check`: it needs Docker, a privileged
 // container running systemd and the distribution's package mirrors, and
-// takes minutes. It installs no agent (CAPROCK_SETUP_SKIP_AGENTS=1: no
-// Claude Code or Codex download, no sign-in).
+// takes minutes. It installs the agents for real (Claude Code with
+// Anthropic's installer, Codex from npm) and signs in to neither, then
+// asserts the "Caprock native" promise of .ai/26-server.md item by item.
 //
 // The computer the user works on is a daemon here, in a temp home, with a
 // relay in this test; the release is this checkout built for Linux, served
@@ -155,7 +156,7 @@ func TestTheSetupScriptOnALinuxServer(t *testing.T) {
 		t.Fatalf("docker cp: %v\n%s", err, out)
 	}
 
-	out, err := run(20*time.Minute, "exec", "-e", "CAPROCK_SETUP_SKIP_AGENTS=1", name, "sh", "/root/caprock-setup.sh")
+	out, err := run(35*time.Minute, "exec", name, "sh", "/root/caprock-setup.sh")
 	if err != nil {
 		t.Fatalf("the script failed: %v\n%s\nmain log:\n%s", err, out, main.log())
 	}
@@ -176,10 +177,22 @@ func TestTheSetupScriptOnALinuxServer(t *testing.T) {
 	if code := callJSON(t, "GET", mBase+"/v1/machines?check=1", "", &list); after.State != "joined" || code != 200 || len(list.Machines) != 1 || list.Machines[0].Status != "online" {
 		t.Fatalf("after the script: key %q, machines %d %+v\nmain log:\n%s", after.State, code, list, main.log())
 	}
+	// Native: the same Caprock as the laptop's.
+	if v := list.Machines[0].Version; v != version {
+		t.Errorf("the server runs Caprock %q, the laptop %q", v, version)
+	}
 
 	// What the script set up on the server, read back.
+	// The "Caprock native" checklist (.ai/26-server.md), as root on the server.
+	asCaprock := "runuser -u caprock -- env -i HOME=/home/caprock PATH=/home/caprock/.local/bin:/usr/local/bin:/usr/bin:/bin XDG_RUNTIME_DIR=/run/user/$(id -u caprock) "
 	checks := map[string]string{
-		"lingering":         "loginctl show-user caprock --property=Linger --value",
+		"claude":            asCaprock + "claude --version",
+		"codex":             asCaprock + "codex --version",
+		"git":               asCaprock + "git --version",
+		"node 18+":          asCaprock + "node -e 'process.exit(+process.versions.node.split(\".\")[0] >= 18 ? 0 : 1)'",
+		"headless chromium": asCaprock + "caprock-chromium --headless --no-sandbox --disable-gpu --dump-dom 'data:text/html,<p>native-ok</p>' 2>/dev/null | grep -q native-ok",
+		"caprock version":   "/usr/local/bin/caprock version | grep -qF 'caprock " + version + " '",
+		"lingering":         "loginctl show-user caprock --property=Linger --value | grep -qx yes",
 		"no sudo":           "! id -nG caprock | tr ' ' '\\n' | grep -qxE 'sudo|wheel'",
 		"firewall":          "if command -v ufw >/dev/null; then ufw status | grep -q 'Status: active'; else firewall-cmd --get-default-zone | grep -qx drop; fi",
 		"unattended":        "grep -qs 'Unattended-Upgrade \"1\"' /etc/apt/apt.conf.d/20auto-upgrades || grep -qs '^apply_updates = yes' /etc/dnf/automatic.conf",
@@ -187,9 +200,19 @@ func TestTheSetupScriptOnALinuxServer(t *testing.T) {
 		"no key in caprock": "! grep -rlF '" + strings.TrimPrefix(keyIn(made.Script), "cj1-") + "' /home/caprock",
 	}
 	for what, cmd := range checks {
-		if out, err := run(time.Minute, "exec", name, "sh", "-c", cmd); err != nil {
+		if out, err := run(2*time.Minute, "exec", name, "sh", "-c", cmd); err != nil {
 			t.Errorf("%s: %v\n%s", what, err, out)
 		}
+	}
+	// No inbound port: with no SSH chosen, every listening TCP socket is on
+	// loopback (the daemon, the test's socat). The firewall check above
+	// covers what is not a TCP listener.
+	tcp, err := run(time.Minute, "exec", name, "cat", "/proc/net/tcp", "/proc/net/tcp6")
+	if err != nil {
+		t.Fatalf("read /proc/net/tcp: %v\n%s", err, tcp)
+	}
+	if open := openPorts(tcp); len(open) > 0 {
+		t.Errorf("listening off loopback: %v\n%s", open, tcp)
 	}
 
 	// The key is in no log or file on the laptop.
@@ -208,6 +231,30 @@ func TestTheSetupScriptOnALinuxServer(t *testing.T) {
 	})
 	relay.stop()
 	main.stop(t, true)
+}
+
+// openPorts lists the listening TCP sockets in /proc/net/tcp{,6} text that
+// are not on loopback, as hex address:port.
+func openPorts(procNet string) []string {
+	var open []string
+	for _, line := range strings.Split(procNet, "\n") {
+		f := strings.Fields(line)
+		if len(f) < 4 || f[3] != "0A" { // 0A: LISTEN
+			continue
+		}
+		addr, _, ok := strings.Cut(f[1], ":")
+		if !ok {
+			continue
+		}
+		switch {
+		case len(addr) == 8 && strings.HasSuffix(addr, "7F"): // 127.x.x.x, little-endian
+		case addr == "00000000000000000000000001000000": // ::1
+		case len(addr) == 32 && strings.HasPrefix(addr, "0000000000000000FFFF0000") && strings.HasSuffix(addr, "7F"): // ::ffff:127.x
+		default:
+			open = append(open, f[1])
+		}
+	}
+	return open
 }
 
 // keyIn is the join key a script carries.

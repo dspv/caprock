@@ -9149,10 +9149,10 @@ token, and then treats the server as any other linked computer.
   is Settings → Subscriptions there (ADR-048), the same flow.
 - **Then the laptop closes.** Agents are started on the server from New agent
   → Machine (ADR-067 Phase 2); they run under the server's daemon and its
-  systemd unit; the laptop reconnects to them when it wakes. A browser for
-  agents (headless Chromium driven by the agent's own browser tool) is a
-  checklist row on the server, off until switched on
-  ([26-server.md](26-server.md), P4).
+  systemd unit; the laptop reconnects to them when it wakes. A headless
+  Chromium for the agents is installed by the script (amended 2026-11-28,
+  [26-server.md](26-server.md) § Caprock native); making it an agent's
+  browser stays P4.
 - **Deleting.** With a token: **Delete server** names the server, shows the
   sessions still running there, and asks for its name typed; it then Forgets
   the computer here and calls the provider's delete. The disk goes with it:
@@ -9163,7 +9163,8 @@ token, and then treats the server as any other linked computer.
 - **Free.** Everything for one person is free (owner, 2026-11-27). A
   managed server that Caprock runs for the user could be a later paid
   product — an option only, not decided, and not said on any public page
-  (rule 11).
+  (rule 11). A Caprock-run server stays a later option, not built (owner,
+  2026-11-28).
 
 **Security, in one place.**
 
