@@ -625,12 +625,18 @@ the target runs its ordinary Host and gate, and pairs it as a computer
     else. `GET /v1/machines/join-key` follows it like any key, with
     `server: true`. `serverscript.Render` is a pure function of {version,
     each archive's SHA-256, signed, key, ssh_key}: a POSIX sh script for
-    Ubuntu 24.04 LTS or newer and Debian 12 or newer (anything else stops
-    at the top, naming both), run as root, each step printed as `==>
-    caprock setup: <step>` and the failing one named on exit: packages from
-    the distribution (`ca-certificates curl git tar gzip procps nodejs npm ufw
-    unattended-upgrades`, `minisign` when signed; Node.js 18 or newer
-    required); user `caprock` (`useradd`, password locked, out of `sudo`),
+    the Debian family — a system whose `/etc/os-release` `ID` or `ID_LIKE`
+    names `debian` or `ubuntu` (Debian, Ubuntu, Kali, and the systems built
+    on them), any version; anything else stops at the top, naming the
+    family — run as root, each step printed as `==> caprock setup: <step>`
+    and the failing one named on exit: packages from the distribution
+    (`ca-certificates curl git tar gzip procps gnupg ufw
+    unattended-upgrades`, `minisign` when signed); Node.js 18 or newer, the
+    distribution's (`nodejs npm`) when its candidate is, otherwise
+    NodeSource's signed repository (`node_22.x nodistro`, key in
+    `/etc/apt/keyrings/nodesource.gpg`), and the step stops when the
+    installed one is still older; user `caprock` (`useradd`, `usermod
+    --lock`, out of `sudo` and `wheel`),
     `loginctl enable-linger caprock`, waiting for its user manager; APT's
     periodic unattended upgrades on; with `ssh_key`
     `/etc/ssh/sshd_config.d/01-caprock.conf` (no password or

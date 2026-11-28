@@ -18,7 +18,7 @@
  * No price is shown: each provider line links to the provider's own page.
  */
 import { useEffect, useState } from 'react'
-import { joinApi, serverApi, SERVER_PROVIDERS, type JoinKeyState, type ServerScript } from '@/lib/machines'
+import { joinApi, MAC_SERVER_ISSUE, serverApi, SERVER_PROVIDERS, SERVER_SYSTEMS, type JoinKeyState, type ServerScript } from '@/lib/machines'
 import { errText } from '@/lib/api'
 import { navigate } from '@/lib/router'
 import { useNow } from '@/lib/useNow'
@@ -113,7 +113,11 @@ export function NewServer() {
         <span className="text-[12.5px] text-fg-muted">
           The script runs once on the new server as root: a user <code className="mono">caprock</code> with no password and no sudo, unattended security upgrades,
           a firewall that admits nothing inbound, Git, Node.js, Claude Code with Anthropic&apos;s installer, Codex, Caprock at this computer&apos;s version, and then it links the server here.
-          Ubuntu 24.04 LTS or newer, or Debian 12 or newer.
+          {SERVER_SYSTEMS}.
+        </span>
+        <span className="text-[12.5px] text-fg-muted" data-new-server-mac>
+          Need a Mac server?{' '}
+          <a href={MAC_SERVER_ISSUE} target="_blank" rel="noreferrer" title={extTitle('A new GitHub issue, filled in for you to read and submit')} className="text-accent hover:underline">Ask for it</a>
         </span>
         <label className="flex min-w-0 items-start gap-2 text-[13px]">
           <input type="checkbox" checked={sshKey} onChange={(e) => setSshKey(e.target.checked)} className="mt-0.5" data-new-server-ssh />

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { NewServer, checkLine, ownServerState } from './NewServer'
 import { JOIN_POLL_MS } from './JoinKey'
-import { joinApi, serverApi, SERVER_PROVIDERS, type Machine, type ServerScript } from '@/lib/machines'
+import { joinApi, MAC_SERVER_ISSUE, serverApi, SERVER_PROVIDERS, SERVER_SYSTEMS, type Machine, type ServerScript } from '@/lib/machines'
 import * as router from '@/lib/router'
 
 const SCRIPT = "#!/bin/sh\n# Caprock server setup (ADR-109)\nCAPROCK_JOIN_KEY='cj1-test'\n"
@@ -73,6 +73,19 @@ describe('New server (ADR-109)', () => {
     expect(withdraw).toHaveBeenCalled()
     await screen.findByRole('button', { name: 'New server' })
     expect(document.body.textContent).not.toContain('cj1-test')
+  })
+
+  it('offers a filled-in GitHub issue for a Mac server, with nothing about the user in it', () => {
+    render(<NewServer />)
+    fireEvent.click(screen.getByRole('button', { name: 'New server' }))
+    expect(document.body.textContent).toContain(SERVER_SYSTEMS)
+    const link = screen.getByRole('link', { name: 'Ask for it' })
+    const url = new URL(link.getAttribute('href')!)
+    expect(url.origin + url.pathname).toBe('https://github.com/dspv/caprock/issues/new')
+    expect(url.searchParams.get('title')).toBe('New server: set up a Mac server')
+    expect(url.searchParams.get('body')).toContain('Mac')
+    expect(link.getAttribute('target')).toBe('_blank')
+    expect(link.getAttribute('href')).toBe(MAC_SERVER_ISSUE)
   })
 
   it('says why no script was made', async () => {
