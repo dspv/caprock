@@ -965,10 +965,11 @@ html[data-app][data-vibrancy], html[data-app][data-vibrancy] body { background: 
  * is the bundled JetBrains Mono everywhere (--font-mono, main.tsx), but
  * Linux and Windows may round each glyph to a whole pixel: 6.6px here, 7px
  * in CI's headless shell, where at 4px a side the Alt+P chip went (45px).
- * At 3px a side an Alt chip is 41-43px, and a glyph up to 7.3px wide (0.66em,
- * past every monospace face at 11px, rounded up) still fits the two Alt
- * chips and four 32px columns in the 260px sidebar's 217px
- * (ui/e2e/sidebar-keys-fit.spec.ts holds it at 7.1px). */
+ * At 3px a side an Alt chip is 41-43px (45.5px with CI's 7px glyphs and
+ * the spec's extra 0.5px), and since the one-letter columns may narrow to
+ * 28px (SidebarFooter COMPACT_COL) a glyph up to 8.9px wide still fits the
+ * two Alt chips and four columns in the 260px sidebar's 217px
+ * (ui/e2e/sidebar-keys-fit.spec.ts holds it at 7.5px). */
 [data-app] .app-kbd-key.app-kbd-compact {
   font-size: 11px;
   padding: 3px 3px;

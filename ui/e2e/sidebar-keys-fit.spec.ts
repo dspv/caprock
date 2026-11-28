@@ -12,8 +12,10 @@
  * The fit must not hang on font metrics (CI, 2026-11-28: the same bundled
  * JetBrains Mono drew 7px glyphs in the ubuntu headless shell against 6.6px
  * on a Mac, and Alt+P was dropped at 260px). So off macOS every width runs
- * twice more with each chip glyph widened to 7.1px (letter-spacing 0.5px at
- * 11px): wider than any monospace face rounded up to a whole pixel.
+ * again with each chip glyph widened by 0.5px (letter-spacing; 7.5px in CI,
+ * where the Alt chips came to 45.5px and, with 32px icon columns, Alt+P went
+ * again): the one-letter columns narrow to 28px to hold them (SidebarFooter
+ * COMPACT_COL), which fits glyphs up to 8.9px at 260px.
  *
  * With CAPROCK_SHOTS_DIR set it photographs the footer at each OS and width.
  */
@@ -33,7 +35,7 @@ const FULL = ['Ctrl+Alt+Shift+F', 'Ctrl+Shift+M', 'Ctrl+Shift+D', 'Ctrl+Shift+,'
 for (const os of OSES) {
   for (const width of [240, 260, 320]) {
     for (const wide of os.name === 'mac' ? [false] : [false, true]) {
-      test(`on ${os.name} at a ${width}px sidebar${wide ? ' with glyphs rounded up to 7.1px' : ''} the folded footer shows every key, whole and inside its column`, async ({ app, page }) => {
+      test(`on ${os.name} at a ${width}px sidebar${wide ? ' with glyphs widened by 0.5px' : ''} the folded footer shows every key, whole and inside its column`, async ({ app, page }) => {
         await page.addInitScript(({ platform, wide }) => {
           Object.defineProperty(navigator, 'platform', { get: () => platform })
           try { localStorage.setItem('caprock.app.project-folds', JSON.stringify(['footer'])) } catch { /* no storage */ }
@@ -77,7 +79,7 @@ for (const os of OSES) {
             }).filter(Boolean),
           }
         })
-        console.log(`${os.name} ${width}px${wide ? ' wide' : ''}: ${m.mode} "${m.prefix}" ${m.chips.map((c) => `${c!.text}=${(c!.box.right - c!.box.left).toFixed(1)}`).join(' ')}`)
+        console.log(`${os.name} ${width}px${wide ? ' wide' : ''}: ${m.mode} "${m.prefix}" ${m.chips.map((c) => `${c!.text}=${(c!.box.right - c!.box.left).toFixed(1)}/${(c!.slot.right - c!.slot.left).toFixed(1)}`).join(' ')}`)
 
         if (shotsDir) {
           const box = (await page.locator('[data-folded-keys]').locator('xpath=ancestor-or-self::*[@data-sidebar-footer][1]').boundingBox())!

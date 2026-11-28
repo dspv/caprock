@@ -89,6 +89,16 @@ const SQUARE = 'flex shrink-0 items-center justify-center text-fg-muted transiti
 const ROW = 'app-row flex h-[32px] min-w-0 items-center gap-2 rounded-[8px] border border-[var(--app-hairline-strong)] px-2 text-left text-[13px] text-fg'
 /** The folded row's icons: as wide as their column, 32px tall, never under 32px. */
 const ICON = `${SQUARE} h-[32px] w-full min-w-[32px] rounded-[7px]`
+/**
+ * Off macOS, how narrow a folded column may get: an icon with a one-letter
+ * chip (M, D, ",", P) gives the Alt+F and Alt+P columns up to 4px each, so
+ * the two Alt chips fit a 260px sidebar with glyphs up to 8.9px wide, not
+ * the 7.3px a 32px floor left (CI's ubuntu headless shell drew 7px, and
+ * at 7.5px Alt+P went). The flex row still widens every column it can, so
+ * at rest the icons stay about 32px.
+ */
+const COMPACT_COL = 28
+
 /** The folded row's glyphs, one size up from the rows' 15 (owner,
  *  2026-10-14, translated: "the icons can be one size bigger"). */
 const GLYPH = 18
@@ -264,7 +274,7 @@ function FoldedFooter(props: SidebarFooterProps & { offer?: CompressOffer }) {
   const split = chips === 'prefixed' ? sharedModifiers(slots.map((s) => s.key ?? '')) : null
   const prefix = split?.prefix ?? ''
   const shownKey = (i: number) => (split && slots[i]?.key ? split.rest[i] : slots[i]?.key)
-  const [ref, fit] = useFoldedChipFit<HTMLDivElement>(slots.length, true)
+  const [ref, fit] = useFoldedChipFit<HTMLDivElement>(slots.length, true, split ? COMPACT_COL : 32)
   const anyShown = slots.some((s, i) => s.key && fit[i] !== false)
   const wrapped = !!props.offer || !!prefix
   const row = (
@@ -297,8 +307,9 @@ function FoldedFooter(props: SidebarFooterProps & { offer?: CompressOffer }) {
  * One column of the folded row: the key's chip, then the icon. The chip sits
  * above the icon, and a column with no key keeps an empty slot of the same
  * height. `compact` (off macOS): the chip holds only what is left after the
- * row's shared modifiers (M, Alt+F), in `.app-kbd-compact`; its tooltip is
- * the icon's, which spells the whole key.
+ * row's shared modifiers (M, Alt+F), in `.app-kbd-compact`, and the column
+ * may narrow to 28px (COMPACT_COL); its tooltip is the icon's, which spells
+ * the whole key.
  *
  * The chip is part of the button below it (owner, 2026-10-15, translated: "I
  * wanted to click the key combo with the mouse and it doesn't click"): a
@@ -323,7 +334,7 @@ function KeySlot({ keyLabel, compact, fits, line, children }: { keyLabel?: strin
     action(ref.current)?.click()
   }
   return (
-    <div ref={ref} data-key-slot className={`group relative flex max-w-[48px] flex-1 flex-col items-center ${keyLabel && fits ? 'min-w-min' : 'min-w-[32px]'}`}>
+    <div ref={ref} data-key-slot className={`group relative flex max-w-[48px] flex-1 flex-col items-center ${keyLabel && fits ? 'min-w-min' : compact ? 'min-w-[28px]' : 'min-w-[32px]'}${compact ? ' [&_button]:min-w-[28px]' : ''}`}>
       {keyLabel ? (
         <kbd aria-hidden data-key-chip data-dropped={fits ? undefined : ''} title={title} onClick={press} className={`app-kbd-key ${compact ? 'app-kbd-compact ' : ''}${fits ? 'app-kbd-press mb-[3px]' : 'pointer-events-none invisible absolute bottom-full'}`}>{keyLabel}</kbd>
       ) : line ? (

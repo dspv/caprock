@@ -40,4 +40,12 @@ describe('the folded row’s keys', () => {
     expect(fitFoldedChips(mac, 150)).toEqual([false, false, false, false, false, false])
     expect(fitFoldedChips([20, null], 64)).toEqual([true, false])
   })
+  it('off macOS a one-letter column narrows to 28px so both Alt chips stay', () => {
+    // CI's ubuntu headless shell, glyphs widened by 0.5px: Alt+F M D , P Alt+P.
+    const compact = [45.5, 15.5, 15.5, 15.5, 15.5, 45.5]
+    expect(fitFoldedChips(compact, 217)).toEqual([true, true, true, true, true, false])
+    expect(fitFoldedChips(compact, 217, 28)).toEqual([true, true, true, true, true, true])
+    // An 8.9px glyph: 5 of them and 8px of padding and border.
+    expect(fitFoldedChips([52.5, 15, 15, 15, 15, 52.5], 217, 28).every(Boolean)).toBe(true)
+  })
 })
