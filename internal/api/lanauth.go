@@ -390,6 +390,14 @@ var pairedDeviceRoutes = map[string]bool{
 	// (04-ui.md § The phone home). Composed from the GitHub reads the daemon
 	// keeps, with the daemon's own token; nothing on it writes.
 	"GET /v1/sessions/{id}/ci/stats": true,
+	// A session's pull requests with their checks, one pull request's runs
+	// and jobs, and a failed job's log: what the phone's Fix CI reads to
+	// find the failure and send it with its log (04-ui.md § The phone
+	// home, *Fix CI from the phone*). The same GitHub reads the daemon
+	// keeps, with its own token; nothing on them writes.
+	"GET /v1/sessions/{id}/prs":               true,
+	"GET /v1/sessions/{id}/ci":                true,
+	"GET /v1/sessions/{id}/ci/jobs/{job}/log": true,
 	// The chat field's pickers: the session's slash commands (names and
 	// descriptions from its .claude folders) and its folder's file list,
 	// as a project's file list is a read.
@@ -597,6 +605,13 @@ var controllerRoutes = map[string]bool{
 	// attached, on their click, to caprock.dev support; it acts on no session
 	// and changes nothing on the machine. A viewer cannot send one.
 	"POST /v1/support": true,
+
+	// Re-run a failing pull request's checks on GitHub, from the phone's
+	// Fix CI row (owner, 2026-11-28): the failed jobs, else every finished
+	// run — a write to the user's own repository with their own token, on
+	// a confirmed tap, as on the machine. It runs nothing here. Update
+	// branch stays a computer's.
+	"POST /v1/sessions/{id}/prs/{number}/rerun": true,
 }
 
 // What a computer may do on top of a controller (ADR-067): the work surface
@@ -657,14 +672,11 @@ var computerRoutes = map[string]bool{
 	"GET /v1/update/busy":          true,
 	"GET /v1/github/actions-usage": true,
 	"GET /v1/github/statuspage":    true,
-	// The session deck: a session's pull requests, CI and branches, and the
-	// two buttons on them.
-	"GET /v1/sessions/{id}/prs":                         true,
-	"POST /v1/sessions/{id}/prs/{number}/rerun":         true,
+	// The session deck: a session's branches and Update branch on its pull
+	// requests (its pull requests, CI, a job's log and Re-run are a phone's
+	// too, above).
 	"POST /v1/sessions/{id}/prs/{number}/update-branch": true,
-	"GET /v1/sessions/{id}/ci":                          true,
 	"GET /v1/sessions/{id}/branches":                    true,
-	"GET /v1/sessions/{id}/ci/jobs/{job}/log":           true,
 	"GET /v1/sessions/{id}/ci/release":                  true,
 	"GET /v1/sessions/{id}/ci/main":                     true,
 	"GET /v1/sessions/{id}/ci/stats":                    true,

@@ -51,8 +51,10 @@ func TestSessionPRForceActions(t *testing.T) {
 		t.Fatalf("not connected: %d %s", w.Code, w.Body.String())
 	}
 	call(t, s, machine, "", "POST", "/v1/github/connect", `{"source":"token","token":"ghp_good"}`)
-	if w := call(t, s, testPhone, controller, "POST", rerun, ""); w.Code != http.StatusForbidden {
-		t.Fatalf("a phone re-ran checks: %d", w.Code)
+	// A controller phone re-runs from its Fix CI row (2026-11-28); Update
+	// branch stays a computer's.
+	if w := call(t, s, testPhone, controller, "POST", update, ""); w.Code != http.StatusForbidden {
+		t.Fatalf("a phone updated the branch: %d", w.Code)
 	}
 	if w := call(t, s, machine, "", "POST", "/v1/sessions/s9/prs/6/rerun", ""); w.Code != http.StatusNotFound {
 		t.Fatalf("a PR the session did not open: %d %s", w.Code, w.Body.String())

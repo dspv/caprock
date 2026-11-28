@@ -59,7 +59,9 @@ var viewerMay = map[string]bool{
 	"GET /v1/repos/remotes":          true, // the Pipeline's repository picker: which folders are on GitHub, from git
 	"GET /v1/pipeline/agents":        true, // the Pipeline's agent figures: cost per agent-hour and the agent team, from the events
 	"GET /v1/sessions/{id}/ci/stats": true, // the Pipeline's pull requests and figures: the phone's release bars
-	"GET /v1/projects/{id}/file":     true, "GET /v1/projects/{id}/files": true, "GET /v1/projects/{id}/image": true,
+	// What the phone's Fix CI reads: the session's pull requests, one's runs, a failed job's log.
+	"GET /v1/sessions/{id}/prs": true, "GET /v1/sessions/{id}/ci": true, "GET /v1/sessions/{id}/ci/jobs/{job}/log": true,
+	"GET /v1/projects/{id}/file": true, "GET /v1/projects/{id}/files": true, "GET /v1/projects/{id}/image": true,
 	// The Files tab, read-only on a device (ADR-089); its writes are nobody's but the machine's.
 	"GET /v1/projects/{id}/fs/list": true, "GET /v1/projects/{id}/fs/compare": true, "GET /v1/projects/{id}/fs/changed": true, "GET /v1/projects/{id}/fs/diff": true,
 	// GitHub (WP-19): the connection, the clone picker, pull requests, and
@@ -75,7 +77,9 @@ var controllerMayAlso = map[string]bool{
 	"GET /v1/sessions/{id}/relay": true, "GET /v1/agents/{id}/term": true, "GET /v1/agents/{id}/exit": true,
 	"POST /v1/agents/{id}/input": true, "POST /v1/agents/{id}/signal": true, "POST /v1/paste": true,
 	"POST /v1/agents/{id}/permission": true, "POST /v1/agents/{id}/permission-mode": true,
-	"PUT /v1/sessions/{id}/name": true, "PUT /v1/folder-labels": true,
+	// Re-run a failing pull request's checks, from the phone's Fix CI row (2026-11-28).
+	"POST /v1/sessions/{id}/prs/{number}/rerun": true,
+	"PUT /v1/sessions/{id}/name":                true, "PUT /v1/folder-labels": true,
 	"PUT /v1/sessions/{id}/needs": true, // "needs me?" / "not needed": a mark in memory
 	"POST /v1/support":            true,
 	"PUT /v1/chats/{id}/archived": true, "DELETE /v1/chats/{id}": true, // archive and delete a chat (ADR-071)
@@ -162,6 +166,36 @@ func pairedPhones(t *testing.T, d Deps) (s *Server, ps *pairing.Store, viewer, c
 		t.Fatal("could not make the controller")
 	}
 	return s, ps, viewer, controller
+}
+
+// Fix CI and Re-run from the phone (owner, 2026-11-28, translated: "on the
+// phone there is simply no button to send a red CI to be fixed"): a phone
+// holding the controller role reaches every route the row calls — the
+// session's pull requests, one's runs, a failed job's log, the fix queued to
+// the session or a new agent started, and the re-run — and a viewer reads
+// them but cannot send either. Update branch stays a computer's.
+func TestAPhoneControllerFixesCI(t *testing.T) {
+	s, _, viewer, controller := pairedPhones(t, Deps{})
+	reads := []string{"GET /v1/sessions/{id}/prs", "GET /v1/sessions/{id}/ci", "GET /v1/sessions/{id}/ci/jobs/{job}/log"}
+	acts := []string{"POST /v1/sessions/{id}/prs/{number}/rerun", "POST /v1/agents/{id}/queue", "POST /v1/agents"}
+	for _, p := range reads {
+		for name, tok := range map[string]string{"viewer": viewer.Token, "controller": controller.Token} {
+			if got, why := s.gate(phoneRequest(p, tok)); got != 0 {
+				t.Errorf("%s: %s refused: %d (%s)", name, p, got, why)
+			}
+		}
+	}
+	for _, p := range acts {
+		if got, why := s.gate(phoneRequest(p, controller.Token)); got != 0 {
+			t.Errorf("controller: %s refused: %d (%s)", p, got, why)
+		}
+		if got, _ := s.gate(phoneRequest(p, viewer.Token)); got != http.StatusForbidden {
+			t.Errorf("viewer: %s: %d, want 403", p, got)
+		}
+	}
+	if got, _ := s.gate(phoneRequest("POST /v1/sessions/{id}/prs/{number}/update-branch", controller.Token)); got != http.StatusForbidden {
+		t.Errorf("a phone reached Update branch: %d", got)
+	}
 }
 
 // Every endpoint, for all three callers: the machine itself, a phone that

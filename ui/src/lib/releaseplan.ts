@@ -612,6 +612,19 @@ export function sinceLine(last: { name: string; at: number } | undefined, merged
  * The pull request told is the failing one, else the furthest on, else the
  * newest; "✓" counts the OSes whose checks passed.
  */
+/** A pull request row whose checks failed: its CI step red, or a check of an OS failed. */
+export function rowFailsCI(r: PlanRow): boolean { return r.red || !!r.ci?.some((d) => d.state === 'fail') }
+
+/**
+ * The pull request the release line tells: the failing one, else the
+ * furthest on, else the newest. The phone draws Fix CI under the line for
+ * it when it failed (components/PhonePRFix).
+ */
+export function linePR(rows: readonly PlanRow[]): PlanRow | undefined {
+  const prs = rows.filter((r) => r.section === 'pr')
+  return [...prs].sort((a, b) => Number(rowFailsCI(b)) - Number(rowFailsCI(a)) || b.filled - a.filled || (b.number ?? 0) - (a.number ?? 0))[0]
+}
+
 export function releaseLine(rows: readonly PlanRow[], last: { name: string; at: number } | undefined, merged: number, now: number): LinePart[] | undefined {
   const prs = rows.filter((r) => r.section === 'pr')
   const agents = rows.filter((r) => r.section === 'agent').length
@@ -621,8 +634,8 @@ export function releaseLine(rows: readonly PlanRow[], last: { name: string; at: 
   if (merged > 0) parts.push({ key: 'merged', text: `${merged} merged`, title: `${plural(merged, 'pull request')} merged since the last tag, not in a release yet. Click to see them.`, target: 'merged' })
   else parts.push({ key: 'merged', text: 'nothing merged', title: 'No pull request merged since the last tag.' })
   if (prs.length) {
-    const failed = (r: PlanRow) => r.red || !!r.ci?.some((d) => d.state === 'fail')
-    const pick = [...prs].sort((a, b) => Number(failed(b)) - Number(failed(a)) || b.filled - a.filled || (b.number ?? 0) - (a.number ?? 0))[0]!
+    const failed = rowFailsCI
+    const pick = linePR(rows)!
     const n = pick.number ? `PR #${pick.number}` : 'A PR'
     const dots = pick.ci ?? []
     const ok = dots.filter((d) => d.state === 'pass').length

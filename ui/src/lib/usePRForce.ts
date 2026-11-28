@@ -22,6 +22,20 @@ export const FORCE_TITLE: Record<ForceKind, string> = {
   rerun: 'Run the checks again on GitHub: the failed jobs, else every finished run. Needs the token’s Actions (write) permission',
   update: 'Merge the base into this branch on GitHub, as its Update branch button does. Needs the token’s Pull requests (write) permission',
 }
+/** What a device that may only watch is told beside an action it may not take. */
+export const WATCH_ONLY = 'This device can only watch. To act from it, open the Caprock app on your computer: Settings → Use on your phone, then press Allow control next to this device.'
+
+/**
+ * Why nothing can be queued to the session itself ('' when it can): a fix
+ * then goes to a new agent. The cockpit, the Pipeline page and the phone's
+ * Fix CI row ask the same (components/PhonePRFix).
+ */
+export function queueWhy(s: SessionSummary | undefined, canControl: boolean): string {
+  return !s ? 'The session is not listed.' : !canControl ? WATCH_ONLY
+    : !s.owned ? 'Caprock did not start this session, so it never types into it.'
+      : s.status === 'ended' || s.detached ? 'This session is no longer running here, so nothing can be queued to it.' : ''
+}
+
 /** Where a fix goes: typed into an agent Caprock started, or a new agent. */
 export type FixPlan = { mode: 'queue'; to: SessionSummary } | { mode: 'spawn'; wt?: DeckWorktree; foreign: boolean }
 
@@ -92,7 +106,7 @@ export function usePRForce(o: PRForceOptions) {
     return { mode: 'spawn', wt: wt && !foreign ? wt : undefined, foreign }
   }
   const forceWhy = (p: SessionPRLive, kind: ForceKind): string => {
-    if (!canControl) return 'This device can only watch. To act from it, open the Caprock app on your computer: Settings → Use on your phone, then press Allow control next to this device.'
+    if (!canControl) return WATCH_ONLY
     const live = p.live
     if (!live || live.state !== 'open') return 'Only an open pull request.'
     if (kind === 'rerun' || kind === 'update') {

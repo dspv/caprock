@@ -199,7 +199,10 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   the board and one repository's Pipeline answer, composed by the daemon
   from the GitHub reads it keeps with its own token — the token never
   leaves it, and a relay phone reads both through the end-to-end channel),
-  `/v1/jarvis` (§ Jarvis), `/v1/sessions/{id}/commands`, `/v1/sessions/{id}/files`, `/v1/projects`,
+  `/v1/sessions/{id}/prs`, `/v1/sessions/{id}/ci` and
+  `/v1/sessions/{id}/ci/jobs/{job}/log` (what the phone's Fix CI reads to
+  find a failed job and send it with its log, 2026-11-28; the same kept
+  GitHub reads), `/v1/jarvis` (§ Jarvis), `/v1/sessions/{id}/commands`, `/v1/sessions/{id}/files`, `/v1/projects`,
   `/v1/projects/ops`, `/v1/projects/{id}/worktrees`, `/v1/projects/{id}/changes`,
   `/v1/projects/{id}/changes/diff`, `/v1/projects/{id}/file`,
   `/v1/projects/{id}/files`, `/v1/projects/{id}/image`, `/v1/brain`, `/v1/brain/status`,
@@ -257,7 +260,10 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   § Inbox), archiving and deleting a chat (`PUT /v1/chats/{id}/archived`,
   `DELETE /v1/chats/{id}`: chats only, ADR-071 amending ADR-037), AI;DR on
   an answer (`POST /v1/events/{id}/tldr`, § AI;DR, ADR-072), sending a
-  bug report (`POST /v1/support`, § Report a bug, ADR-073), and — to
+  bug report (`POST /v1/support`, § Report a bug, ADR-073), re-running a
+  failing pull request's checks from the phone's Fix CI row (`POST
+  /v1/sessions/{id}/prs/{number}/rerun`, 2026-11-28; `/update-branch` stays
+  a computer's), and — to
   start work from the phone (2026-10-05, [21-app.md](21-app.md) decision 8) —
   `POST /v1/projects`, `PATCH` and `DELETE /v1/projects/{id}`, and `POST` and
   `DELETE /v1/projects/{id}/worktrees…` (see § Projects and shells for the
@@ -300,9 +306,9 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   /v1/tasks/{id}/verify`, `POST /v1/orchestrator/start` and `/stop`, `GET
   /v1/agents/custom`, `GET /v1/setup` (§ Setup checklist), `GET
   /v1/activity`, `GET /v1/overlap`, `GET /v1/update/busy`, `GET /v1/github/actions-usage` and `/statuspage`, a
-  session's `prs`, `ci`, `branches`, `ci/jobs/{job}/log`, `ci/release`,
-  `ci/main` and `ci/stats`, `POST /v1/sessions/{id}/prs/{number}/rerun` and
-  `/update-branch`, `GET /v1/projects/{id}/branches`, `copies`, `cleanup`,
+  session's `branches`, `ci/release`, `ci/main` and `ci/costliest`, `POST
+  /v1/sessions/{id}/prs/{number}/update-branch` (its `prs`, `ci`,
+  `ci/jobs/{job}/log`, `ci/stats` and `…/rerun` are a phone's too, above), `GET /v1/projects/{id}/branches`, `copies`, `cleanup`,
   `POST /v1/projects/{id}/copies/remove`, `cleanup` and `cleanup/restore`,
   `GET /v1/projects/scan`, `POST /v1/projects/merge` and `POST
   /v1/projects/{id}/split`, `POST /v1/claude/bypass-consent` (ADR-041,
@@ -1378,7 +1384,7 @@ GET  /v1/sessions/{id}/todos           → SessionTodos — the agent's own task
 GET  /v1/sessions/{id}/privacy         → SessionPrivacy — who macOS asks about for this session (§ Session privacy; macOS, owner only)
 POST /v1/sessions/{id}/privacy/open    → SessionPrivacy — opens a privacy pane in System Settings on the user's click (§ Session privacy; macOS, owner only)
 GET  /v1/sessions/{id}/prs             → {connected, prs: SessionPRLive[], fetched_at, refreshing?} — the session deck's PRs with CI
-POST /v1/sessions/{id}/prs/{number}/rerun → {ok, mode, runs, jobs} — re-run one of the session's PRs' checks on GitHub (machine only)
+POST /v1/sessions/{id}/prs/{number}/rerun → {ok, mode, runs, jobs} — re-run one of the session's PRs' checks on GitHub (the machine, a computer, a controller phone)
 POST /v1/sessions/{id}/prs/{number}/update-branch → {ok} — merge the base into one of the session's open PRs on GitHub (machine only)
 GET  /v1/sessions/{id}/ci              → SessionCI — the deck's CI cell: Actions runs, jobs, steps, times
 GET  /v1/sessions/{id}/ci/jobs/{job}/log → CILog — the lines around a failed job's error, on demand (?view=pr|release|main)
