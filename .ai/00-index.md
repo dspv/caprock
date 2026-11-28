@@ -30,6 +30,7 @@ Caprock is a local, open-source **mission control for Claude Code**: a single st
 | [24-hermes.md](24-hermes.md)                       | Hermes Agent support: its database, cost, background runs, launch    | Adding or changing Hermes support                      |
 | [25-cursor.md](25-cursor.md)                       | Cursor support: its database, cost, hooks, overhead estimate, launch | Adding or changing Cursor support                      |
 | [26-server.md](26-server.md)                       | A server in one click on the user's own provider: build plan         | Working on New server, the setup script, provider APIs |
+| [27-talks.md](27-talks.md)                         | Talks: two people's agents talk; person link, guard, phases          | Working on Talks, person links, team rooms             |
 
 These files absorbed the hand-off specification (`CaprockV2-SPEC.md`, deleted after the loss audit recorded in [docs/migration-audit.md](../docs/migration-audit.md)). The spec is not a separate source of truth — **these files are**. (Numbering is non-contiguous by design — 11 was never used; nothing is missing.)
 
