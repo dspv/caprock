@@ -122,10 +122,11 @@ func TestTheSetupScriptOnALinuxServer(t *testing.T) {
 	// A cloud image has what logind needs to run a user manager on linger:
 	// libpam-systemd (systemd only recommends it) and the user bus. A bare
 	// container image has neither, so they are installed here, not by the script
-	// (systemd-pam is the Red Hat family's pam_systemd).
+	// (systemd-pam is the Red Hat family's pam_systemd). The almalinux:9 image
+	// also masks systemd-logind, which no server install does: unmasked here.
 	boot := "if command -v apt-get >/dev/null; then " +
 		"apt-get update && apt-get install -y --no-install-recommends systemd systemd-sysv dbus dbus-user-session libpam-systemd socat ca-certificates; " +
-		"else dnf -y install systemd systemd-pam dbus socat procps-ng; fi && exec /sbin/init"
+		"else dnf -y install systemd systemd-pam dbus socat procps-ng && systemctl --root=/ unmask systemd-logind.service; fi && exec /sbin/init"
 	if out, err := run(10*time.Minute, "run", "-d", "--name", name, "--privileged", "--cgroupns=host",
 		"-v", "/sys/fs/cgroup:/sys/fs/cgroup:rw", "--tmpfs", "/run", "--tmpfs", "/run/lock",
 		"--add-host=host.docker.internal:host-gateway", image, "sh", "-c", boot); err != nil {
