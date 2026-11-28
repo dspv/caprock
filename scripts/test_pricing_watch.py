@@ -141,6 +141,19 @@ class GeminiTest(unittest.TestCase):
         self.assertFalse(any("storage" in t for t in pro.tiers))
         self.assertEqual(pro.tier_prices, {"input": 4.0, "output": 18.0, "cache_read": 0.4})
 
+    def test_live_table_prices_neon_and_ignores_genie(self):
+        # Issue #957: gemini-4-neon has a row since 2026-11-28.1, at the page's
+        # price; genie-4 is a world-generation (video) model and is ignored.
+        table = json.loads((pw.ROOT / "pricing" / "pricing.json").read_text(encoding="utf-8"))
+        neon = self.m["gemini-4-neon"]
+        self.assertEqual((neon.prices["input"], neon.prices["cache_read"], neon.prices["output"]), (3.0, 0.15, 15.0))
+        models = [neon, self.m["genie-4"]]
+        f = pw.compare(table, [(source("google"), models, "fixture", None)], "2026-11-28")
+        self.assertEqual(f["missing"], [])
+        self.assertEqual(f["changed"], [])
+        self.assertEqual([i["model"] for i in f["ignored"]], ["genie-4"])
+        self.assertEqual(pw.exit_code(f), 0)
+
     def test_entered_change_is_flagged(self):
         table = {"version": "t", "models": [
             row("gemini-4-carbon", 2, 0, 0, 0.1, 10, until="2026-11-30"),
@@ -236,7 +249,10 @@ class CompareTest(unittest.TestCase):
         models = pw.parse_openai(fixture("openai.md.txt"))
         f = pw.compare({"version": "t", "models": []}, [(source("openai"), models, "fixture", None)])
         ignored = {i["model"] for i in f["ignored"]}
-        self.assertTrue({"gpt-4o", "gpt-5.4-pro", "gpt-6-cyber", "gpt-6-astra-law"} <= ignored)
+        self.assertTrue({"gpt-4o", "gpt-5.4-pro", "gpt-6-cyber", "gpt-6-astra-law",
+                         "gpt-6.2-sol-healthcare"} <= ignored)
+        # A healthcare configuration is ignored; the model it configures is not.
+        self.assertFalse(any(re.search(p, "gpt-6.2-sol") for p in source("openai").ignore))
         self.assertIn("gpt-5.4", [i["model"] for i in f["missing"]])
         # The fine-tuning table's dated ids are not the model's own prices.
         self.assertTrue(any(re.search(p, "gpt-4.1-2025-04-14") for p in source("openai").ignore))
