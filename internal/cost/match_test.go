@@ -228,6 +228,8 @@ func TestTiersInTheTable(t *testing.T) {
 		// DeepSeek V4 Pro at the page's off-peak price.
 		{"deepseek-v4-pro", event.TokenDelta{In: 1_000_000, CacheRead: 1_000_000, Out: 1_000_000}, 0.66 + 0.022 + 1.98},
 		{"kimi-k3[1m]", event.TokenDelta{In: 1_000, CacheWrite: 1_000, CacheRead: 1_000, Out: 1_000}, (1_000*3 + 1_000*3 + 1_000*0.30 + 1_000*15) / mtok},
+		// Gemini 4 Neon (2026-11-28.1): $3 input, $0.15 cache read, $15 output at every prompt size.
+		{"gemini-4-neon", event.TokenDelta{In: 300_000, CacheRead: 100_000, Out: 2_000}, (300_000*3 + 100_000*0.15 + 2_000*15) / mtok},
 	} {
 		got, ok := tb.PriceAt(tc.model, tc.d, at)
 		if !ok || math.Abs(got-tc.want) > 1e-9 {
