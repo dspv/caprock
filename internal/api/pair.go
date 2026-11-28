@@ -650,6 +650,11 @@ func (s *Server) handlePairForgetMe(w http.ResponseWriter, r *http.Request) {
 	s.saveDevices()
 	s.closeDeviceSockets(dev.ID)
 	s.devicesChanged()
+	if dev.Kind == pairing.KindPerson && dev.Key != "" && s.d.Talks != nil {
+		// The other person's Remove (ADR-110): this side forgets them too,
+		// and their Talks end as ended by them.
+		s.d.Talks.PersonLeft(r.Context(), dev.Key)
+	}
 	s.d.Log.Info("a paired device removed itself", "component", "api", "device", dev.ID, "device_name", dev.Name)
 	writeJSON(w, http.StatusOK, map[string]int{"revoked": 1})
 }

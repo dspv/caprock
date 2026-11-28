@@ -3,6 +3,7 @@ package peers
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
@@ -81,9 +82,17 @@ type JoinOptions struct {
 	Pair func(ctx context.Context, link string) (Status, error)
 	// Base bounds every rendezvous: the daemon's life.
 	Base context.Context
-	// TTL overrides JoinTTL, and ServerTTL ServerJoinTTL, for tests.
+	// TTL overrides JoinTTL, and ServerTTL ServerJoinTTL, for tests — and
+	// for a Talks invitation's desk (ADR-110), whose keys live a day.
 	TTL       time.Duration
 	ServerTTL time.Duration
+	// Back makes a link symmetric (a Talks invitation, ADR-110): after Pair
+	// links the other side, Back mints this side's own pairing link with a
+	// code that pre-approves proven — the relay key the other side's
+	// rendezvous channel proved — and the link's answer carries it, so the
+	// other side pairs back. With Back set, a link is paired only when it
+	// names the very key its channel proved.
+	Back func(ctx context.Context, proven string) (string, error)
 }
 
 // JoinState is GET /v1/machines/join-key: never the key.
@@ -335,6 +344,17 @@ func (j *JoinDesk) link(w http.ResponseWriter, r *http.Request, k *joinKey, link
 		joinAnswer(w, http.StatusNotImplemented, map[string]string{"error": "this computer cannot link others"})
 		return
 	}
+	proven := ""
+	if j.opt.Back != nil {
+		// Symmetric: the link must be the proving side's own, or a key passed
+		// on would let a third Caprock in on the second's invitation.
+		proven = remote.PeerKey(r)
+		info, err := remote.ParsePairLink(link)
+		if proven == "" || err != nil || info.HostID != proven {
+			joinAnswer(w, http.StatusUnauthorized, map[string]string{"error": "that link is not the Caprock that proved itself on this key"})
+			return
+		}
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
 	st, err := j.opt.Pair(ctx, link)
@@ -348,13 +368,28 @@ func (j *JoinDesk) link(w http.ResponseWriter, r *http.Request, k *joinKey, link
 		joinAnswer(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 		return
 	}
+	answer := map[string]string{"id": st.ID, "name": st.Name, "status": st.Status}
+	if j.opt.Back != nil {
+		back, err := j.opt.Back(ctx, proven)
+		if err != nil {
+			j.mu.Lock()
+			if j.cur == k {
+				k.err = err.Error()
+			}
+			j.mu.Unlock()
+			j.log.Info("a symmetric link could not be offered back", "component", "peers", "err", err)
+			joinAnswer(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+			return
+		}
+		answer["link"] = back
+	}
 	j.mu.Lock()
 	if j.cur == k {
 		k.state, k.machine, k.err = JoinJoined, &st, ""
 	}
 	j.mu.Unlock()
 	j.log.Info("a computer joined with a key", "component", "peers", "machine", st.ID, "name", st.Name, "status", st.Status)
-	joinAnswer(w, http.StatusOK, map[string]string{"id": st.ID, "name": st.Name, "status": st.Status})
+	joinAnswer(w, http.StatusOK, answer)
 	// Spent: the rendezvous hangs up once the answer is on its way.
 	go func() {
 		time.Sleep(2 * time.Second)
@@ -392,6 +427,10 @@ type JoinWithOptions struct {
 	// HTTPClient dials the relay; nil is the default.
 	HTTPClient *http.Client
 	Log        *slog.Logger
+	// Identity, when set, is proved on the rendezvous channel (a Talks
+	// invitation, ADR-110): the issuer pairs only with the link of the key
+	// proved, and answers a link of its own for it (JoinOptions.Back).
+	Identity ed25519.PrivateKey
 }
 
 // Joined says what a join did.
@@ -403,6 +442,10 @@ type Joined struct {
 	// Status is this computer as the issuer lists it after pairing
 	// (online, normally).
 	Status string `json:"status"`
+	// Link is the issuer's own pairing link for this side, when the issuer
+	// offers one back (JoinOptions.Back): a Talks invitation's other half.
+	// Holds a code, so never answered on.
+	Link string `json:"-"`
 }
 
 // Errors a join tells apart.
@@ -425,7 +468,7 @@ func Join(ctx context.Context, raw string, opt JoinWithOptions) (Joined, error) 
 	if opt.Log == nil {
 		opt.Log = slog.New(slog.DiscardHandler)
 	}
-	c, err := remote.NewClient(remote.ClientOptions{Target: jk.Target, Log: opt.Log, HTTPClient: opt.HTTPClient})
+	c, err := remote.NewClient(remote.ClientOptions{Target: jk.Target, Log: opt.Log, HTTPClient: opt.HTTPClient, Identity: opt.Identity})
 	if err != nil {
 		return Joined{}, err
 	}
@@ -448,6 +491,7 @@ func Join(ctx context.Context, raw string, opt JoinWithOptions) (Joined, error) 
 	}
 	var got struct {
 		Status string `json:"status"`
+		Link   string `json:"link"`
 	}
 	if err := joinCall(ctx, c, "link", joinRequest{Secret: secret, Link: link}, &got); err != nil {
 		if opt.Cancel != nil {
@@ -455,7 +499,7 @@ func Join(ctx context.Context, raw string, opt JoinWithOptions) (Joined, error) 
 		}
 		return Joined{}, err
 	}
-	return Joined{Controller: hello.Controller, ControllerName: cleanName(hello.Name), Status: got.Status}, nil
+	return Joined{Controller: hello.Controller, ControllerName: cleanName(hello.Name), Status: got.Status, Link: got.Link}, nil
 }
 
 // joinCall is one POST to the rendezvous.

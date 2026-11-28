@@ -119,13 +119,26 @@ const (
 	// KindMachine is another computer's Caprock: full controller scope, but
 	// only after the owner allows it by name on this machine (Pending).
 	KindMachine = "machine"
+	// KindPerson is another person's Caprock, linked for Talks (ADR-110):
+	// role RoleTalk, which reaches internal/api's personRoutes and nothing
+	// else. Only a Talks invitation makes one (NewCodeForKeyKind), and its
+	// token is bound to that person's relay key from the start.
+	KindPerson = "person"
 )
+
+// RoleTalk is a person's role (ADR-110): deliver Talk envelopes, read their
+// delivery state. Never a role the owner sets (ValidRole refuses it), and
+// never one a person device can be moved out of: SetRole refuses one.
+const RoleTalk = "talk"
 
 // ValidRole reports whether r names a role a device may be given.
 func ValidRole(r string) bool { return r == RoleViewer || r == RoleController }
 
 // roleOf is the role a stored device holds, with "" read as a viewer.
 func roleOf(d *Device) string {
+	if d.Kind == KindPerson {
+		return RoleTalk
+	}
 	if d.Role == RoleController && !d.Pending {
 		return RoleController
 	}
@@ -176,7 +189,8 @@ type Public struct {
 	Name     string `json:"name"`
 	PairedAt int64  `json:"paired_at"`
 	LastSeen int64  `json:"last_seen"`
-	// Role is always set here: "viewer" or "controller".
+	// Role is always set here: "viewer" or "controller", or "talk" for a
+	// person (KindPerson, ADR-110).
 	Role string `json:"role"`
 	// Via is how it last reached the machine; see Device.Via.
 	Via string `json:"via,omitempty"`
@@ -262,6 +276,17 @@ func (s *Store) NewCodeFor(role, kind string) (string, error) {
 // token it pairs is bound to key at once (Device.Key). A redeem that proves
 // another key, or none, burns the code.
 func (s *Store) NewCodeForKey(key string) (string, error) {
+	return s.NewCodeForKeyKind(key, KindMachine)
+}
+
+// NewCodeForKeyKind is NewCodeForKey for a device of kind: KindMachine (a
+// join, ADR-108) or KindPerson (a Talks invitation, ADR-110), which pairs a
+// person with RoleTalk, bound to key and allowed at once. Any other kind is
+// KindMachine.
+func (s *Store) NewCodeForKeyKind(key, kind string) (string, error) {
+	if kind != KindPerson {
+		kind = KindMachine
+	}
 	if key == "" {
 		return "", errors.New("a join needs the key of the computer it lets in")
 	}
@@ -271,7 +296,10 @@ func (s *Store) NewCodeForKey(key string) (string, error) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.codeKey = key
+	s.codeKey, s.codeKind = key, kind
+	if kind == KindPerson {
+		s.codeRole = RoleTalk
+	}
 	return code, nil
 }
 
@@ -404,6 +432,10 @@ func (s *Store) RedeemFrom(code, name, peer string) (*Device, error) {
 	if s.codeKind == KindMachine {
 		d.Kind, d.Pending = KindMachine, true
 	}
+	if s.codeKind == KindPerson && s.codeKey != "" {
+		// A Talks invitation (ADR-110): the narrowest role, never pending.
+		d.Kind, d.Role = KindPerson, RoleTalk
+	}
 	if s.codeKey != "" {
 		// A join's code (NewCodeForKey): the owner allowed exactly this
 		// computer here before it asked, and its token is held to its key
@@ -517,6 +549,10 @@ func (s *Store) SetRole(id, role string) bool {
 	defer s.mu.Unlock()
 	for _, d := range s.devices {
 		if d.ID == id {
+			if d.Kind == KindPerson {
+				// A person is never a viewer or a controller here (ADR-110).
+				return false
+			}
 			d.Role = role
 			return true
 		}

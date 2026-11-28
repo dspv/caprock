@@ -1163,6 +1163,17 @@ DELETE FROM saved_prompts WHERE id = ?
 DELETE FROM telegram_outbox WHERE id = ?
     SEARCH telegram_outbox USING INDEX sqlite_autoindex_telegram_outbox_1 (id=?)
 
+## store.DropTalkOutboxFor
+DELETE FROM talk_outbox WHERE person = ?
+    SCAN talk_outbox
+
+## store.DueTalkOutbox
+SELECT o.talk, o.seq, o.person, o.tries, o.next_at, o.last_error FROM talk_outbox o WHERE o.seq = (SELECT MIN(seq) FROM talk_outbox WHERE talk = o.talk) AND o.next_at <= ? ORDER BY o.next_at, o.talk
+    SEARCH o USING INDEX idx_talk_outbox_next (next_at<?)
+    CORRELATED SCALAR SUBQUERY 1
+        SEARCH talk_outbox USING COVERING INDEX sqlite_autoindex_talk_outbox_1 (talk=?)
+    USE TEMP B-TREE FOR LAST TERM OF ORDER BY
+
 ## store.EachBrainKey
 SELECT id, norm FROM brain_nodes WHERE kind IN ('idea','decision','finding','question')
     SCAN brain_nodes
@@ -1213,6 +1224,10 @@ SELECT COALESCE(MAX(id), 0) + COALESCE((SELECT CAST(v AS INTEGER) FROM meta WHER
     SEARCH events
     SCALAR SUBQUERY 1
         SEARCH meta USING INDEX sqlite_autoindex_meta_1 (k=?)
+
+## store.FailTalkOutbox
+UPDATE talk_outbox SET tries = tries + 1, next_at = ?, last_error = ? WHERE talk = ? AND seq = ?
+    SEARCH talk_outbox USING INDEX sqlite_autoindex_talk_outbox_1 (talk=? AND seq=?)
 
 ## store.FailTelegramOutbox
 UPDATE telegram_outbox SET tries = tries + 1, last_error = ? WHERE id = ?
@@ -1315,6 +1330,14 @@ SELECT id, url, image, delete_token, bytes, at FROM shared_cards WHERE id = ?
 ## store.GetStats
 SELECT turns, tool_calls, files_touched, tokens_in, tokens_out, cache_read, cache_write, cost_usd FROM session_stats WHERE session_id = ?
     SEARCH session_stats USING INDEX sqlite_autoindex_session_stats_1 (session_id=?)
+
+## store.GetTalk
+SELECT id, person, person_name, goal, started_by, state, hold, ended_by, brief, agent, model, max_messages, max_usd, sent, cost_usd, their_cost_usd, draft, draft_redacted, draft_caught, draft_done, note, steer, last_error, created_at, updated_at FROM talks WHERE id = ?
+    SEARCH talks USING INDEX sqlite_autoindex_talks_1 (id=?)
+
+## store.GetTalkEnvelope
+SELECT talk, side, seq, kind, hash, raw, how, caught, cost_usd, at, delivered_at FROM talk_envelopes WHERE talk = ? AND side = ? AND seq = ?
+    SEARCH talk_envelopes USING INDEX sqlite_autoindex_talk_envelopes_1 (talk=? AND side=? AND seq=?)
 
 ## store.GetTask
 SELECT id, COALESCE(title,''), status, COALESCE(assignee,''), COALESCE(budget_usd,0), verify_rounds, cost_usd, created_at, updated_at FROM tasks WHERE id = ?
@@ -1444,6 +1467,12 @@ UPDATE projects SET archived_at = NULL WHERE root = ?
 ## store.InsertSavedPrompt
 INSERT INTO saved_prompts (kind, name, text, project_id, sort, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)
 
+## store.InsertTalk
+INSERT INTO talks (id, person, person_name, goal, started_by, state, hold, ended_by, brief, agent, model, max_messages, max_usd, sent, cost_usd, their_cost_usd, draft, draft_redacted, draft_caught, draft_done, note, steer, last_error, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+
+## store.InsertTalkEnvelope
+INSERT INTO talk_envelopes (talk, side, seq, kind, hash, raw, how, caught, cost_usd, at, delivered_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)
+
 ## store.IsRemoved
 SELECT 1 FROM removed_sessions WHERE session_id = ?
     SEARCH removed_sessions USING PRIMARY KEY (session_id=?)
@@ -1511,6 +1540,10 @@ SELECT COALESCE(SUM(CASE WHEN kind = 'turn.assistant' THEN cost_usd END), 0), CO
     SEARCH events USING COVERING INDEX idx_events_attr_work (sid=? AND ts>? AND ts<?)
     SCALAR SUBQUERY 1
         SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
+
+## store.LastTalkEnvelope
+SELECT talk, side, seq, kind, hash, raw, how, caught, cost_usd, at, delivered_at FROM talk_envelopes WHERE talk = ? AND side = ? ORDER BY seq DESC LIMIT 1
+    SEARCH talk_envelopes USING INDEX sqlite_autoindex_talk_envelopes_1 (talk=? AND side=?)
 
 ## store.LatestCompactionStat
 SELECT event_id, sid, at, trigger, model, pre_tokens, post_tokens, summary_chars, summary_tokens_est, warm, est_cost_usd, turns_after, est_saved_usd, counted_ts, counted_id, next_at, cost_stale, pricing_version, updated_at FROM compaction_stats WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) ORDER BY at DESC, event_id DESC LIMIT 1
@@ -1685,6 +1718,11 @@ SELECT session_id, COALESCE(cwd,''), COALESCE(project,''), COALESCE(model,''), C
         SEARCH a USING INDEX sqlite_autoindex_attempts_1 (session_id=?)
     USE TEMP B-TREE FOR ORDER BY
 
+## store.ListTalks
+SELECT id, person, person_name, goal, started_by, state, hold, ended_by, brief, agent, model, max_messages, max_usd, sent, cost_usd, their_cost_usd, draft, draft_redacted, draft_caught, draft_done, note, steer, last_error, created_at, updated_at FROM talks ORDER BY updated_at DESC, id LIMIT ?
+    SCAN talks USING INDEX idx_talks_updated
+    USE TEMP B-TREE FOR LAST TERM OF ORDER BY
+
 ## store.ListTasks
 SELECT id, COALESCE(title,''), status, COALESCE(assignee,''), COALESCE(budget_usd,0), verify_rounds, cost_usd, created_at, updated_at FROM tasks ORDER BY created_at ASC
     SCAN tasks
@@ -1736,6 +1774,14 @@ UPDATE sessions SET status = 'idle' WHERE status = 'active' AND last_event_at < 
 ## store.MarkOwned
 UPDATE sessions SET owned = 1, worktree = COALESCE(NULLIF(?, ''), worktree), spawn_command = ?, pid = ?, status = 'active', idle_ended_at = 0, idle_ended_after = 0 WHERE session_id = ?
     SEARCH sessions USING INDEX sqlite_autoindex_sessions_1 (session_id=?)
+
+## store.MarkTalkDelivered
+DELETE FROM talk_outbox WHERE talk = ? AND seq = ?
+    SEARCH talk_outbox USING INDEX sqlite_autoindex_talk_outbox_1 (talk=? AND seq=?)
+
+## store.MarkTalkDelivered
+UPDATE talk_envelopes SET delivered_at = ? WHERE talk = ? AND side = 'me' AND seq = ?
+    SEARCH talk_envelopes USING INDEX sqlite_autoindex_talk_envelopes_1 (talk=? AND side=? AND seq=?)
 
 ## store.MarkUndelivered
 UPDATE queued_messages SET undelivered_at = ? WHERE session_id = ? AND undelivered_at = 0
@@ -1881,6 +1927,9 @@ INSERT INTO event_tldr(event_id, text, model, cost_usd, created_at) VALUES(?, ?,
 
 ## store.PutTelegramOutbox
 INSERT OR REPLACE INTO telegram_outbox (id, created_at, body) VALUES (?, ?, ?)
+
+## store.QueueTalkOutbox
+INSERT OR IGNORE INTO talk_outbox (talk, seq, person, next_at) VALUES (?, ?, ?, ?)
 
 ## store.QueuedSessions
 SELECT DISTINCT session_id FROM queued_messages WHERE undelivered_at = 0 ORDER BY session_id
@@ -2292,6 +2341,10 @@ UPDATE compaction_stats SET model = ?, post_tokens = ?, warm = ?, est_cost_usd =
 ## store.SavePendingPermission
 INSERT INTO pending_permissions(session_id, prompt_id, tool, detail, always, since, input, tool_use_id, agent_id, agent_type) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(session_id, prompt_id) DO UPDATE SET tool = excluded.tool, detail = excluded.detail, always = excluded.always, since = excluded.since, input = excluded.input, tool_use_id = excluded.tool_use_id, agent_id = excluded.agent_id, agent_type = excluded.agent_type
 
+## store.SaveTalk
+UPDATE talks SET person_name = ?, goal = ?, state = ?, hold = ?, ended_by = ?, brief = ?, agent = ?, model = ?, max_messages = ?, max_usd = ?, sent = ?, cost_usd = ?, their_cost_usd = ?, draft = ?, draft_redacted = ?, draft_caught = ?, draft_done = ?, note = ?, steer = ?, last_error = ?, updated_at = ? WHERE id = ?
+    SEARCH talks USING INDEX sqlite_autoindex_talks_1 (id=?)
+
 ## store.ScrubBrainSecrets
 SELECT id, COALESCE(node_id, 0), excerpt FROM brain_vault_notes
     SCAN brain_vault_notes
@@ -2701,6 +2754,27 @@ SELECT id, vault_id, path, node_id, title, aliases, keys, links, tags, project, 
 ## store.SyncBrainNoteNode
 UPDATE brain_nodes SET title = ?, norm = ?, summary = ?, project = ?, source_ts = ?, vault_id = ?, search = ?, updated_at = CASE WHEN title != ? OR summary != ? OR project != ? THEN ? ELSE updated_at END WHERE id = ?
     SEARCH brain_nodes USING INTEGER PRIMARY KEY (rowid=?)
+
+## store.TalkEnvelopes
+SELECT talk, side, seq, kind, hash, raw, how, caught, cost_usd, at, delivered_at FROM talk_envelopes WHERE talk = ? ORDER BY at, side, seq
+    SEARCH talk_envelopes USING INDEX sqlite_autoindex_talk_envelopes_1 (talk=?)
+    USE TEMP B-TREE FOR ORDER BY
+
+## store.TalkIDsInState
+SELECT id FROM talks WHERE state = ? ORDER BY updated_at
+    SCAN talks USING INDEX idx_talks_updated
+
+## store.TalkOutboxWaiting
+SELECT COUNT(*), MAX(last_error) FROM talk_outbox WHERE talk = ?
+    SEARCH talk_outbox USING INDEX sqlite_autoindex_talk_outbox_1 (talk=?)
+
+## store.TalksWith
+SELECT id, person, person_name, goal, started_by, state, hold, ended_by, brief, agent, model, max_messages, max_usd, sent, cost_usd, their_cost_usd, draft, draft_redacted, draft_caught, draft_done, note, steer, last_error, created_at, updated_at FROM talks WHERE person = ? AND state IN (?,?,?,?)
+    SEARCH talks USING INDEX idx_talks_person (person=? AND state=?)
+
+## store.TalksWith
+SELECT id, person, person_name, goal, started_by, state, hold, ended_by, brief, agent, model, max_messages, max_usd, sent, cost_usd, their_cost_usd, draft, draft_redacted, draft_caught, draft_done, note, steer, last_error, created_at, updated_at FROM talks WHERE person = ? AND state IN (?,?,?,?,?)
+    SEARCH talks USING INDEX idx_talks_person (person=? AND state=?)
 
 ## store.TaskSessions
 SELECT a.session_id, COALESCE(s.cwd, ''), a.from_ts, COALESCE(a.to_ts, 0) FROM task_assignments a LEFT JOIN sessions s ON s.session_id = a.session_id WHERE a.task_id = ? ORDER BY a.from_ts DESC

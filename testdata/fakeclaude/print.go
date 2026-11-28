@@ -61,6 +61,9 @@ func printMode(args []string) {
 	if strings.Contains(string(in), "The notes, one per line") {
 		retagAnswer(string(in))
 	}
+	if strings.Contains(string(in), "CAPROCK-TALK-TURN v1") {
+		talkAnswer(string(in))
+	}
 	type mem struct {
 		Kind    string   `json:"kind"`
 		Title   string   `json:"title"`
@@ -160,6 +163,58 @@ func retagAnswer(in string) {
 		"total_cost_usd":    0,
 		"usage":             map[string]int{"input_tokens": len(in) / 4, "output_tokens": 20 * len(tags), "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0},
 		"modelUsage":        map[string]any{"fake-claude": map[string]int{}},
+	}
+	b, _ := json.Marshal(out)
+	fmt.Println(string(b))
+	os.Exit(0)
+}
+
+// talkAnswer answers a Talk turn (internal/talks): an opening that repeats
+// the goal when the transcript is empty, else a reply that repeats the
+// last line's first 80 characters — so a term in one side's message comes
+// back in the other's, which is how the smoke test meets the guard. The
+// prompt holding FAKETALK_DONE sets done, FAKETALK_OWNER needs_owner. Each
+// turn reports $0.01.
+func talkAnswer(in string) {
+	goal := ""
+	if m := regexp.MustCompile(`(?m)^Goal: (.*)$`).FindStringSubmatch(in); m != nil {
+		_ = json.Unmarshal([]byte(m[1]), &goal)
+	}
+	type line struct {
+		From string `json:"from"`
+		Text string `json:"text"`
+	}
+	var lines []line
+	for _, l := range strings.Split(in, "\n") {
+		var ln line
+		if strings.HasPrefix(l, `{"from":`) && json.Unmarshal([]byte(l), &ln) == nil {
+			lines = append(lines, ln)
+		}
+	}
+	msg := "Opening: " + goal
+	if len(lines) > 0 {
+		last := []rune(lines[len(lines)-1].Text)
+		if len(last) > 80 {
+			last = last[:80]
+		}
+		mine := 0
+		for _, l := range lines {
+			if l.From == "you" {
+				mine++
+			}
+		}
+		msg = fmt.Sprintf("Reply %d to: %s", mine+1, string(last))
+	}
+	out := map[string]any{
+		"type": "result", "subtype": "success", "is_error": false,
+		"result": "",
+		"structured_output": map[string]any{
+			"message": msg, "note": "fake note, never sent", "sources": []string{},
+			"done": strings.Contains(in, "FAKETALK_DONE"), "needs_owner": strings.Contains(in, "FAKETALK_OWNER"),
+		},
+		"total_cost_usd": 0.01,
+		"usage":          map[string]int{"input_tokens": len(in) / 4, "output_tokens": 30, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0},
+		"modelUsage":     map[string]any{"fake-claude": map[string]int{}},
 	}
 	b, _ := json.Marshal(out)
 	fmt.Println(string(b))
