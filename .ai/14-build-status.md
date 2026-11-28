@@ -79,6 +79,22 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-11-28 — 0.202.0: Talks, a server that is Caprock-native, a remote tab like a local one
+
+A minor release. Talks (ADR-110): two people link their Caprocks with one
+invite, and their agents talk toward a one-line goal, grounded in each side's
+Second Brain; every message passes the never-share check and redaction, a hit
+is held for Send, Edit or Drop, caps stop a Talk at 12 messages or $5 a side,
+and What left this machine lists every word sent. A new server (ADR-109) is set
+up from blank by one script on the Debian family (Kali included) and the Red Hat
+family, checked on eight images: its own locked user, firewall, automatic
+updates, verified release, joined with a single-use key; "I already have a
+server" types the user's own ssh command into a terminal tab and holds no
+password. A linked computer's tab is the local tab, its touch keys only on a
+phone. The phone can send a red CI to Fix. Off macOS the sidebar's keys fit, the
+shared Ctrl+Shift written once. Done there keeps a setup mark again; cache
+savings use each model's own rates; /v1/premium is the licence only.
+
 ### 2026-11-27 — 0.201.0: free for one person, a join key for a new computer
 
 A minor release. Caprock no longer sells anything to one person: subscriptions

@@ -12,6 +12,137 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.202.0] - 2026-11-28
+
+### Added
+
+- **server:** a new server, set up by one script. Settings → Computers →
+  **New server** writes a setup script to paste into your provider's create
+  form (Hetzner Cloud: Cloud config; DigitalOcean: User data; any provider
+  that runs cloud-init) or run once as root over SSH. On Ubuntu 24.04 LTS or
+  newer, or Debian 12 or newer, it creates a user `caprock` with no password
+  and no sudo, keeps its services running with nobody logged in, turns on
+  unattended security upgrades and a firewall that admits nothing inbound,
+  sets SSH to keys only (or stops it), installs Git, Node.js, Claude Code
+  with Anthropic's installer and Codex, installs Caprock at your laptop's
+  version with its archive checked, and links the server to your laptop with
+  a one-time key that works for 60 minutes. `caprock machines server-script`
+  prints the same script. Linux release archives now carry a minisign
+  signature, which the script checks before the SHA-256 (ADR-109).
+- **phone:** Fix CI and Re-run on a failing pull request, from the phone. On
+  the phone home's Releases, under *PR #N CI failed* and under every other red
+  pull request row, and in the session sheet's *Pull requests*: one tap asks
+  once inline (*Ask to fix #N CI? Confirm Cancel*), then the failed job and its
+  log go to the agent Caprock started on the branch, or a new agent starts in a
+  worktree at the pull request's head; Re-run asks GitHub to run the failed
+  jobs again. A paired phone with control may now read a session's pull
+  requests, a pull request's runs and a failed job's log, and re-run its
+  checks; Update branch stays on the computer.
+- **server:** New server's setup script also runs on the Red Hat family —
+  Fedora, Rocky Linux, AlmaLinux, CentOS Stream and RHEL — with `dnf`,
+  firewalld's `drop` zone and `dnf-automatic` applying security updates. On
+  EL 9, whose Node.js is 16, it installs Node.js 20 from the distribution's
+  own module stream.
+- **talks:** Talks between two people's agents, through the API (ADR-110).
+  `POST /v1/talks/invite` makes a link (`https://caprock.dev/talk#<key>`,
+  good for 24 hours) and `POST /v1/talks/accept` takes it on the other
+  person's Caprock: the two are linked both ways through the relay, each
+  with a token that reaches the other's Talk inbox and nothing else.
+  `POST /v1/talks {person, goal}` starts a Talk in which each side's own
+  agent, run headless with no tools and grounded in its owner's 2nd Brain,
+  answers the other's in turn. Every outgoing message passes secret
+  redaction and the owner's never-share terms; a hit holds it for its
+  owner (Send redacted, Edit, Drop), and so does a cap — 12 messages and
+  $5 per side per Talk, defaults in `PUT /v1/talks/settings`. An envelope
+  the other side cannot take waits in an outbox and is retried; Remove
+  ends the link from either side.
+- **server:** a server New server sets up now has a headless Chromium for
+  the agents (the distribution's, or Playwright's headless shell on Ubuntu),
+  and the script checks that Claude Code and Codex run once installed. It
+  assumes a blank server and installs every tool it uses. Every supported
+  system is tested end to end against the same list: the agents, Git,
+  Node.js and the browser present, the server linked, its service running
+  with nobody logged in, no inbound port open, automatic security updates
+  on, and the same Caprock version as your laptop's.
+- **talks:** Talks on screen (ADR-110, `docs/talks.md`).
+  Talks in the top row, the phone's menu and ⌘K (*Talk with…*, and *Talk
+  with <name>* per person): Invite someone copies a link, the other person
+  pastes it and presses Accept, and from then on a Talk is two actions —
+  Talk, then the goal and Enter. A Talk reads like a chat with three
+  voices: your agent, theirs, and the two of you, who can type in
+  (`POST /v1/talks/{id}/messages`, through the never-share list first). A
+  held message waits in a card with Send, Edit and Drop; a cap or a failed
+  turn with Continue and End. *What left this machine* lists every message
+  your side sent, word for word. Settings → Talks holds your name, the
+  never-share terms, the brief and the caps. A hold also reaches Telegram
+  when a bot is set up — who and why, never the message — and your paired
+  phone reads its Talks and, with control, answers them. A person linked
+  for Talks is not listed among the phone's devices.
+- **server:** New server → *I already have a server*: enter its address and
+  user (root, or a user with sudo) and press Set up. A terminal tab opens on
+  your computer with your own `ssh` command typed in; press Enter, and ssh
+  asks for the server's password or uses your key, which Caprock never sees.
+  The script runs there with its steps in that tab, turns password login off
+  (SSH stays on for keys only), and the server's page opens once it has
+  joined. On Windows the command uses Windows' own OpenSSH.
+
+### Changed
+
+- **server:** New server's setup script runs on the whole Debian family —
+  Debian, Ubuntu, Kali and the systems built on them, any version — instead
+  of only Ubuntu 24.04 LTS and Debian 12. When the distribution's Node.js is
+  older than 18 (Ubuntu 22.04's, say), it installs Node.js 22 from
+  NodeSource's signed repository. The New server screen has *Need a Mac
+  server? Ask for it*, a GitHub issue filled in for you to submit.
+
+### Removed
+
+- **api:** `GET /v1/premium` returns the licence state only. The old personal
+  prices and the test that compared them with the site are gone, since
+  nothing is sold to one person.
+
+### Fixed
+
+- **cost:** the cache savings figure ("input cost cut by cache" on Cost and
+  History, the status line's `cache −N%`) weighs each model's cache at that
+  model's own prices. Claude Opus 5.5 and Sonnet 5.5 read their cache at 0.05x
+  of input, not the 0.10x every model was weighed at, so on those models the
+  figure understated what the cache saved. A model with no pricing row keeps
+  the old 0.10/1.25 weights. Costs were already right; only the savings
+  figure changes (#1113).
+- **machines:** a session on another computer opens in the same tab as a
+  local one: the live terminal first, the Chat/Terminal switch in the strip
+  and the agent cockpit beside it, read from that computer, instead of the
+  dashboard's Session view with a phone's row of touch keys. The app's keys
+  (⌘1–⌘9, ⌘W, ⌘I…) work while its terminal has the keyboard, the tab names
+  the folder it runs in beside the computer's tag, and closing it puts it on
+  Recently closed. New agent on another computer no longer cuts its folder
+  picker at the sheet's edge on a long path.
+- **ui:** the touch keys (Esc, Tab, arrows, Enter, Ctrl+C) are never drawn
+  under a mouse: only on a phone or a touch screen.
+- **agents:** a Claude Code session Caprock starts no longer waits on Claude
+  Code's "Adding a new directory" prompt for Caprock's own paste and chats
+  folders: every folder passed with `--add-dir` is trusted beforehand as the
+  working folder is, so sessions started on a computer nobody sits at no
+  longer exit at once (#1118).
+- **sessions:** a Claude Code session Caprock started that has sent no hook
+  20 seconds after the start, with the hooks installed, reads *waiting at a
+  prompt in its terminal* — Needs you, in amber, in the sidebar, its
+  computer's count, the tab, the tray and the phone — instead of running,
+  and its tab opens on the terminal where the prompt is.
+- **peers:** forgetting a computer now reaches that computer: its request to
+  drop this one went without a JSON content type, which the forgery guard
+  refused, so the other computer kept listing this one until removed by hand.
+- **machines:** Done there on a linked computer's setup step is kept again;
+  it answered "this daemon cannot keep setup marks" because the daemon's
+  machines adapter never passed the call on.
+- **sidebar:** on Windows and Linux the folded sidebar footer shows its keys
+  again, above the icons as on a Mac. The whole keys (Ctrl+Shift+M,
+  Ctrl+Alt+Shift+F) are wider than an icon, so *Ctrl+Shift +* is written once
+  above the row and each icon has the rest: Alt+F, M, D, ",", P, Alt+P. All
+  six fit the sidebar, and each one's tooltip spells the whole key. Until now
+  they showed only while Ctrl was held or under keyboard focus.
+
 ## [0.201.0] - 2026-11-27
 
 ### Added
