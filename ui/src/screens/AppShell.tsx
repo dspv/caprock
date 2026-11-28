@@ -50,6 +50,7 @@ import {
 } from '@/lib/tabs'
 import { agentInShell, tabLabels, type RemoteLabels } from '@/lib/tablabels'
 import { useMachines, useMachineSessions } from '@/lib/machines'
+import type { MachineTabAsk } from '@/lib/machinepage'
 import { RemoteSessionPane } from '@/components/RemoteSessionPane'
 import { onShellNamed } from '@/lib/sessionNames'
 import { idleEnded } from '@/lib/idleEnd'
@@ -127,6 +128,7 @@ import { QuickChatSheet, quickChatRequest, quickChoiceLabel, rememberQuickChoice
 import { dismissHint, hintDismissed, isQuickChat, quickChatHint, rememberStartedChat, startedChat } from '@/lib/quickchat'
 import { isChat } from '@/lib/chats'
 import { rememberedViews, rememberView, viewOf, type SessionView } from '@/lib/sessionView'
+import { heldAtPrompt } from '@/lib/needs'
 import { ChatEnded, ChatHint, type ChatPane } from '@/components/QuickChatPane'
 import { useSpawnableAgents } from '@/components/AgentPicker'
 import { AddProjectSheet } from '@/components/AddProjectSheet'
@@ -1441,15 +1443,16 @@ export function AppShell() {
     // A browser tab has nothing running to ask about: it goes with its page.
     if (isPageTab(tab)) { dispatch({ type: 'close', tabId }); return }
     // Nor has a session on another computer: it runs on there, as it would
-    // with its page closed (rule 7 there is that computer's daemon's).
-    if (isRemoteTab(tab)) { dispatch({ type: 'close', tabId }); return }
+    // with its page closed (rule 7 there is that computer's daemon's). It
+    // goes on Recently closed as one of this machine's does.
+    if (isRemoteTab(tab)) { noteClosed(tabId); dispatch({ type: 'close', tabId }); return }
     // Nor has a phone preview beside a terminal.
     if (paneId && leaves(tab.root).some((l) => l.id === paneId && l.target.kind === 'page')) { dispatch({ type: 'close-pane', tabId, paneId }); return }
     // A chat whose agent already exited (its tab says so) has nothing to stop.
     const chat = planChatClose(tab, paneId, sessionsById, ...chatTests(endedChats))
     if (chat.busy.length > 0) { setClosing({ kind: 'chat', tabId, paneId, chat }); return }
     await closeAgents(tabId, paneId, chat.stop)
-  }, [closeAgents])
+  }, [closeAgents, noteClosed])
   /**
    * *Close project* ends the project's shells too, tab or no tab, the way a
    * shell's tab does: idle ones without asking, busy ones after one question
@@ -1486,6 +1489,13 @@ export function AppShell() {
     const shell = tabs.flatMap((t) => leaves(t.root)).find((l) => l.target.kind === 'shell' && l.target.ended?.sessionId === entry.sessionId)
     if (shell?.target.ended && !open) { void resumeEnded(shell.target.sessionId, shell.target.ended); return }
     forgetClosed(entry.sessionId)
+    // A session on another computer: its tab again, which offers Continue
+    // there once it has ended (components/MachineTab.tsx).
+    if (entry.machine && entry.remote) {
+      if (open) onActivateTab(open.id)
+      else openRemote(entry.machine, entry.remote, entry.title)
+      return
+    }
     const go = (plan: ReturnType<typeof reopenPlan>) => {
       if (plan.do === 'tab') { onActivateTab(open!.id); return }
       if (plan.do === 'open') { openSession(plan.session, entry.projectId, entry.at); return }
@@ -1506,7 +1516,7 @@ export function AppShell() {
       return
     }
     go(plan)
-  }, [onActivateTab, openSession, goHash, openTab, refresh, resumeEnded])
+  }, [onActivateTab, openSession, goHash, openTab, refresh, resumeEnded, openRemote])
   /**
    * A row with no tab: opened as a tab (openSession) — unless Caprock ended it
    * for sitting idle (lib/idleEnd.ts), when the click continues it the way a
@@ -1959,7 +1969,8 @@ export function AppShell() {
   const focusedIsAgent = frontIsAgent
   // A chat's tab opens on the conversation (ADR-071), a project session's
   // on its terminal, until the tab's Chat / Terminal switch says otherwise.
-  const showChat = focusedIsAgent && !!focused && viewOf(views[focused.sessionId], isChat(focusedSession) || !!startedChat(focused.sessionId)) === 'chat'
+  // Held at a prompt before its first hook (#1118), the terminal is where the prompt is.
+  const showChat = focusedIsAgent && !!focused && !heldAtPrompt(focusedSession) && viewOf(views[focused.sessionId], isChat(focusedSession) || !!startedChat(focused.sessionId)) === 'chat'
   // The permission card shows for the focused agent whether or not its
   // terminal is in front. 0.78.2 hid it behind the terminal as a duplicate
   // (owner, 2026-10-06); the next day he wanted it back — it names the call
@@ -2082,9 +2093,14 @@ export function AppShell() {
   }, [openFile])
   const focusedFile = focused?.kind === 'file'
   const focusedPage = focused?.kind === 'page'
-  // A session on another computer: its own Session view in the frame has its
-  // figures and views; this machine's inspector and switch know nothing of it.
+  // A session on another computer: its tab in the frame draws its own pane,
+  // chat and cockpit (components/MachineTab.tsx); the strip's switch and ⌘I
+  // are this window's and told to it, and this machine's inspector is not
+  // drawn beside it.
+  // A session on another computer's view as the strip has it; held at a prompt before its first hook, the terminal (#1118).
+  const remoteViewOf = useCallback((key: string): SessionView => (heldAtPrompt(remoteLabels.sessions.get(key)) ? 'terminal' : viewOf(views[key], false)), [remoteLabels, views])
   const focusedRemote = focused?.kind === 'remote'
+  const remoteView = focusedRemote && focused ? remoteViewOf(focused.sessionId) : undefined
   // The Files tab has no session to inspect and wants the width for its two panels.
   const focusedFiles = focused?.kind === 'files'
   // A page's *from* chip and its nudge bring a session forward; that is known further down.
@@ -2120,8 +2136,30 @@ export function AppShell() {
       />
     )
   }, [armedPages, armPage, openPage, sessionsById, browserEnabled, browserPrefs.engine, browserPrefs.pause, waitingAgents, onStepTab])
-  /** A session on another computer's content (components/RemoteSessionPane.tsx, issue #1085). */
-  const renderRemote = useCallback((_tab: Tab, leaf: PaneLeaf, visible: boolean) => {
+  /**
+   * A session on another computer's content (components/RemoteSessionPane.tsx,
+   * issue #1085): this window's own tab drawn in a frame, read from there
+   * (components/MachineTab.tsx). The strip's Chat/Terminal switch and ⌘I
+   * are told to it; what it asks back is done here as for a tab of this
+   * machine's — the keys pressed in it included.
+   */
+  const remoteAsk = useRef<(tab: Tab, leaf: PaneLeaf, ask: MachineTabAsk) => void>(() => {})
+  remoteAsk.current = (tab, leaf, ask) => {
+    const key = leaf.target.sessionId
+    switch (ask.ask) {
+      case 'view':
+        rememberView(key, ask.view)
+        setViews((cur) => (cur[key] === ask.view ? cur : { ...cur, [key]: ask.view }))
+        break
+      case 'inspector': setPrefs((p) => (p.inspector === ask.open ? p : { ...p, inspector: ask.open })); break
+      case 'close': onCloseTab(tab.id); break
+      case 'open': openRemote(leaf.target.machine ?? '', ask.session, ask.title); break
+      case 'key':
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: ask.key, code: ask.code, metaKey: ask.meta, ctrlKey: ask.ctrl, shiftKey: ask.shift, altKey: ask.alt, repeat: ask.repeat, bubbles: true, cancelable: true }))
+        break
+    }
+  }
+  const renderRemote = useCallback((tab: Tab, leaf: PaneLeaf, visible: boolean) => {
     const id = leaf.target.machine ?? ''
     const m = machineList?.find((x) => x.id === id)
     return (
@@ -2131,9 +2169,12 @@ export function AppShell() {
         session={leaf.target.remote ?? ''}
         visible={visible}
         m={m}
+        view={remoteViewOf(leaf.target.sessionId)}
+        inspector={prefs.inspector}
+        onAsk={(ask) => remoteAsk.current(tab, leaf, ask)}
       />
     )
-  }, [machineList])
+  }, [machineList, prefs.inspector, remoteViewOf])
   /** The session a dev server was seen in, as ⌘K's *Preview on phone…* names it. */
   const previewSessionName = useCallback((id: string) => {
     const x = sessionsById.get(id)
@@ -2405,7 +2446,7 @@ export function AppShell() {
               } : undefined}
               pipeline={ws.pipeline || pipelineShown ? { active: pipelineShown, onActivate: () => { if (!pipelineShown) goHash(lastPipeline.current || '#/pipeline') }, onClose: closePipeline } : undefined}
               mail={ws.mail || (mailShown && mailTabOk) ? { active: mailShown, onActivate: showMailTab, onClose: closeMail } : undefined}
-              paneTools={workspaceShown && !focusedPage && !focusedRemote}
+              paneTools={workspaceShown && !focusedPage}
               sessions={sessionsById}
               permissions={data.permissions}
               inspectorOpen={prefs.inspector}
@@ -2419,8 +2460,8 @@ export function AppShell() {
               onNewShell={() => onNewShell()}
               newItems={newItems}
               onToggleInspector={() => setPrefs((p) => ({ ...p, inspector: !p.inspector }))}
-              view={showChat ? 'chat' : 'terminal'}
-              onView={focusedIsAgent ? setView : undefined}
+              view={remoteView ?? (showChat ? 'chat' : 'terminal')}
+              onView={focusedIsAgent || focusedRemote ? setView : undefined}
             />
           <div className="flex min-h-0 flex-1">
             <div className="relative min-w-0 flex-1">

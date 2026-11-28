@@ -65,6 +65,7 @@ import type { SpawnAgent } from './AgentPicker'
 import { Sheet, SheetButton, SheetField } from './Sheet'
 import { BypassConsentNote } from './BypassConsent'
 import { watchStart } from '@/lib/startwatch'
+import { remoteFolder } from '@/lib/tablabels'
 
 /** What this computer is called in the picker. */
 export function thisComputer(): string {
@@ -277,7 +278,9 @@ export function RemoteAgentSheet({ machines, machine, onMachine, prompt: initial
       // A program that ends in its first seconds is said, not left to a tab
       // that quietly closes (#1086).
       watchStart({ machine, name, sessionId: res.session_id })
-      onStarted(machine, res.session_id, prompt.trim().slice(0, 60) || `new session on ${name}`)
+      // Named, until that computer's list names it, by what it was asked or
+      // the folder it works in, as a tab here is — never "new session".
+      onStarted(machine, res.session_id, prompt.trim().slice(0, 60) || remoteFolder({ cwd: cwd.trim() }) || `session on ${name}`)
       onClose()
     } catch (e) {
       const asked = e instanceof ApiError && e.status === 409 && (e.body as { code?: string } | undefined)?.code === 'bypass_consent'
@@ -334,7 +337,10 @@ export function RemoteAgentSheet({ machines, machine, onMachine, prompt: initial
         </>
       }
     >
-      <div className="grid gap-4 px-5 py-4" data-remote-agent={machine} onKeyDown={(e) => { stepSelect(e) }}>
+      {/* One column that never grows past the sheet: a long folder path
+        * there (C:\Users\…) once widened it and cut the picker at the
+        * sheet's right edge. */}
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-4 px-5 py-4" data-remote-agent={machine} onKeyDown={(e) => { stepSelect(e) }}>
         <div className="grid grid-cols-2 gap-3">
           <MachinePicker machines={machines} value={machine} onChange={onMachine} />
           <SheetField label="Agent">
@@ -354,7 +360,7 @@ export function RemoteAgentSheet({ machines, machine, onMachine, prompt: initial
             No agent is installed on {name}. Install Claude Code or another agent there and sign in, restart Caprock on it, then open this again.
           </p>
         )}
-        <div className="grid min-w-0 gap-1.5" data-remote-folder>
+        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1.5" data-remote-folder>
           <span className="flex items-baseline gap-2 text-[13px] font-medium text-fg-muted">
             <label htmlFor={`remote-folder-${machine}`} className="min-w-0 truncate" title={`Folder on ${name}`}>Folder on {name}</label>
             {folderNote && <span className="shrink-0 font-normal text-fg-faint">{folderNote}</span>}
@@ -419,7 +425,7 @@ export function RemoteAgentSheet({ machines, machine, onMachine, prompt: initial
           />
         </SheetField>
         <p className="text-[12px] leading-snug text-fg-faint">
-          New copies and attempts are made on {name} itself.
+          New copies, attempts, other subscriptions and the subagents’ model are set up on {name} itself.
         </p>
       </div>
     </Sheet>

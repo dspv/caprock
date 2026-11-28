@@ -13,6 +13,10 @@
  * page (#1088) — is no session: it has no row, so it is drawn as its
  * terminal alone.
  *
+ * Shown as a tab of the app (`as=tab`, lib/machinepage machineTabOf) it is
+ * instead components/MachineTab.tsx: the same pane, chat and cockpit as a
+ * tab of one of this machine's sessions.
+ *
  * Only a session is shown here. Any other screen a link inside it opens —
  * Home, Cost, a pipeline — would be the other computer's, in a frame that has
  * no way back, so the page hands the window that holds it that computer's
@@ -21,13 +25,22 @@
 import { useEffect } from 'react'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { useRoute } from '@/lib/router'
-import { machinePageId } from '@/lib/machinepage'
+import { machinePageId, machineTabOf } from '@/lib/machinepage'
+import { MachineTab } from '@/components/MachineTab'
 import { SessionScreen } from './Session'
 import { TerminalView } from '@/components/Terminal'
 import { useApi } from '@/lib/useApi'
 import { projectsApi } from '@/lib/projects'
 
 export default function MachinePage() {
+  // A tab of the app's workspace (components/MachineTab.tsx): the local
+  // tab's own pane, chat and cockpit, not the Session view below.
+  const tab = machineTabOf()
+  if (tab) return <ErrorBoundary label="session"><MachineTab session={tab.session} initial={tab} /></ErrorBoundary>
+  return <MachineSessionPage />
+}
+
+function MachineSessionPage() {
   const route = useRoute()
   const id = machinePageId()
   const elsewhere = route.name !== 'session'

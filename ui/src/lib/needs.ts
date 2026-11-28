@@ -30,6 +30,7 @@ export function needLabel(n: Need | undefined): string {
     case 'error': return n.detail ? `stopped: ${n.detail}` : 'stopped: error'
     case 'asks': return n.moved ? 'you marked it' : n.detail === 'choice' ? 'asks a choice' : 'asks a question'
     case 'done': return n.moved ? 'marked done' : 'done'
+    case 'prompt': return 'waiting at a prompt in its terminal'
   }
   return ''
 }
@@ -47,8 +48,17 @@ export function needWord(n: Need | undefined): string {
     case 'error': return 'error'
     case 'asks': return n.guess ? 'question?' : 'question'
     case 'done': return 'done'
+    case 'prompt': return 'prompt'
   }
   return ''
+}
+
+/**
+ * Held at a prompt before its first hook (#1118): nothing has been said yet,
+ * so its tab opens on the terminal, where the prompt is, never the chat.
+ */
+export function heldAtPrompt(s: Pick<SessionSummary, 'status' | 'activity'> | undefined): boolean {
+  return !!s && s.status !== 'ended' && s.activity?.health === 'waiting-on-you' && s.activity?.need?.reason === 'prompt'
 }
 
 /** The chip's colour: red for a failed turn, faint for Done, amber for the rest. */
@@ -61,6 +71,10 @@ export function needTone(n: Need | undefined): 'warn' | 'danger' | 'faint' {
 /** What a guess's chip says on hover. */
 export const GUESS_HINT =
   'A guess. Caprock read the last message Claude wrote. Claude Code is not showing a dialog, so nothing is blocked; it is waiting for your next message. Wrong? Move it with "needs me?" / "not needed".'
+
+/** What a held-at-a-prompt chip says on hover (#1118). */
+export const PROMPT_HINT =
+  'A guess. Caprock started this session and it has sent nothing since: Claude Code is showing something before it starts — a question about a folder, a sign-in, a settings error. Open its terminal to answer it.'
 
 /** When it started waiting, unix ms: the turn's end, else the newest event. */
 export function waitingSince(s: Pick<SessionSummary, 'activity' | 'last_event_at'>): number {
@@ -83,6 +97,7 @@ export function reasonsSentence(list: readonly Pick<SessionSummary, 'activity'>[
       case 'plan': return 'a plan'
       case 'error': return 'an error'
       case 'asks': return n.guess ? 'a question (guess)' : 'a question'
+      case 'prompt': return 'a prompt in its terminal'
     }
     return 'your turn'
   }).join(', ')

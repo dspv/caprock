@@ -685,6 +685,9 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (*Agent, error) {
 	var args, extraEnv []string
 	port := 0
 	nativeID, typed := "", ""
+	// The directories a Claude Code start is given with --add-dir: trusted
+	// below with its working folder, so the start never waits on a prompt.
+	var addDirs []string
 	if command != "" {
 		// An explicit command is taken as given: the caller knows what it is
 		// launching, and guessing flags for an unknown binary is worse than
@@ -709,6 +712,9 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (*Agent, error) {
 		}
 		if m.ProjectRepos != nil {
 			in.RepoDirs = m.ProjectRepos(cwd)
+		}
+		if agent == AgentClaude {
+			addDirs = append(append(addDirs, in.AddDirs...), in.RepoDirs...)
 		}
 		if in.Prompt != "" && isBatch(m.binary(agent)) {
 			in.Prompt = flattenForBatch(in.Prompt)
@@ -765,6 +771,20 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (*Agent, error) {
 		}
 		if err := trust(cwd); err != nil {
 			m.log.Warn("pre-trust folder", "component", "agents", "cwd", cwd, "err", err)
+		}
+		// And every --add-dir: Caprock's own paste and chats folders and the
+		// project's other repositories. Claude Code asks to trust an added
+		// folder its workspace trust does not cover before the session starts
+		// ("Adding a new directory … No, exit / Yes, add it", v2.1.326+,
+		// code.claude.com/docs/en/permissions § Working directories), and the
+		// default answer ends it: a session started on another computer, with
+		// nobody at it, exited 1 there (#1118). The same documented flag as the
+		// working folder's (projects[<dir>].hasTrustDialogAccepted, § What runs
+		// before you trust a folder), granted and revoked as that one is.
+		for _, d := range addDirs {
+			if err := trust(d); err != nil {
+				m.log.Warn("pre-trust added folder", "component", "agents", "dir", d, "err", err)
+			}
 		}
 	}
 

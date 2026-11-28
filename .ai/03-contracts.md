@@ -1737,6 +1737,20 @@ moved?}`. The rules, first match wins (`internal/narrate/need.go`):
   it rests on (200 characters). Health `waiting-on-you`.
 - **`done`** — any other Stop, an empty or missing message included.
   `guess: true`, `text` the last line. Health `done`, phrase *done*.
+- **`prompt`** — held before its first hook (#1118): a Claude Code session
+  Caprock started (`owned`), live, with no event of any kind, `has_hooks`
+  false, Caprock's SessionStart hook registered in Claude Code's user
+  settings (read at most once a minute; with `--no-hooks` or the hooks
+  removed, silence is by design and nothing is inferred), and started at
+  least 20 s ago (`narrate.StartPromptAfter`, an estimate: SessionStart
+  fires as the TUI comes up, the margin the message queue already waits for
+  a first hook). Something before the session — the folder trust or an
+  added folder's question, a sign-in, a settings error — holds its
+  terminal; nobody may be watching (a computer nobody sits at). `guess:
+  true`. Health `waiting-on-you`, phrase *waiting at a prompt in its
+  terminal*, `at` the start. Not a rule of `Summarize`: the session summary
+  applies it (`narrate.HeldAtStart`), so every list that carries a summary
+  — the sidebar, another computer's list, the phone — says it.
 
 Measured on the owner's 4,133 main-thread Stops (2026-08-19 to 2026-10-21,
 every one carrying `last_assistant_message`): 16% read `asks`. A
@@ -3496,6 +3510,18 @@ lifts it, and only a working directory (the flag, `/add-dir`, or
 computed at run time (`gh`, a `cat` of a variable) cannot be checked against it
 and ask regardless; nothing in Claude Code's rules suppresses that, so a user
 who wants an unattended run turns the setting off.
+
+**Every `--add-dir` is trusted before the start, as the working folder is**
+(#1118). Since 2.1.326 an interactive Claude Code asks to trust an added
+folder its workspace trust does not cover before the session starts
+("Adding a new directory … No, exit / Yes, add it"; code.claude.com/docs/en/
+permissions § Working directories), and its default answer ends the session:
+on a computer nobody sits at, every start through `/v1/m/<id>/…` exited 1 on
+Caprock's own paste folder. So the paste and chats folders and a multi-repo
+project's other repositories get the same `projects["<dir>"].hasTrustDialogAccepted`
+grant as the cwd (the documented way to trust a folder by hand, § What runs
+before you trust a folder), in the same file, recorded in the same ledger and
+revoked by `caprock hooks uninstall` with the rest; for Claude Code only.
 
 The endpoints answer 501 only when
 **no** agent can be started (`claude_available`, `codex_available`,
@@ -8180,7 +8206,7 @@ measured and is quietly skewed is worse than one that is not there;
 
 **`create` makes the working directory, one level, under a parent that already exists.** Starting a new project otherwise meant leaving the dashboard, creating the folder in a terminal, and returning to type its path — a path the user had already typed. It is opt-in and defaults to false: this endpoint executes a command from its body, so a missing directory stays an error unless the caller explicitly asked for it to be made. Deliberately `Mkdir`, never `MkdirAll` — the parent must exist, so a typo in an absolute path fails loudly instead of materialising a chain of directories somewhere the user has never been. The path is cleaned before the parent is checked, so a path that climbs out with `..` is verified against where it actually lands. An existing directory is not an error.
 
-Owned sessions are spawned as `claude --session-id <uuid> [--model …] [--permission-mode …]`, so hooks and the transcript arrive under the id Caprock generated; the spawn environment is the user's login-shell environment (`internal/userenv`, see [02-architecture.md § Components](02-architecture.md#components)) with inherited Claude Code session markers stripped (`CLAUDE_CODE_CHILD_SESSION`, `CLAUDECODE`, `CLAUDE_CODE_ENTRYPOINT`, `CLAUDE_CODE_SSE_PORT`, `CLAUDE_CODE_SESSION_ID`, `CLAUDE_PID`, … — `agents.childEnv`) so the session is a normal top-level one, and `LANG` set to a UTF-8 locale when none of `LC_ALL`, `LC_CTYPE` or `LANG` is (`userenv.WithUTF8Locale`; not on Windows). Before spawning, Caprock pre-accepts Claude Code's folder-trust dialog for the session's cwd by setting `projects["<cwd>"].hasTrustDialogAccepted = true` in **`~/.claude.json`** (a second user-level Claude Code file, distinct from `settings.json`) — otherwise an interactive session blocks on the trust prompt, which `--dangerously-skip-permissions` does not suppress. The write is best-effort, atomic, and skipped if the folder is already trusted; an unparsable `~/.claude.json` is never modified. It goes through the **ordered-JSON codec**, preserving the user's key order and any integer beyond 2^53 — a `map[string]any` round-trip sorted the whole 200KB file alphabetically and truncated large integers through float64. Each grant Caprock makes is recorded in `<data_dir>/trust-grants.json`, so `caprock hooks uninstall` revokes exactly the folders Caprock trusted and never one the user accepted themselves; a folder already trusted when Caprock found it is never claimed. Spawning is unavailable (endpoints return 501) only when no agent's binary is found; Caprock then stays observe-only. Codex, OpenCode and Gemini get their own argv and are never written into `~/.claude.json` ([ADR-031](08-decisions.md)). The manager resolves `claude` via PATH then `~/.local/bin`, `~/.claude/local`, `~/bin`, Homebrew and `/usr/local/bin`. Control operations are refused for sessions Caprock did not spawn.
+Owned sessions are spawned as `claude --session-id <uuid> [--model …] [--permission-mode …]`, so hooks and the transcript arrive under the id Caprock generated; the spawn environment is the user's login-shell environment (`internal/userenv`, see [02-architecture.md § Components](02-architecture.md#components)) with inherited Claude Code session markers stripped (`CLAUDE_CODE_CHILD_SESSION`, `CLAUDECODE`, `CLAUDE_CODE_ENTRYPOINT`, `CLAUDE_CODE_SSE_PORT`, `CLAUDE_CODE_SESSION_ID`, `CLAUDE_PID`, … — `agents.childEnv`) so the session is a normal top-level one, and `LANG` set to a UTF-8 locale when none of `LC_ALL`, `LC_CTYPE` or `LANG` is (`userenv.WithUTF8Locale`; not on Windows). Before spawning, Caprock pre-accepts Claude Code's folder-trust dialog for the session's cwd — and for each `--add-dir` it passes (#1118) — by setting `projects["<cwd>"].hasTrustDialogAccepted = true` in **`~/.claude.json`** (a second user-level Claude Code file, distinct from `settings.json`) — otherwise an interactive session blocks on the trust prompt, which `--dangerously-skip-permissions` does not suppress. The write is best-effort, atomic, and skipped if the folder is already trusted; an unparsable `~/.claude.json` is never modified. It goes through the **ordered-JSON codec**, preserving the user's key order and any integer beyond 2^53 — a `map[string]any` round-trip sorted the whole 200KB file alphabetically and truncated large integers through float64. Each grant Caprock makes is recorded in `<data_dir>/trust-grants.json`, so `caprock hooks uninstall` revokes exactly the folders Caprock trusted and never one the user accepted themselves; a folder already trusted when Caprock found it is never claimed. Spawning is unavailable (endpoints return 501) only when no agent's binary is found; Caprock then stays observe-only. Codex, OpenCode and Gemini get their own argv and are never written into `~/.claude.json` ([ADR-031](08-decisions.md)). The manager resolves `claude` via PATH then `~/.local/bin`, `~/.claude/local`, `~/bin`, Homebrew and `/usr/local/bin`. Control operations are refused for sessions Caprock did not spawn.
 
 ### Phase 2 additions
 

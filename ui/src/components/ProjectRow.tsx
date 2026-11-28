@@ -904,7 +904,7 @@ function TabRow({ tab, label, repo, active, waiting, asks, onOpen, onClose, onMe
           onDoubleClick={onRename}
           {...menuHandlers(onMenu)}
           className={`app-row flex min-h-[42px] w-full min-w-0 items-center gap-2 rounded-[7px] py-1 pl-[10px] text-left ${active ? `app-row-selected ${PAD_ALWAYS[n]}` : PAD_ON_HOVER[n]}`}
-          title={[label?.file ?? title, tabAgent(label), repo, label?.branch, on !== undefined ? `on ${on}` : project?.name, stall !== null ? stalledWord(stall) : phase ? PHASE_WORD[phase] : ''].filter(Boolean).join(' · ') + (stall !== null ? `\n${STALLED_TIP}` : '')}
+          title={[label?.file ?? title, tabAgent(label), repo, label?.branch, on !== undefined ? [label?.folder, `on ${on}`].filter(Boolean).join(' ') : project?.name, stall !== null ? stalledWord(stall) : phase ? PHASE_WORD[phase] : ''].filter(Boolean).join(' · ') + (stall !== null ? `\n${STALLED_TIP}` : '')}
         >
           {stall !== null ? <StalledDot />
             : phase !== undefined ? <PhaseDot phase={phase} asks={asks} />
@@ -914,7 +914,12 @@ function TabRow({ tab, label, repo, active, waiting, asks, onOpen, onClose, onMe
           <span className="flex min-w-0 flex-1 flex-col">
             <span data-row-title className={`truncate text-[13.5px] leading-[18px] ${active ? 'font-semibold text-fg' : 'font-medium text-fg'}`}>{title}</span>
             {under && <span data-row-project-name className="truncate text-[11.5px] leading-[15px] text-fg-faint">{under}</span>}
-            {on !== undefined && <span className="flex min-w-0 leading-[15px]"><MachineTag name={on} className="max-w-full" /></span>}
+            {on !== undefined && (
+              <span className="flex min-w-0 items-center gap-1.5 leading-[15px]">
+                {label?.folder && <span data-row-project-name className="min-w-0 truncate text-[11.5px] text-fg-faint">{label.folder}</span>}
+                <MachineTag name={on} className="max-w-full" />
+              </span>
+            )}
           </span>
           {!isFile && <HotMark sessionId={label?.session?.session_id} />}
           {stall !== null ? <StalledWord age={stall} /> : phase && <PhaseChip phase={phase} asks={asks} />}

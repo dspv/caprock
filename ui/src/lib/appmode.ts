@@ -54,8 +54,11 @@ export function asksForApp(hash: string, search: string): boolean {
 export function isAppMode(): boolean {
   if (typeof window === 'undefined') return false
   // Another computer's session in a frame of the app (screens/MachinePage,
-  // ADR-067) is the dashboard's Session view, whatever the window around it.
-  if (new URLSearchParams(location.search).has('machine')) return false
+  // ADR-067): drawn as an app tab (`as=tab`, components/MachineTab.tsx), it
+  // is the app's; otherwise the dashboard's Session view, whatever the
+  // window around it. Never latched: the frame is not the window.
+  const q = new URLSearchParams(location.search)
+  if (q.has('machine')) return q.get('as') === 'tab'
   if (isTauri() || asksForApp(location.hash, location.search)) {
     try { sessionStorage.setItem(LATCH_KEY, '1') } catch { /* private mode: the URL still says so */ }
     return true

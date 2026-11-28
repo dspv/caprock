@@ -156,6 +156,8 @@ type Options struct {
 // Daemon is a running instance.
 type Daemon struct {
 	opt Options
+	// hookSt caches whether Caprock's hooks are registered (hookson.go).
+	hookSt hookState
 	// bg counts the background goroutines run starts (goBg). run cancels
 	// their context and waits for them before the database closes: one still
 	// reading after Close logged "sql: database is closed", and on Windows
@@ -833,7 +835,7 @@ func (d *Daemon) run(ctx context.Context) error {
 				d.winStop.Check(ctx)
 			}
 		},
-		ActiveLoops: d.activeLoop, IdleAfter: d.opt.IdleAfter,
+		ActiveLoops: d.activeLoop, IdleAfter: d.opt.IdleAfter, HooksOn: d.hooksOn,
 		LoopK: d.det.K, LoopWindow: d.det.Window,
 		Token: rt.Token, Shutdown: cancel, Agents: &agentAdapter{m: d.mgr, d: d}, Queue: d.queue, Board: d.queue, Work: newWorkBoard(d, d.queue), Catalog: &catalogAdapter{d: d}, Setup: &setupAdapter{d: d}, Subscriptions: &subsAdapter{d: d}, PlanShare: d.planShare,
 		Tasks: &boardAdapter{d: d}, Settings: &settingsAdapter{d: d}, Admin: &adminAdapter{d: d}, Update: d.upd,

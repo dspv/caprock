@@ -2212,15 +2212,20 @@ this machine's, since issue #1085 (2026-11-26):
   pages), and belongs to the project in front, as a browser tab does — so it
   is listed under Open, never under a project.
 - **Its label** is the session's title from that computer's list (the
-  sidebar's shared `GET /v1/machines/sessions`), its state that list's, and
+  sidebar's shared `GET /v1/machines/sessions`), its state that list's, the
+  folder it runs in there (`remoteFolder`) where a project's name goes, and
   the computer's name as the outlined tag its Computers row has
-  (`components/MachineTag.tsx`), in the strip and under Open, where a
-  project's name goes.
-- **Its content** is the machine page on Chat (`components/RemoteSessionPane.tsx`):
-  the Session view in a frame, every `/v1/…` call through `/v1/m/<id>/…`. The
-  inspector, the terminal/chat switch and the permission card are this
-  machine's and are not drawn for it; its × closes the tab and leaves the
-  session running there.
+  (`components/MachineTag.tsx`), in the strip, under Open and under Recently
+  closed.
+- **Its content is a local tab's** (owner, 2026-11-28): the machine page in
+  tab mode (`components/MachineTab.tsx`, `lib/machinepage.ts`
+  `machineTabURL`) in a frame, every `/v1/…` call through `/v1/m/<id>/…` —
+  TerminalStack, ChatView over it and Inspector beside it, the same
+  components a session here is drawn with. The strip's Chat/Terminal switch
+  and ⌘I are this window's and reach the frame as messages; the app's keys
+  pressed inside the frame come back to this window. This window's own
+  inspector is not drawn beside it. Its × closes the tab, leaves the session
+  running there, and puts it on Recently closed.
 - **Opened from** `#/m/<id>/session/<sid>`: the workspace turns that route
   into the tab, so every link to one — its Computers row, Home's panel, the
   computer's page, New agent on that computer — lands there

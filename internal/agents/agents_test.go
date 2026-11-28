@@ -286,6 +286,66 @@ func TestSpawnPreacceptsFolderTrust(t *testing.T) {
 	}
 }
 
+// Every --add-dir is trusted with the working folder (#1118): Claude Code
+// asks to trust an added folder before the session starts, and on a computer
+// nobody is at, the default answer, No, exit, ended every session started
+// there on Caprock's own paste and chats folders.
+func TestSpawnPreacceptsTrustForAddedDirs(t *testing.T) {
+	home := trustTestHome(t)
+	m, _, f := newMgr(t)
+	defer m.Shutdown()
+	repo := t.TempDir()
+	m.ProjectRepos = func(string) []string { return []string{repo} }
+	if _, err := m.Spawn(context.Background(), SpawnRequest{Cwd: t.TempDir()}); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{config.PasteDir(m.dataDir), config.ChatsDir(m.dataDir), repo}
+	argv := strings.Join(f.lastSpec.Args, " ")
+	for _, d := range want {
+		if !strings.Contains(argv, "--add-dir="+d) {
+			t.Fatalf("argv lacks --add-dir=%s: %s", d, argv)
+		}
+	}
+	b, err := os.ReadFile(filepath.Join(home, ".claude.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var root struct {
+		Projects map[string]struct {
+			HasTrustDialogAccepted bool `json:"hasTrustDialogAccepted"`
+		} `json:"projects"`
+	}
+	if err := json.Unmarshal(b, &root); err != nil {
+		t.Fatalf("unparsable ~/.claude.json: %v", err)
+	}
+	for _, d := range want {
+		if e, ok := root.Projects[d]; !ok || !e.HasTrustDialogAccepted {
+			t.Fatalf("added folder %q not trusted: %s", d, b)
+		}
+	}
+	// Granted by Caprock, so `caprock hooks uninstall` takes them back.
+	grants := readTrustGrants()
+	for _, d := range want {
+		if !grants[d] {
+			t.Fatalf("grant for %q not in the ledger: %v", d, grants)
+		}
+	}
+}
+
+// A session that is not Claude Code's writes no Claude Code trust for its
+// added folders: a Codex start never touches ~/.claude.json.
+func TestSpawnCodexTrustsNoAddedDirs(t *testing.T) {
+	home := trustTestHome(t)
+	m, _, _ := newMgr(t)
+	defer m.Shutdown()
+	if _, err := m.Spawn(context.Background(), SpawnRequest{Cwd: t.TempDir(), Agent: AgentCodex}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".claude.json")); err == nil {
+		t.Fatal("a Codex start wrote ~/.claude.json")
+	}
+}
+
 func TestSpawnRejectsBadCwd(t *testing.T) {
 	m, _, _ := newMgr(t)
 	if _, err := m.Spawn(context.Background(), SpawnRequest{Cwd: filepath.Join(t.TempDir(), "nope")}); err == nil {

@@ -229,7 +229,11 @@ type Deps struct {
 	LoopWindow time.Duration
 	// IdleAfter is the silence threshold for the idle badge.
 	IdleAfter time.Duration
-	Now       func() time.Time
+	// HooksOn reports whether Caprock's hooks are registered in Claude
+	// Code's settings, so a session of its that sent none is held at a
+	// prompt (narrate.HeldAtStart). Nil reads as off: nothing is inferred.
+	HooksOn func() bool
+	Now     func() time.Time
 	// Token gates POST /v1/shutdown (same per-run token the shim uses).
 	Token string
 	// Shutdown is invoked by POST /v1/shutdown (caprock down).
@@ -1390,6 +1394,11 @@ func (s *Server) summarizeAt(ctx context.Context, sess store.Session, rec *recen
 		opt.Move = &m
 	}
 	act := narrate.Summarize(last, opt)
+	// Started by Caprock, hooks installed, and not one hook yet: held at a
+	// screen before its first, which nobody may be watching (#1118).
+	if sess.StartedAt > 0 && narrate.HeldAtStart(sess.Agent, sess.Owned, sess.Status == store.StatusEnded, sess.HasHooks, s.d.HooksOn != nil && s.d.HooksOn(), len(last), time.UnixMilli(sess.StartedAt), s.d.Now()) {
+		act = narrate.StartPromptActivity(time.UnixMilli(sess.StartedAt))
+	}
 	if act.Health == narrate.HealthWorking && act.Background == 0 && act.BackgroundTasks == 0 && !act.FromInput && sess.Status == store.StatusIdle {
 		act.Health = narrate.HealthIdle
 		act.Phrase = "was " + act.Phrase
