@@ -184,7 +184,7 @@ export const serverApi = {
 }
 
 /** The systems the setup script supports, as the screen says it (internal/serverscript). */
-export const SERVER_SYSTEMS = 'For the Debian family: Debian, Ubuntu, Kali and the systems built on them'
+export const SERVER_SYSTEMS = 'For the Debian family (Debian, Ubuntu, Kali and the systems built on them) or the Red Hat family (Fedora, Rocky Linux, AlmaLinux, CentOS Stream, RHEL)'
 
 /**
  * "Need a Mac server? Ask for it": a new GitHub issue, filled in. The user

@@ -121,8 +121,11 @@ func TestTheSetupScriptOnALinuxServer(t *testing.T) {
 	}
 	// A cloud image has what logind needs to run a user manager on linger:
 	// libpam-systemd (systemd only recommends it) and the user bus. A bare
-	// container image has neither, so they are installed here, not by the script.
-	boot := "apt-get update && apt-get install -y --no-install-recommends systemd systemd-sysv dbus dbus-user-session libpam-systemd socat ca-certificates && exec /sbin/init"
+	// container image has neither, so they are installed here, not by the script
+	// (systemd-pam is the Red Hat family's pam_systemd).
+	boot := "if command -v apt-get >/dev/null; then " +
+		"apt-get update && apt-get install -y --no-install-recommends systemd systemd-sysv dbus dbus-user-session libpam-systemd socat ca-certificates; " +
+		"else dnf -y install systemd systemd-pam dbus socat procps-ng; fi && exec /sbin/init"
 	if out, err := run(10*time.Minute, "run", "-d", "--name", name, "--privileged", "--cgroupns=host",
 		"-v", "/sys/fs/cgroup:/sys/fs/cgroup:rw", "--tmpfs", "/run", "--tmpfs", "/run/lock",
 		"--add-host=host.docker.internal:host-gateway", image, "sh", "-c", boot); err != nil {
@@ -176,9 +179,9 @@ func TestTheSetupScriptOnALinuxServer(t *testing.T) {
 	// What the script set up on the server, read back.
 	checks := map[string]string{
 		"lingering":         "loginctl show-user caprock --property=Linger --value",
-		"no sudo":           "! id -nG caprock | tr ' ' '\\n' | grep -qx sudo",
-		"firewall":          "ufw status | grep -q 'Status: active'",
-		"unattended":        "grep -q 'Unattended-Upgrade \"1\"' /etc/apt/apt.conf.d/20auto-upgrades",
+		"no sudo":           "! id -nG caprock | tr ' ' '\\n' | grep -qxE 'sudo|wheel'",
+		"firewall":          "if command -v ufw >/dev/null; then ufw status | grep -q 'Status: active'; else firewall-cmd --get-default-zone | grep -qx drop; fi",
+		"unattended":        "grep -qs 'Unattended-Upgrade \"1\"' /etc/apt/apt.conf.d/20auto-upgrades || grep -qs '^apply_updates = yes' /etc/dnf/automatic.conf",
 		"the service":       "runuser -u caprock -- env XDG_RUNTIME_DIR=/run/user/$(id -u caprock) systemctl --user is-active caprock.service",
 		"no key in caprock": "! grep -rlF '" + strings.TrimPrefix(keyIn(made.Script), "cj1-") + "' /home/caprock",
 	}

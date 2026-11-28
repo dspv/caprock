@@ -127,8 +127,9 @@ func header(in Input) string {
 # DigitalOcean: User data; any provider that runs cloud-init), or run it once
 # as root over SSH: sudo sh caprock-setup.sh
 #
-# For the Debian family: Debian, Ubuntu, Kali and the systems built on them
-# (by ID or ID_LIKE in /etc/os-release). As root, each step
+# For the Debian family (Debian, Ubuntu, Kali and the systems built on them)
+# and the Red Hat family (Fedora, Rocky Linux, AlmaLinux, CentOS Stream,
+# RHEL), by ID or ID_LIKE in /etc/os-release. As root, each step
 # printed before it runs, and the first that fails stops the script with
 # its name:
 #   - a user "caprock" with no password and no sudo, lingering on, so its
@@ -137,7 +138,8 @@ func header(in Input) string {
 #     inbound but SSH when SSH stays on
 #   - ` + ssh + `
 #   - Git from the distribution; Node.js 18 or newer from the distribution,
-#     or NodeSource's signed repository when it is older; Claude Code with
+#     or, when it is older, NodeSource's signed repository (Debian family)
+#     or the nodejs:20 module stream (Red Hat family); Claude Code with
 #     Anthropic's own installer; Codex from npm
 #   - Caprock ` + in.Version + ` from its GitHub release, checked by
 #     ` + check + `
@@ -177,7 +179,7 @@ stop() {
 }
 
 unsupported() {
-	stop "this system ($1) is not supported: use one of the Debian family (Debian, Ubuntu, Kali and the systems built on them)"
+	stop "this system ($1) is not supported: use one of the Debian family (Debian, Ubuntu, Kali and the systems built on them) or the Red Hat family (Fedora, Rocky Linux, AlmaLinux, CentOS Stream, RHEL)"
 }
 
 step 'check the system'
@@ -192,6 +194,7 @@ family=''
 for id in $os_id $os_like; do
 	case "$id" in
 	debian | ubuntu) family=debian ;;
+	fedora | rhel | centos | rocky | almalinux) family=redhat ;;
 	esac
 done
 [ -n "$family" ] || unsupported "$os_id"
@@ -216,34 +219,66 @@ export DEBIAN_FRONTEND=noninteractive
 apt_get() {
 	apt-get -o DPkg::Lock::Timeout=600 -y "$@"
 }
-apt_get update
-apt_get install --no-install-recommends ca-certificates curl git tar gzip procps gnupg ufw unattended-upgrades
-if [ -n "$CAPROCK_MINISIGN_KEY" ]; then
-	apt_get install --no-install-recommends minisign
+if [ "$family" = redhat ]; then
+	dnf -y install ca-certificates git tar gzip procps-ng firewalld
+	# An image with curl-minimal has a working curl; the full one conflicts.
+	command -v curl >/dev/null 2>&1 || dnf -y install curl
+	dnf -y install dnf-automatic || dnf -y install dnf5-plugin-automatic
+	if [ -n "$CAPROCK_MINISIGN_KEY" ]; then
+		# minisign is in Fedora, and in EPEL for the others.
+		if [ "$os_id" != fedora ]; then
+			dnf -y install epel-release
+		fi
+		dnf -y install minisign
+	fi
+else
+	apt_get update
+	apt_get install --no-install-recommends ca-certificates curl git tar gzip procps gnupg ufw unattended-upgrades
+	if [ -n "$CAPROCK_MINISIGN_KEY" ]; then
+		apt_get install --no-install-recommends minisign
+	fi
 fi
 
 step 'install Node.js 18 or newer'
-# The distribution's own when it is new enough; otherwise NodeSource's
-# signed repository (its documented setup), Node.js 22.
-candidate=$(apt-cache policy nodejs | sed -n 's/^ *Candidate: //p')
-candidate=${candidate#*:}
-candidate_major=${candidate%%.*}
-case "$candidate_major" in
-'' | *[!0-9]*) candidate_major=0 ;;
-esac
-if [ "$candidate_major" -ge 18 ]; then
-	echo "from the distribution: $candidate"
-	apt_get install --no-install-recommends nodejs npm
+if [ "$family" = redhat ]; then
+	# The distribution's own when it is new enough; otherwise its nodejs:20
+	# module stream (Rocky, AlmaLinux and CentOS Stream 9 default to 16).
+	candidate=$(dnf -q info nodejs 2>/dev/null | sed -n 's/^Version *: *//p' | sort -V | tail -n 1)
+	candidate_major=${candidate%%.*}
+	case "$candidate_major" in
+	'' | *[!0-9]*) candidate_major=0 ;;
+	esac
+	if [ "$candidate_major" -ge 18 ]; then
+		echo "from the distribution: $candidate"
+	else
+		echo "the distribution has Node.js ${candidate:-none}: its nodejs:20 module stream instead"
+		dnf -y module reset nodejs
+		dnf -y module enable nodejs:20
+	fi
+	dnf -y install nodejs npm
 else
-	echo "the distribution has Node.js ${candidate:-none}: from NodeSource instead"
-	mkdir -p /etc/apt/keyrings
-	nskey=$(mktemp)
-	curl -fsSL --retry 3 -o "$nskey" https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key
-	gpg --dearmor --yes -o /etc/apt/keyrings/nodesource.gpg "$nskey"
-	rm -f "$nskey"
-	echo 'deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main' >/etc/apt/sources.list.d/nodesource.list
-	apt_get update
-	apt_get install nodejs
+	# The distribution's own when it is new enough; otherwise NodeSource's
+	# signed repository (its documented setup), Node.js 22.
+	candidate=$(apt-cache policy nodejs | sed -n 's/^ *Candidate: //p')
+	candidate=${candidate#*:}
+	candidate_major=${candidate%%.*}
+	case "$candidate_major" in
+	'' | *[!0-9]*) candidate_major=0 ;;
+	esac
+	if [ "$candidate_major" -ge 18 ]; then
+		echo "from the distribution: $candidate"
+		apt_get install --no-install-recommends nodejs npm
+	else
+		echo "the distribution has Node.js ${candidate:-none}: from NodeSource instead"
+		mkdir -p /etc/apt/keyrings
+		nskey=$(mktemp)
+		curl -fsSL --retry 3 -o "$nskey" https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key
+		gpg --dearmor --yes -o /etc/apt/keyrings/nodesource.gpg "$nskey"
+		rm -f "$nskey"
+		echo 'deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main' >/etc/apt/sources.list.d/nodesource.list
+		apt_get update
+		apt_get install nodejs
+	fi
 fi
 node_major=$(node -p 'process.versions.node.split(".")[0]')
 [ "$node_major" -ge 18 ] || stop "Node.js $node_major is too old for the agents: 18 or newer is needed"
@@ -282,11 +317,29 @@ as_caprock() {
 }
 
 step 'turn on unattended security upgrades'
-cat >/etc/apt/apt.conf.d/20auto-upgrades <<'EOF'
+if [ "$family" = redhat ]; then
+	conf=/etc/dnf/automatic.conf
+	if [ -f "$conf" ]; then
+		sed -i -e 's/^upgrade_type *=.*/upgrade_type = security/' -e 's/^apply_updates *=.*/apply_updates = yes/' "$conf"
+	else
+		printf '[commands]\nupgrade_type = security\napply_updates = yes\n' >"$conf"
+	fi
+	timer=''
+	for t in dnf-automatic.timer dnf5-automatic.timer; do
+		if systemctl enable --now "$t" >/dev/null 2>&1; then
+			timer=$t
+			break
+		fi
+	done
+	[ -n "$timer" ] || stop 'could not turn on dnf-automatic'
+	echo "$timer: security updates, applied"
+else
+	cat >/etc/apt/apt.conf.d/20auto-upgrades <<'EOF'
 APT::Periodic::Update-Package-Lists "1";
 APT::Periodic::Unattended-Upgrade "1";
 EOF
-systemctl enable --now unattended-upgrades.service >/dev/null 2>&1 || true
+	systemctl enable --now unattended-upgrades.service >/dev/null 2>&1 || true
+fi
 
 step 'SSH: password login off'
 ssh_ports=''
@@ -309,7 +362,7 @@ EOF
 		for u in ssh.socket ssh.service sshd.service; do
 			systemctl disable --now "$u" >/dev/null 2>&1 || true
 		done
-		if systemctl is-active --quiet ssh.service || systemctl is-active --quiet ssh.socket; then
+		if systemctl is-active --quiet ssh.service || systemctl is-active --quiet ssh.socket || systemctl is-active --quiet sshd.service; then
 			stop 'could not stop SSH'
 		fi
 		echo 'stopped and disabled: use the provider web console to reach this server'
@@ -319,13 +372,24 @@ else
 fi
 
 step 'turn on a firewall that admits nothing inbound'
-ufw default deny incoming >/dev/null
-ufw default allow outgoing >/dev/null
-for p in $ssh_ports; do
-	ufw allow "$p/tcp" >/dev/null
-done
-ufw --force enable >/dev/null
-ufw status verbose
+if [ "$family" = redhat ]; then
+	# firewalld's drop zone: nothing inbound but replies and loopback.
+	systemctl enable --now firewalld.service
+	for p in $ssh_ports; do
+		firewall-cmd --permanent --zone=drop --add-port="$p/tcp" >/dev/null
+	done
+	firewall-cmd --set-default-zone=drop >/dev/null
+	firewall-cmd --reload >/dev/null
+	firewall-cmd --list-all
+else
+	ufw default deny incoming >/dev/null
+	ufw default allow outgoing >/dev/null
+	for p in $ssh_ports; do
+		ufw allow "$p/tcp" >/dev/null
+	done
+	ufw --force enable >/dev/null
+	ufw status verbose
+fi
 
 step "install Claude Code with Anthropic's installer"
 if [ "${CAPROCK_SETUP_SKIP_AGENTS:-}" = 1 ]; then

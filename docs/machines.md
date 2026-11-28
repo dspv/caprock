@@ -47,8 +47,9 @@ with your laptop closed — is set up by one script Caprock writes.
    one or will run the script over SSH; otherwise SSH is stopped on the
    server and the provider's web console is the way in. **Make the
    script**.
-2. **At your provider:** create the server (a Debian-family system:
-   Debian, Ubuntu, Kali and the systems built on them) and paste the whole
+2. **At your provider:** create the server (a Debian-family system —
+   Debian, Ubuntu, Kali and the systems built on them — or a Red Hat-family
+   one: Fedora, Rocky Linux, AlmaLinux, CentOS Stream, RHEL) and paste the whole
    script where its form takes
    one — Hetzner Cloud: *Cloud config*; DigitalOcean: *User data*; any
    provider that runs cloud-init: its user data. On a machine without
@@ -66,11 +67,14 @@ fails, with its name in the provider's console log:
 
 - creates a user `caprock` with no password and no sudo, and turns on
   lingering for it, so its services run with nobody logged in;
-- turns on unattended security upgrades and a firewall (`ufw`) that admits
-  nothing inbound but SSH when SSH stays on;
+- turns on unattended security upgrades (`unattended-upgrades`, or
+  `dnf-automatic`) and a firewall (`ufw`, or firewalld's `drop` zone) that
+  admits nothing inbound but SSH when SSH stays on;
 - SSH: password login off, keys only; or, without a key, SSH stopped;
 - installs Git from the distribution, Node.js 18 or newer from the
-  distribution or, when its own is older, NodeSource's signed repository,
+  distribution or, when its own is older, NodeSource's signed repository
+  (Debian family) or the distribution's `nodejs:20` module stream (Red Hat
+  family),
   Claude Code with Anthropic's own installer, and Codex from npm;
 - installs Caprock at your laptop's version from its GitHub release, its
   SHA-256 checked against the one your laptop read from that release's
