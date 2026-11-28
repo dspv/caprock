@@ -71,7 +71,7 @@ fails, with its name in the provider's console log:
   `dnf-automatic`) and a firewall (`ufw`, or firewalld's `drop` zone) that
   admits nothing inbound but SSH when SSH stays on;
 - SSH: password login off, keys only; or, without a key, SSH stopped;
-- installs Git from the distribution, Node.js 18 or newer from the
+- installs Git from the distribution, Node.js 20 or newer from the
   distribution or, when its own is older, NodeSource's signed repository
   (Debian family) or the distribution's `nodejs:20` module stream (Red Hat
   family),

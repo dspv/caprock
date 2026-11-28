@@ -633,7 +633,7 @@ the target runs its ordinary Host and gate, and pairs it as a computer
     the top, naming both families — run as root, each step printed as `==> caprock setup: <step>`
     and the failing one named on exit: packages from the distribution
     (`ca-certificates curl git tar gzip procps gnupg ufw
-    unattended-upgrades`, `minisign` when signed); Node.js 18 or newer, the
+    unattended-upgrades`, `minisign` when signed); Node.js 20 or newer, the
     distribution's (`nodejs npm`) when its candidate is, otherwise
     NodeSource's signed repository (`node_22.x nodistro`, key in
     `/etc/apt/keyrings/nodesource.gpg`), and the step stops when the
@@ -643,7 +643,7 @@ the target runs its ordinary Host and gate, and pairs it as a computer
     `dnf5-plugin-automatic`) with `/etc/dnf/automatic.conf` set to
     `upgrade_type = security` and `apply_updates = yes` and its timer
     enabled, `minisign` from Fedora or EPEL when signed, Node.js from the
-    distribution or, when older than 18, its `nodejs:20` module stream,
+    distribution or, when older than 20, its `nodejs:20` module stream,
     and firewalld's `drop` zone as the default with sshd's ports added
     when SSH stays on. Both families install `bash` and the user tools
     (`passwd`, `shadow-utils`) too: a server is assumed blank. Then, for both: user `caprock` (`useradd`, `usermod

@@ -38,7 +38,7 @@ it uses it (owner, 2026-11-28). The container test
 image of the CI matrix:
 
 - [x] Claude Code (`claude --version` as `caprock`), Codex (`codex
-  --version`), Git and Node.js 18 or newer, installed and running.
+  --version`), Git and Node.js 20 or newer (Playwright 1.65 needs 20), installed and running.
 - [x] A headless Chromium for the agents at
   `/usr/local/bin/caprock-chromium`, rendering a page: the distribution's
   `chromium` (Debian, Kali) or `chromium-headless` (Fedora; EPEL with CRB
@@ -51,7 +51,8 @@ image of the CI matrix:
 - [x] The server joined and listed on the laptop as an online computer.
 - [x] The `caprock` user service running, with lingering on.
 - [x] No inbound port: every listening TCP socket on loopback (or sshd's
-  ports, keys only, when SSH was chosen), and the firewall on.
+  ports, keys only, when SSH was chosen), and the firewall on. systemd-resolved's
+  LLMNR and mDNS are turned off: Fedora's answered on 0.0.0.0:5355.
 - [x] Unattended (Debian family) or automatic (Red Hat family) security
   updates on.
 - [x] The server's Caprock the same version as the laptop's (`caprock
@@ -123,9 +124,9 @@ what it left open:
   `centos`, `rocky` or `almalinux`, with `dnf`, firewalld's `drop` zone,
   `dnf-automatic` (security updates, applied) and EPEL for `minisign` off
   Fedora; the user, lingering and SSH steps are the same. The agents need
-  Node.js 18 or newer: the
+  Node.js 20 or newer: the
   distribution's when its candidate is, otherwise NodeSource's signed
-  repository with Node.js 22 (Ubuntu 22.04's own is 12) on the Debian
+  repository with Node.js 22 (Ubuntu 22.04's own is 12, 24.04's and Debian 12's 18) on the Debian
   family, the `nodejs:20` module stream on the Red Hat family (EL 9
   defaults to 16), and the step
   stops naming itself if what is installed is still older. Not Arch,

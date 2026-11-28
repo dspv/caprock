@@ -189,7 +189,7 @@ func TestTheSetupScriptOnALinuxServer(t *testing.T) {
 		"claude":            asCaprock + "claude --version",
 		"codex":             asCaprock + "codex --version",
 		"git":               asCaprock + "git --version",
-		"node 18+":          asCaprock + "node -e 'process.exit(+process.versions.node.split(\".\")[0] >= 18 ? 0 : 1)'",
+		"node 20+":          asCaprock + "node -e 'process.exit(+process.versions.node.split(\".\")[0] >= 20 ? 0 : 1)'",
 		"headless chromium": asCaprock + "caprock-chromium --headless --no-sandbox --disable-gpu --dump-dom 'data:text/html,<p>native-ok</p>' 2>/dev/null | grep -q native-ok",
 		"caprock version":   "/usr/local/bin/caprock version | grep -qF 'caprock " + version + " '",
 		"lingering":         "loginctl show-user caprock --property=Linger --value | grep -qx yes",

@@ -16,7 +16,7 @@
 #     inbound but SSH when SSH stays on
 #   - SSH stopped and disabled (no SSH key was expected); the
 #     provider's web console is the way in
-#   - Git from the distribution; Node.js 18 or newer from the distribution,
+#   - Git from the distribution; Node.js 20 or newer from the distribution,
 #     or, when it is older, NodeSource's signed repository (Debian family)
 #     or the nodejs:20 module stream (Red Hat family); Claude Code with
 #     Anthropic's own installer; Codex from npm; a headless Chromium for
@@ -124,7 +124,7 @@ else
 	fi
 fi
 
-step 'install Node.js 18 or newer'
+step 'install Node.js 20 or newer'
 if [ "$family" = redhat ]; then
 	# The distribution's own when it is new enough; otherwise its nodejs:20
 	# module stream (Rocky, AlmaLinux and CentOS Stream 9 default to 16).
@@ -133,7 +133,7 @@ if [ "$family" = redhat ]; then
 	case "$candidate_major" in
 	'' | *[!0-9]*) candidate_major=0 ;;
 	esac
-	if [ "$candidate_major" -ge 18 ]; then
+	if [ "$candidate_major" -ge 20 ]; then
 		echo "from the distribution: $candidate"
 	else
 		echo "the distribution has Node.js ${candidate:-none}: its nodejs:20 module stream instead"
@@ -150,7 +150,7 @@ else
 	case "$candidate_major" in
 	'' | *[!0-9]*) candidate_major=0 ;;
 	esac
-	if [ "$candidate_major" -ge 18 ]; then
+	if [ "$candidate_major" -ge 20 ]; then
 		echo "from the distribution: $candidate"
 		apt_get install --no-install-recommends nodejs npm
 	else
@@ -166,7 +166,7 @@ else
 	fi
 fi
 node_major=$(node -p 'process.versions.node.split(".")[0]')
-[ "$node_major" -ge 18 ] || stop "Node.js $node_major is too old for the agents: 18 or newer is needed"
+[ "$node_major" -ge 20 ] || stop "Node.js $node_major is too old for the agents and their browser: 20 or newer is needed"
 echo "Node.js $(node --version)"
 
 step 'create the user caprock: no password, no sudo, its services running with nobody logged in'
@@ -265,6 +265,13 @@ else
 fi
 
 step 'turn on a firewall that admits nothing inbound'
+# systemd-resolved answers LLMNR (and on some systems mDNS) on every
+# address: off, so nothing listens off loopback but sshd when it stays on.
+if [ -d /etc/systemd ] && command -v resolvectl >/dev/null 2>&1; then
+	mkdir -p /etc/systemd/resolved.conf.d
+	printf '[Resolve]\nLLMNR=no\nMulticastDNS=no\n' >/etc/systemd/resolved.conf.d/90-caprock.conf
+	systemctl try-restart systemd-resolved.service >/dev/null 2>&1 || true
+fi
 if [ "$family" = redhat ]; then
 	# firewalld's drop zone: nothing inbound but replies and loopback.
 	systemctl enable --now firewalld.service
@@ -326,7 +333,7 @@ if [ "$family" = redhat ]; then
 elif [ "$os_id" = ubuntu ] || [ -z "$chromium_deb" ]; then
 	PLAYWRIGHT_BROWSERS_PATH=/opt/caprock-browsers npx --yes playwright@1.65.1 install --with-deps chromium-headless-shell
 	chmod -R a+rX /opt/caprock-browsers
-	browser=$(find /opt/caprock-browsers -name headless_shell -type f 2>/dev/null | head -n 1)
+	browser=$(find /opt/caprock-browsers -type f \( -name chrome-headless-shell -o -name headless_shell \) 2>/dev/null | head -n 1)
 else
 	apt_get install --no-install-recommends chromium
 	browser=/usr/bin/chromium
