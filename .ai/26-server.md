@@ -28,6 +28,36 @@ provider on the user's token, and links it as any other computer
   is, with minisign (ADR-042), and P1 signs the Linux archives with that
   key (OQ-32, decided 2026-11-28).
 
+## Caprock native
+
+What every server the script sets up has when it is done, on a server that
+starts **blank** — nothing assumed preinstalled, not curl, not
+ca-certificates, not sudo: the script installs every tool it uses before
+it uses it (owner, 2026-11-28). The container test
+(`internal/smoke/server_container_test.go`) asserts each item on every
+image of the CI matrix:
+
+- [x] Claude Code (`claude --version` as `caprock`), Codex (`codex
+  --version`), Git and Node.js 20 or newer (Playwright 1.65 needs 20), installed and running.
+- [x] A headless Chromium for the agents at
+  `/usr/local/bin/caprock-chromium`, rendering a page: the distribution's
+  `chromium` (Debian, Kali) or `chromium-headless` (Fedora; EPEL with CRB
+  on Rocky and AlmaLinux), and on Ubuntu, whose Chromium is a snap only,
+  Playwright's headless shell (`playwright@1.65.1`, the version the
+  dashboard's e2e pins) with the libraries Playwright installs from the
+  distribution. The npm package is checked by the registry's integrity
+  hash; the browser archive Playwright downloads over TLS carries no
+  published checksum, the one download here without one.
+- [x] The server joined and listed on the laptop as an online computer.
+- [x] The `caprock` user service running, with lingering on.
+- [x] No inbound port: every listening TCP socket on loopback (or sshd's
+  ports, keys only, when SSH was chosen), and the firewall on. systemd-resolved's
+  LLMNR and mDNS are turned off: Fedora's answered on 0.0.0.0:5355.
+- [x] Unattended (Debian family) or automatic (Red Hat family) security
+  updates on.
+- [x] The server's Caprock the same version as the laptop's (`caprock
+  version` there, and the version the laptop lists for it).
+
 ## Phases
 
 Each phase is one small PR, green on the three-OS matrix, with its docs in
@@ -94,9 +124,9 @@ what it left open:
   `centos`, `rocky` or `almalinux`, with `dnf`, firewalld's `drop` zone,
   `dnf-automatic` (security updates, applied) and EPEL for `minisign` off
   Fedora; the user, lingering and SSH steps are the same. The agents need
-  Node.js 18 or newer: the
+  Node.js 20 or newer: the
   distribution's when its candidate is, otherwise NodeSource's signed
-  repository with Node.js 22 (Ubuntu 22.04's own is 12) on the Debian
+  repository with Node.js 22 (Ubuntu 22.04's own is 12, 24.04's and Debian 12's 18) on the Debian
   family, the `nodejs:20` module stream on the Red Hat family (EL 9
   defaults to 16), and the step
   stops naming itself if what is installed is still older. Not Arch,
@@ -128,8 +158,8 @@ what it left open:
   path), each with systemd as
   PID 1 in a privileged container, the release served locally, the relay
   and file server reached through socat on the container's loopback, the
-  agents skipped (`CAPROCK_SETUP_SKIP_AGENTS=1`), ending in the join and
-  reads of lingering, the firewall, unattended upgrades and the user unit.
+  agents installed for real and signed in to never, ending in the join and
+  the § Caprock native checklist read back item by item.
   It is not in `make check` (minutes, a privileged container, package
   mirrors); CI runs it as `ci.yml`'s required `server-container` matrix
   (`ubuntu:24.04`, `ubuntu:22.04`, `debian:12`, `debian:13`,
@@ -208,17 +238,12 @@ what it left open:
 
 ### P4 — a browser for agents
 
-- A checklist row on the server, off by default: install a headless
-  Chromium (the distribution's package or Playwright's build, whichever
-  carries a checksum or a signed repository) and the libraries it needs, as
-  root through the setup script's own installer step — the one step that
-  needs root after boot, so it is offered in the script from the start, as
-  a switch on the New server screen, rather than run later.
+- The headless Chromium itself is installed by the script on every server
+  (§ Caprock native, 2026-11-28), not a switch.
 - Making it the agent's browser (an MCP server or the agent's own browser
   setting) is a separate switch per agent, written as ADR-099's Claude in
   Chrome row writes its setting: every other key kept.
-- Tests: the script with and without the switch (golden); the setting
-  written through the ordered codec.
+- Tests: the setting written through the ordered codec.
 
 ## Rule 4
 

@@ -633,7 +633,7 @@ the target runs its ordinary Host and gate, and pairs it as a computer
     the top, naming both families — run as root, each step printed as `==> caprock setup: <step>`
     and the failing one named on exit: packages from the distribution
     (`ca-certificates curl git tar gzip procps gnupg ufw
-    unattended-upgrades`, `minisign` when signed); Node.js 18 or newer, the
+    unattended-upgrades`, `minisign` when signed); Node.js 20 or newer, the
     distribution's (`nodejs npm`) when its candidate is, otherwise
     NodeSource's signed repository (`node_22.x nodistro`, key in
     `/etc/apt/keyrings/nodesource.gpg`), and the step stops when the
@@ -643,9 +643,10 @@ the target runs its ordinary Host and gate, and pairs it as a computer
     `dnf5-plugin-automatic`) with `/etc/dnf/automatic.conf` set to
     `upgrade_type = security` and `apply_updates = yes` and its timer
     enabled, `minisign` from Fedora or EPEL when signed, Node.js from the
-    distribution or, when older than 18, its `nodejs:20` module stream,
+    distribution or, when older than 20, its `nodejs:20` module stream,
     and firewalld's `drop` zone as the default with sshd's ports added
-    when SSH stays on. Then, for both: user `caprock` (`useradd`, `usermod
+    when SSH stays on. Both families install `bash` and the user tools
+    (`passwd`, `shadow-utils`) too: a server is assumed blank. Then, for both: user `caprock` (`useradd`, `usermod
     --lock`, out of `sudo` and `wheel`),
     `loginctl enable-linger caprock`, waiting for its user manager; APT's
     periodic unattended upgrades on; with `ssh_key`
@@ -654,8 +655,15 @@ the target runs its ordinary Host and gate, and pairs it as a computer
     and the firewall admitting sshd's ports, without it sshd disabled and
     stopped (and the script refuses to run over SSH); `ufw` denying all
     other inbound; Claude Code with `https://claude.ai/install.sh` run as
-    `caprock`, Codex with `npm install --global @openai/codex` (both skipped
-    when `CAPROCK_SETUP_SKIP_AGENTS=1`, for tests); Caprock's archive for
+    `caprock`, Codex with `npm install --global @openai/codex`, each then
+    run with `--version` as `caprock` (both skipped when
+    `CAPROCK_SETUP_SKIP_AGENTS=1`, for local tests); a headless Chromium —
+    `chromium` from the Debian family's own archive, `chromium-headless` on
+    the Red Hat family (EPEL and CRB off Fedora), Playwright's
+    `chromium-headless-shell` (`npx playwright@1.65.1 install --with-deps`,
+    into `/opt/caprock-browsers`) on Ubuntu or where there is no `chromium`
+    package — linked as `/usr/local/bin/caprock-chromium` and checked by
+    rendering a page as `caprock`; Caprock's archive for
     the machine's arch, its `.minisig` checked against
     `serverscript.MinisignPublicKey` (the app updater's key, ADR-042) when
     signed, then its SHA-256, the three binaries installed to

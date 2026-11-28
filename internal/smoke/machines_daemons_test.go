@@ -332,12 +332,13 @@ func TestTwoDaemonsJoinWithAKey(t *testing.T) {
 }
 
 type machineStatus struct {
-	ID     string `json:"id"`
-	Name   string `json:"name"`
-	Status string `json:"status"`
-	Role   string `json:"role"`
-	Kind   string `json:"kind"`
-	Error  string `json:"error"`
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Status  string `json:"status"`
+	Role    string `json:"role"`
+	Kind    string `json:"kind"`
+	Error   string `json:"error"`
+	Version string `json:"version"`
 }
 
 // runCLI runs the caprock CLI against the daemon env names, and fails the

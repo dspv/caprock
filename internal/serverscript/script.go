@@ -137,10 +137,11 @@ func header(in Input) string {
 #   - unattended security upgrades, and a firewall that admits nothing
 #     inbound but SSH when SSH stays on
 #   - ` + ssh + `
-#   - Git from the distribution; Node.js 18 or newer from the distribution,
+#   - Git from the distribution; Node.js 20 or newer from the distribution,
 #     or, when it is older, NodeSource's signed repository (Debian family)
 #     or the nodejs:20 module stream (Red Hat family); Claude Code with
-#     Anthropic's own installer; Codex from npm
+#     Anthropic's own installer; Codex from npm; a headless Chromium for
+#     the agents (the distribution's, or Playwright's headless shell on Ubuntu)
 #   - Caprock ` + in.Version + ` from its GitHub release, checked by
 #     ` + check + `
 #   - as caprock: caprock hooks install, caprock service install, then
@@ -221,7 +222,7 @@ apt_get() {
 }
 if [ "$family" = redhat ]; then
 	# util-linux: runuser (a minimal Fedora has util-linux-core without it).
-	dnf -y install ca-certificates git tar gzip procps-ng util-linux firewalld
+	dnf -y install ca-certificates bash git tar gzip procps-ng util-linux shadow-utils firewalld
 	# An image with curl-minimal has a working curl; the full one conflicts.
 	command -v curl >/dev/null 2>&1 || dnf -y install curl
 	dnf -y install dnf-automatic || dnf -y install dnf5-plugin-automatic
@@ -234,13 +235,13 @@ if [ "$family" = redhat ]; then
 	fi
 else
 	apt_get update
-	apt_get install --no-install-recommends ca-certificates curl git tar gzip procps gnupg ufw unattended-upgrades
+	apt_get install --no-install-recommends ca-certificates bash curl git tar gzip procps passwd gnupg ufw unattended-upgrades
 	if [ -n "$CAPROCK_MINISIGN_KEY" ]; then
 		apt_get install --no-install-recommends minisign
 	fi
 fi
 
-step 'install Node.js 18 or newer'
+step 'install Node.js 20 or newer'
 if [ "$family" = redhat ]; then
 	# The distribution's own when it is new enough; otherwise its nodejs:20
 	# module stream (Rocky, AlmaLinux and CentOS Stream 9 default to 16).
@@ -249,7 +250,7 @@ if [ "$family" = redhat ]; then
 	case "$candidate_major" in
 	'' | *[!0-9]*) candidate_major=0 ;;
 	esac
-	if [ "$candidate_major" -ge 18 ]; then
+	if [ "$candidate_major" -ge 20 ]; then
 		echo "from the distribution: $candidate"
 	else
 		echo "the distribution has Node.js ${candidate:-none}: its nodejs:20 module stream instead"
@@ -266,7 +267,7 @@ else
 	case "$candidate_major" in
 	'' | *[!0-9]*) candidate_major=0 ;;
 	esac
-	if [ "$candidate_major" -ge 18 ]; then
+	if [ "$candidate_major" -ge 20 ]; then
 		echo "from the distribution: $candidate"
 		apt_get install --no-install-recommends nodejs npm
 	else
@@ -282,7 +283,7 @@ else
 	fi
 fi
 node_major=$(node -p 'process.versions.node.split(".")[0]')
-[ "$node_major" -ge 18 ] || stop "Node.js $node_major is too old for the agents: 18 or newer is needed"
+[ "$node_major" -ge 20 ] || stop "Node.js $node_major is too old for the agents and their browser: 20 or newer is needed"
 echo "Node.js $(node --version)"
 
 step 'create the user caprock: no password, no sudo, its services running with nobody logged in'
@@ -381,6 +382,13 @@ else
 fi
 
 step 'turn on a firewall that admits nothing inbound'
+# systemd-resolved answers LLMNR (and on some systems mDNS) on every
+# address: off, so nothing listens off loopback but sshd when it stays on.
+if [ -d /etc/systemd ] && command -v resolvectl >/dev/null 2>&1; then
+	mkdir -p /etc/systemd/resolved.conf.d
+	printf '[Resolve]\nLLMNR=no\nMulticastDNS=no\n' >/etc/systemd/resolved.conf.d/90-caprock.conf
+	systemctl try-restart systemd-resolved.service >/dev/null 2>&1 || true
+fi
 if [ "$family" = redhat ]; then
 	# firewalld's drop zone: nothing inbound but replies and loopback.
 	systemctl enable --now firewalld.service
@@ -409,6 +417,7 @@ else
 	chmod 0644 "$installer"
 	as_caprock bash "$installer"
 	rm -f "$installer"
+	as_caprock claude --version || stop 'Claude Code was installed but does not run'
 fi
 
 step 'install Codex from npm'
@@ -416,7 +425,43 @@ if [ "${CAPROCK_SETUP_SKIP_AGENTS:-}" = 1 ]; then
 	echo 'skipped: CAPROCK_SETUP_SKIP_AGENTS=1'
 else
 	npm install --global @openai/codex
+	as_caprock codex --version || stop 'Codex was installed but does not run'
 fi
+
+step 'install a headless Chromium for the agents'
+# The distribution's own where it has one (Debian, Kali: chromium; Fedora,
+# and EPEL elsewhere: chromium-headless). Ubuntu ships Chromium as a snap
+# only, so there it is Playwright's headless shell, pinned, with the
+# libraries Playwright installs from the distribution. Either way it is
+# /usr/local/bin/caprock-chromium.
+browser=''
+chromium_deb=''
+if [ "$family" = debian ]; then
+	chromium_deb=$(apt-cache policy chromium | sed -n 's/^ *Candidate: //p')
+	[ "$chromium_deb" != '(none)' ] || chromium_deb=''
+fi
+if [ "$family" = redhat ]; then
+	if [ "$os_id" != fedora ]; then
+		dnf -y install epel-release dnf-plugins-core
+		dnf config-manager --set-enabled crb >/dev/null 2>&1 || true
+	fi
+	dnf -y install chromium-headless
+	browser=$(find /usr/lib64/chromium-browser -name headless_shell -type f 2>/dev/null | head -n 1)
+elif [ "$os_id" = ubuntu ] || [ -z "$chromium_deb" ]; then
+	PLAYWRIGHT_BROWSERS_PATH=/opt/caprock-browsers npx --yes playwright@1.65.1 install --with-deps chromium-headless-shell
+	chmod -R a+rX /opt/caprock-browsers
+	browser=$(find /opt/caprock-browsers -type f \( -name chrome-headless-shell -o -name headless_shell \) 2>/dev/null | head -n 1)
+else
+	apt_get install --no-install-recommends chromium
+	browser=/usr/bin/chromium
+fi
+[ -n "$browser" ] && [ -x "$browser" ] || stop 'no headless Chromium was installed'
+ln -sf "$browser" /usr/local/bin/caprock-chromium
+page=$(as_caprock caprock-chromium --headless --no-sandbox --disable-gpu --dump-dom 'data:text/html,<p>caprock-ok</p>' 2>/dev/null || true)
+case "$page" in
+*caprock-ok*) echo "headless Chromium: $browser" ;;
+*) stop "the headless Chromium at $browser does not render a page" ;;
+esac
 
 step "install Caprock $CAPROCK_VERSION"
 work=$(mktemp -d)

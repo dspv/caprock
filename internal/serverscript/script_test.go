@@ -89,6 +89,9 @@ func TestTheScriptSaysWhatItChecks(t *testing.T) {
 		"fedora | rhel | centos | rocky | almalinux) family=redhat ;;",
 		"firewall-cmd --set-default-zone=drop",
 		"dnf -y module enable nodejs:20",
+		"ln -sf \"$browser\" /usr/local/bin/caprock-chromium",
+		"as_caprock claude --version",
+		"as_caprock codex --version",
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("the script lacks %q", want)
