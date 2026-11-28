@@ -26,6 +26,7 @@ import (
 	"github.com/dspv/caprock/internal/remote"
 	"github.com/dspv/caprock/internal/store"
 	"github.com/dspv/caprock/internal/talks"
+	"github.com/dspv/caprock/internal/telegram"
 	"github.com/dspv/caprock/internal/userenv"
 )
 
@@ -88,7 +89,7 @@ func (a *talksAdapter) open() {
 		Settings: a.Settings,
 		Notify:   a.notify,
 		Changed: func(id, why string) {
-			d.bus.Publish(bus.Frame{Type: bus.FrameTalks, LocalOnly: true, Data: map[string]string{"id": id, "why": why}})
+			d.bus.Publish(bus.Frame{Type: bus.FrameTalks, Data: map[string]string{"id": id, "why": why}})
 		},
 		Log: d.log,
 	})
@@ -195,15 +196,46 @@ func (a *talksAdapter) deliver(ctx context.Context, person string, body []byte) 
 }
 
 // notify is a hold's notification: on the app and the phone, as every
-// notify frame is. Its text names the person and why, never the message.
+// notify frame is, and in the owner's Telegram chat when a bot is set up
+// and not muted (ADR-047: the destination the owner already chose). Its text
+// names the person and why, never the message.
 func (a *talksAdapter) notify(n talks.Notice) {
-	a.d.bus.Publish(bus.Frame{Type: bus.FrameNotify, Data: alerts.Notification{
+	d := a.d
+	d.bus.Publish(bus.Frame{Type: bus.FrameNotify, Data: alerts.Notification{
 		ID:    fmt.Sprintf("talk-%s-%d", n.Talk, time.Now().UnixNano()),
 		Kind:  "talk_hold",
 		Title: n.Title,
 		Body:  n.Body,
 		Route: "#/talks/" + n.Talk,
 	}})
+	if !d.botConfigured() || (d.tg != nil && d.tg.Store.Get().MuteAll) {
+		return
+	}
+	text := talkHoldMessage(n, d.morningBase())
+	d.goBg(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		var err error
+		if d.tg != nil {
+			err = d.tg.SendNow(ctx, telegram.Out{Text: text})
+		} else {
+			cfg := d.config()
+			err = d.sender().SendFormatted(ctx, cfg.ReportBotToken, cfg.ReportChatID, text, "")
+		}
+		if err != nil {
+			d.log.Info("a Talk's hold did not reach Telegram", "component", "talks", "talk", n.Talk, "err", err)
+		}
+	})
+}
+
+// talkHoldMessage is a hold as Telegram says it: plain text, the person and
+// why, and where to answer it — never the held message itself.
+func talkHoldMessage(n talks.Notice, base string) string {
+	text := n.Title + "\n" + n.Body
+	if base = strings.TrimRight(base, "/"); base != "" {
+		text += "\n\nAnswer it in Caprock: " + base + "/#/talks/" + n.Talk
+	}
+	return text
 }
 
 // agent runs each turn with the owner's own agent CLI, headless and with no

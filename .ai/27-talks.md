@@ -106,9 +106,22 @@ usable before its guard exists.
   prompt (up to 12 memories about the goal), rather than through ADR-078's
   tools. Cost is what the agent reports (Claude Code reports dollars; for
   an agent that reports only tokens it is 0 until priced from `pricing/`).
-  Open in P1: the chat view, the log view and the hold's buttons on screen
-  (P1.4), ⌘K *Talk with…*, Telegram for a hold, `docs/talks.md`, the
-  friction test, and the site page in `caprock-web`.
+- **Built, the screens (2026-11-28):** Talks at `#/talks` (people with
+  Talk, the safety code and Remove; Invite someone, which copies the link;
+  Accept an invitation, the link pasted; every Talk) and one Talk at
+  `#/talks/<id>` in the chat's frame, three voices, with the hold card
+  (Send, Edit, Drop; Continue and End at a cap or a failed turn; Accept or
+  Decline one they started), a field to type in (`POST
+  /v1/talks/{id}/messages`, the guard first) and *What left this machine*
+  from the header; Settings → Talks; ⌘K *Talk with…* and one *Talk with
+  <name>* row per person; a hold in Telegram when a bot is set up (the
+  person and why, never the message); the owner's phone reads its Talks and,
+  with control, answers them; a person is not listed among the phone's
+  devices; `docs/talks.md`; the friction test (`ui/e2e/talks.spec.ts`: five
+  actions for a new pair to the first agent message, two for a linked one).
+  Open in P1: pause the agent and take over (typing in is built; the agent
+  still takes its turns), the brief from the chat header (Settings → Talks
+  only), and the site page in `caprock-web`.
 - **Tests:** two daemons and a local relay in the smoke setup with a fake
   agent: invite, accept, a Talk of four turns, a redaction hit held and
   sent from the hold, a cap reached, Remove from each side; an incoming

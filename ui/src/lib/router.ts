@@ -1,5 +1,5 @@
 // Hash router — zero dependencies, good enough for five screens.
-// Routes: #/ (Home; #/home and the older #/now are the same screen) · #/session/:id · #/cost · #/history · #/week · #/tasks · #/queue · #/start · #/settings[/phone|/telegram|/computers|/voice] · #/mail · #/brain[?node=] · #/pipeline[?repo=&of=&pr=] · #/work · #/jarvis · #/chats[?archived=1] · #/chats/:id · #/x/:id[?to=] · #/m · #/m/:machine[/session/:id]
+// Routes: #/ (Home; #/home and the older #/now are the same screen) · #/session/:id · #/cost · #/history · #/week · #/tasks · #/queue · #/start · #/settings[/phone|/telegram|/computers|/voice] · #/mail · #/brain[?node=] · #/pipeline[?repo=&of=&pr=] · #/work · #/jarvis · #/chats[?archived=1] · #/chats/:id · #/talks[?with=] · #/talks/:id · #/x/:id[?to=] · #/m · #/m/:machine[/session/:id]
 import { useEffect, useState } from 'react'
 
 export type Route =
@@ -41,6 +41,11 @@ export type Route =
   // one chat — a conversation, never a terminal.
   | { name: 'chats'; archived?: boolean }
   | { name: 'chat'; id: string }
+  // Talks (ADR-110, .ai/27-talks.md): the people linked for them and every
+  // Talk; `with` opens a new Talk with one person, its goal field focused.
+  // One Talk is a conversation in the chat's frame (screens/Talks).
+  | { name: 'talks'; with?: string }
+  | { name: 'talk'; id: string }
   // A private module the admin key opens (ADR-076): its page at /x/<id>/.
   // `to` is a route inside the module's own page ("#review/42"), from an
   // item its sidebar row lists (ModuleRows): #/x/<id>?to=%23review%2F42.
@@ -120,6 +125,9 @@ export function parseHash(hash: string): Route {
     case 'chats':
       if (parts[1]) return { name: 'chat', id: decodeURIComponent(parts[1]) }
       return params.get('archived') === '1' ? { name: 'chats', archived: true } : { name: 'chats' }
+    case 'talks':
+      if (parts[1]) return { name: 'talk', id: decodeURIComponent(parts[1]) }
+      return params.get('with') ? { name: 'talks', with: params.get('with')! } : { name: 'talks' }
     case 'x': {
       if (!parts[1] || !/^[a-z][a-z0-9-]{0,31}$/.test(parts[1])) return { name: 'now' }
       const to = params.get('to') ?? ''
@@ -171,6 +179,8 @@ export function href(r: Route): string {
     case 'jarvis': return '#/jarvis'
     case 'chats': return r.archived ? '#/chats?archived=1' : '#/chats'
     case 'chat': return `#/chats/${encodeURIComponent(r.id)}`
+    case 'talks': return r.with ? `#/talks?with=${encodeURIComponent(r.with)}` : '#/talks'
+    case 'talk': return `#/talks/${encodeURIComponent(r.id)}`
     case 'module': return r.to && isModuleHref(r.to) ? `#/x/${r.id}?to=${encodeURIComponent(r.to)}` : `#/x/${r.id}`
     case 'machine': return r.session ? `#/m/${r.id}/session/${encodeURIComponent(r.session)}${r.tab ? `?tab=${encodeURIComponent(r.tab)}` : ''}` : `#/m/${r.id}${r.joined ? '?joined=1' : ''}`
     case 'machines': return '#/m'

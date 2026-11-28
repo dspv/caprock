@@ -31,6 +31,8 @@ const (
 // pairedDeviceRoutes, so a route added to that map without a decision shows
 // up as a failing test rather than a quietly wider door.
 var viewerMay = map[string]bool{
+	// Talks, read (ADR-110).
+	"GET /v1/talks": true, "GET /v1/talks/{id}": true, "GET /v1/talks/people": true,
 	"GET /v1/sessions": true, "GET /v1/sessions/{id}": true, "GET /v1/sessions/{id}/events": true,
 	"GET /v1/sessions/{id}/notes": true, "GET /v1/sessions/{id}/diff": true, "GET /v1/notes": true,
 	"GET /v1/sessions/{id}/subagents":         true, // what the session's subagents are doing; the events already say it
@@ -73,6 +75,10 @@ var viewerMay = map[string]bool{
 // What a controller may do on top (ADR-034): work on a session, nothing about
 // the machine.
 var controllerMayAlso = map[string]bool{
+	// Talks: start one, type into it and answer its holds (ADR-110).
+	"POST /v1/talks": true, "POST /v1/talks/{id}/messages": true, "POST /v1/talks/{id}/held/send": true,
+	"POST /v1/talks/{id}/held/edit": true, "POST /v1/talks/{id}/held/drop": true, "POST /v1/talks/{id}/continue": true,
+	"POST /v1/talks/{id}/accept": true, "POST /v1/talks/{id}/end": true,
 	"POST /v1/agents": true, "GET /v1/agents/models": true, "GET /v1/agents/catalog": true, "GET /v1/subscriptions": true, "GET /v1/recent-dirs": true, "GET /v1/browse": true, "GET /v1/browse/stat": true, "GET /v1/browse/repos": true,
 	"GET /v1/sessions/{id}/relay": true, "GET /v1/agents/{id}/term": true, "GET /v1/agents/{id}/exit": true,
 	"POST /v1/agents/{id}/input": true, "POST /v1/agents/{id}/signal": true, "POST /v1/paste": true,

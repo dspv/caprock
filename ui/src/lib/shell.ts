@@ -77,9 +77,9 @@ export const OPEN_SESSION_EVENT = 'caprock:open-session'
  */
 export const OPEN_ROUTE_EVENT = 'caprock:open-route'
 
-/** The routes a notification may open: a private module's screen (ADR-076). */
+/** The routes a notification may open: a private module's screen (ADR-076), or a Talk a hold waits in (ADR-110). */
 export function notifyRoute(route: unknown): string | null {
-  return typeof route === 'string' && /^#\/x\/[a-z][a-z0-9-]{0,31}$/.test(route) ? route : null
+  return typeof route === 'string' && (/^#\/x\/[a-z][a-z0-9-]{0,31}$/.test(route) || /^#\/talks\/t_[0-9a-f]{24}$/.test(route)) ? route : null
 }
 
 /** The event the shell dispatches before it brings the window up from the tray or the hotkey. */

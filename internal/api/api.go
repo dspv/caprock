@@ -903,6 +903,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/talks", s.handleTalks)
 	m.HandleFunc("POST /v1/talks", s.handleTalkStart)
 	m.HandleFunc("GET /v1/talks/{id}", s.handleTalk)
+	m.HandleFunc("POST /v1/talks/{id}/messages", s.handleTalkAction("say"))
 	m.HandleFunc("POST /v1/talks/{id}/held/send", s.handleTalkAction("send"))
 	m.HandleFunc("POST /v1/talks/{id}/held/edit", s.handleTalkAction("edit"))
 	m.HandleFunc("POST /v1/talks/{id}/held/drop", s.handleTalkAction("drop"))

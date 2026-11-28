@@ -79,6 +79,21 @@ type TalkPerson struct {
 	TurnedOnRemote bool `json:"turned_on_remote,omitempty"`
 }
 
+// talksOn refuses a daemon without Talks. For the routes the owner's phone
+// also reaches (pairedDeviceRoutes, controllerRoutes): the gate has already
+// decided the device's role, and a person never reaches them.
+func (s *Server) talksOn(w http.ResponseWriter, r *http.Request) bool {
+	if personFrom(r) != "" {
+		s.failCode(w, http.StatusForbidden, errors.New(personRefusal))
+		return false
+	}
+	if s.d.Talks == nil {
+		s.failCode(w, http.StatusNotImplemented, errors.New("this build has no Talks"))
+		return false
+	}
+	return true
+}
+
 // talksLocal refuses anything but this machine's own clients, and a daemon
 // without Talks.
 func (s *Server) talksLocal(w http.ResponseWriter, r *http.Request) bool {
@@ -189,7 +204,7 @@ func (s *Server) handleTalkAccept(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleTalkPeople(w http.ResponseWriter, r *http.Request) {
-	if !s.talksLocal(w, r) {
+	if !s.talksOn(w, r) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"people": s.d.Talks.People()})
@@ -323,7 +338,7 @@ func (s *Server) handleTalkSettingsPut(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleTalks(w http.ResponseWriter, r *http.Request) {
-	if !s.talksLocal(w, r) {
+	if !s.talksOn(w, r) {
 		return
 	}
 	list, err := s.d.Talks.Engine().List(r.Context())
@@ -335,7 +350,7 @@ func (s *Server) handleTalks(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleTalkStart(w http.ResponseWriter, r *http.Request) {
-	if !s.talksLocal(w, r) {
+	if !s.talksOn(w, r) {
 		return
 	}
 	var req struct {
@@ -371,7 +386,7 @@ func (s *Server) talkFail(w http.ResponseWriter, err error) {
 }
 
 func (s *Server) handleTalk(w http.ResponseWriter, r *http.Request) {
-	if !s.talksLocal(w, r) {
+	if !s.talksOn(w, r) {
 		return
 	}
 	v, err := s.d.Talks.Engine().Get(r.Context(), r.PathValue("id"))
@@ -386,13 +401,22 @@ func (s *Server) handleTalk(w http.ResponseWriter, r *http.Request) {
 // held/drop, continue, accept, end.
 func (s *Server) handleTalkAction(action string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if !s.talksLocal(w, r) {
+		if !s.talksOn(w, r) {
 			return
 		}
 		e, id, ctx := s.d.Talks.Engine(), r.PathValue("id"), r.Context()
 		var t store.Talk
 		var err error
 		switch action {
+		case "say":
+			var req struct {
+				Text string `json:"text"`
+			}
+			if rerr := readBody(w, r, talks.MaxBody+4<<10, &req); rerr != nil {
+				s.failCode(w, http.StatusBadRequest, errors.New(`send {"text": "…"}`))
+				return
+			}
+			t, err = e.Say(ctx, id, req.Text)
 		case "send":
 			t, err = e.SendHeld(ctx, id)
 		case "edit":

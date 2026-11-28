@@ -61,6 +61,8 @@ const NAV: { route: Route; label: string; phase?: string; icon?: ReactNode }[] =
   // Chats (ADR-071): conversations started to ask something, kept, counted
   // and searchable apart from the work sessions.
   { route: { name: 'chats' }, label: 'Chats', phase: 'new' },
+  // Talks (ADR-110): your agent and a person's agent, talking for you two.
+  { route: { name: 'talks' }, label: 'Talks', phase: 'new' },
   { route: { name: 'cost' }, label: 'Cost' },
   // 'History' read as a log of past sessions. The screen is the opposite: one
   // set of lifetime totals — every session, every day, what it all cost —
@@ -97,7 +99,7 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
   const [plan, savePlan] = usePlan()
   // The modules an admin key opens (ADR-076), after the fixed screens; none without one.
   const nav = [...NAV, ...useModules().map((m) => ({ route: { name: 'module', id: m.id } as Route, label: m.name, phase: undefined, icon: undefined }))]
-  const active = (r: Route) => (r.name === 'module' ? route.name === 'module' && route.id === r.id : r.name === route.name) || (r.name === 'now' && route.name === 'session') || (r.name === 'chats' && route.name === 'chat')
+  const active = (r: Route) => (r.name === 'module' ? route.name === 'module' && route.id === r.id : r.name === route.name) || (r.name === 'now' && route.name === 'session') || (r.name === 'chats' && route.name === 'chat') || (r.name === 'talks' && route.name === 'talk')
   // Inside the desktop app the window already carries the link state, the
   // version and the theme (status strip, sidebar), and the website's footer
   // is the website's: a second set in the dashboard read as another app.
@@ -110,11 +112,11 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
   // the way back to Now and the connection's state.
   const narrow = useNarrowScreen()
   // A chat is the same: a conversation, the whole screen (screens/Chat.tsx).
-  const immersive = !app && narrow && (route.name === 'session' || route.name === 'chat')
+  const immersive = !app && narrow && (route.name === 'session' || route.name === 'chat' || route.name === 'talk')
   // The phone home is an app's first screen: one compact bar, no offers and
   // no site footer (components/PhoneBar, PhoneHome). The Chats list is one
   // of its screens, a messenger's list, under the same bar.
-  const phoneHome = !app && narrow && ((route.name === 'now' && !route.full) || route.name === 'chats')
+  const phoneHome = !app && narrow && ((route.name === 'now' && !route.full) || route.name === 'chats' || route.name === 'talks')
   const home = isHome(route)
   const title = pageTitle(route)
   // The browser tab says it too ("Pipeline · caprock"); the app's window is not a tab.

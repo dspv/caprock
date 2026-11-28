@@ -180,6 +180,8 @@ export function screenName(r: Route): string {
     case 'files': return 'Files'
     case 'chats': return 'Chats'
     case 'chat': return 'Chat'
+    case 'talks': return 'Talks'
+    case 'talk': return 'Talk'
     case 'module': return moduleName(r.id)
     case 'machine': return r.session ? 'Another computer’s session' : 'Another computer'
     case 'machines': return 'All computers'

@@ -474,6 +474,41 @@ func (e *Engine) buildTurn(ctx context.Context, t store.Talk, set Settings) (Tur
 	return turn, nil
 }
 
+// Say sends what this side's owner typed into a Talk, marked as theirs
+// (KindHuman), through the guard: text that is caught is refused. It does not
+// move the turn: the next turn on either side reads it. In a finished Talk it
+// is the other side's agent's turn again.
+func (e *Engine) Say(ctx context.Context, id, text string) (store.Talk, error) {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return store.Talk{}, errors.New("a message needs text")
+	}
+	if _, caught := Guard(text, e.opt.Settings().NeverShare); caught.Total() > 0 {
+		return store.Talk{}, fmt.Errorf("%w: %s", ErrCaught, caught.String())
+	}
+	t, err := e.update(ctx, id, func(q store.Querier, t *store.Talk) error {
+		if t.State == StateEnded {
+			return ErrEnded
+		}
+		if t.State == StateInvited {
+			return ErrState
+		}
+		if _, err := e.sendTx(ctx, q, t, Envelope{Kind: KindHuman, Body: text, Author: e.person(e.opt.Settings())}, HowTyped, "", 0); err != nil {
+			return err
+		}
+		if t.State == StateFinished {
+			t.State = StateWaiting
+		}
+		return nil
+	})
+	if err != nil {
+		return t, err
+	}
+	e.wakeOutbox()
+	e.changed(id, "sent")
+	return t, nil
+}
+
 // SendHeld sends a held message as it would leave: with every value the
 // guard caught replaced by its placeholder.
 func (e *Engine) SendHeld(ctx context.Context, id string) (store.Talk, error) {
@@ -739,6 +774,13 @@ func (e *Engine) Receive(ctx context.Context, person string, raw []byte) (Receiv
 		}
 	case env.Kind == KindState:
 		// The goal, received with the Talk above.
+	case env.Kind == KindHuman:
+		// The other person typed: read by the next turn on this side. It
+		// moves no turn, except that a finished Talk is this side's again.
+		if t.State == StateFinished {
+			t.State = StateMyTurn
+			run = true
+		}
 	case t.State == StateWaiting || t.State == StateFinished:
 		t.State = StateMyTurn
 		if env.Done {

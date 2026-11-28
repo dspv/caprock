@@ -41,7 +41,7 @@ const URGENT: ReadonlySet<string> = new Set(['notify', 'permission', 'alert', 'h
  */
 export interface NotifyFrame {
   id: string
-  kind: 'approval' | 'finished' | 'loop' | 'limit' | 'error' | 'ci' | 'review' | 'window' | 'module'
+  kind: 'approval' | 'finished' | 'loop' | 'limit' | 'error' | 'ci' | 'review' | 'window' | 'module' | 'talk_hold'
   /** Empty for a GitHub notification (`ci`, `review`), which is about a pull request. */
   session_id: string
   project?: string
@@ -76,6 +76,8 @@ export type Frame = (
   // Live replay: the frames after this client's since are gone; refetch.
   | { type: 'reset'; data: { seq: number } }
   | { type: 'notify'; data: NotifyFrame }
+  // A Talk changed (ADR-110): its id and why; the screen reads it again.
+  | { type: 'talks'; data: { id: string; why: string } }
   // A followed pull request changed, or the GitHub connection did (WP-19).
   | { type: 'github'; data: GitHubFrame }
   // The Inbox changed: an item saved or deleted (03-contracts.md § Inbox).

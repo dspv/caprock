@@ -37,9 +37,12 @@ const P: Record<string, string> = {
   refresh: 'M20 11a8 8 0 0 0-14.9-4M4 4v4h4M4 13a8 8 0 0 0 14.9 4M20 20v-4h-4',
   plug: 'M9 2v6M15 2v6M6 8h12v4a6 6 0 0 1-12 0zM12 18v4',
   mic: 'M9 3h6v11H9zM5 11a7 7 0 0 0 14 0M12 18v3',
+  people: 'M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM2 21a7 7 0 0 1 14 0M16 3.1a4 4 0 0 1 0 7.8M22 21a7 7 0 0 0-5-6.7',
 }
 
 const BY_TITLE: [RegExp, string][] = [
+  // Talks (ADR-110): the people your agent talks with.
+  [/^talks$/i, 'people'],
   [/^new sessions/i, 'play'],
   [/keep awake/i, 'coffee'],
   [/saved prompts/i, 'bookmark'],
