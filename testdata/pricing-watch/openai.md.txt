@@ -1,6 +1,6 @@
 # Pricing
 
-> Excerpt of https://developers.openai.com/api/docs/pricing.md, read 2026-11-17, trimmed for scripts/test_pricing_watch.py.
+> Excerpt of https://developers.openai.com/api/docs/pricing.md, read 2026-11-17 (the healthcare rows 2026-11-28), trimmed for scripts/test_pricing_watch.py.
 
 Flagship models
 
@@ -43,6 +43,8 @@ Standard
 | <a id="cyber-models"></a>Cyber — Trusted Access: [Daybreak](https://openai.com/daybreak/) | gpt-6-cyber (short context) | $20.00 | $100.00 | $2.00 | $25.00 | $50.00 |
 | Cyber — Trusted Access: [Daybreak](https://openai.com/daybreak/) | gpt-6-cyber (long context) | $40.00 | $150.00 | $4.00 | - | - |
 | <a id="legal-model-configurations"></a>Legal | gpt-6-astra-law | $10.00 | $50.00 | $1.00 | - | - |
+| <a id="healthcare-model-configurations"></a>Healthcare model configurations | gpt-6.2-sol-healthcare (short context) | $2.00 | $10.00 | $0.10 | $2.50 | $5.00 |
+| Healthcare model configurations | gpt-6.2-sol-healthcare (long context) | $4.00 | $15.00 | $0.20 | $5.00 | $10.00 |
 | Codex | gpt-5.3-codex | $1.75 | $14.00 | $0.175 | - | - |
 
 Fast

@@ -1,4 +1,4 @@
-<!-- Excerpt of https://ai.google.dev/gemini-api/docs/pricing.md.txt, read 2026-11-17, trimmed for scripts/test_pricing_watch.py. -->
+<!-- Excerpt of https://ai.google.dev/gemini-api/docs/pricing.md.txt, read 2026-11-17, trimmed for scripts/test_pricing_watch.py; the Gemini 4 Neon and Genie 4 sections were read from https://aistudio.google.com/docs/pricing on 2026-11-28. -->
 
 > ## AI Agent Context
 > - Full documentation index: https://aistudio.google.com/llms.txt
@@ -316,3 +316,94 @@ Our 3.8 Flash Text-to-Speech audio model engineered for studio-grade voice fidel
 
 {% /tabs %}
 
+## Gemini 4 Neon  {% id="gemini-4-neon" %}
+
+{% two-column-layout %}
+  {% left-column class="center-vertically" %}
+  *[`gemini-4-neon`](/docs/models/gemini-4-neon)*
+
+  {% /left-column %}
+
+{% /two-column-layout %}
+
+{% hr /%}
+
+Frontier-level intelligence with fast end-to-end task completion, a unified
+1M-token context window, and long-decode output up to 1M tokens.
+
+{% tabs %}
+  {% tab title="Standard" %}
+  {% table %}
+  * Feature
+  * Free Tier
+  * Paid Tier, per 1M tokens in USD
+
+  ---
+
+  * Input price
+  * Not available
+  * $3.00
+
+  ---
+
+  * Output price (including thinking tokens)
+  * Not available
+  * $15.00
+
+  ---
+
+  * Context caching price
+  * Not available
+  * $0.15   
+  Implicit caching only (explicit caching is not supported).
+  {% /table %}
+
+  {% /tab %}
+
+{% /tabs %}
+
+## Genie 4  {% id="genie-4" %}
+
+{% two-column-layout %}
+  {% left-column class="center-vertically" %}
+  *[`genie-4`](/docs/models/genie-4)*
+
+  {% /left-column %}
+
+{% /two-column-layout %}
+
+{% hr /%}
+
+A real-time interactive world generation model that streams steerable video
+with synchronized audio, through the Interactions API.
+
+{% tabs %}
+  {% tab title="Standard" %}
+  {% table %}
+  * Feature
+  * Free Tier
+  * Paid Tier, per 1M tokens in USD
+
+  ---
+
+  * Input price
+  * Not available
+  * $1.50 (text / reference image)
+
+  ---
+
+  * Output price
+  * Not available
+  * $9.00 (text)   
+  $17.50 (video, audio included)
+
+  ---
+
+  * Context caching price
+  * Not available
+  * Not available
+  {% /table %}
+
+  {% /tab %}
+
+{% /tabs %}
