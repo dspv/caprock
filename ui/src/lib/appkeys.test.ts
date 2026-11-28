@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { INPUT_HIGHLIGHT_KEY, THEME_KEY, heldClass, isPlainKeyLabel, keyChipMode, matchAppShortcut, moveKeysLine, ownsTerminalKey, revealClass, stripKey, type KeyLike, keys, tabDigit, tabKey, moduleKey, macTakenModuleKey, setModuleKeyCount } from './appkeys'
+import { DASHBOARD_KEY, INPUT_HIGHLIGHT_KEY, PIPELINE_KEY, THEME_KEY, heldClass, sharedModifiers, isPlainKeyLabel, keyChipMode, matchAppShortcut, moveKeysLine, ownsTerminalKey, revealClass, stripKey, type KeyLike, keys, tabDigit, tabKey, moduleKey, macTakenModuleKey, setModuleKeyCount } from './appkeys'
 import { browserKey } from './browsertab'
 
 const k = (key: string, mods: Partial<KeyLike> = {}): KeyLike => ({
@@ -184,6 +184,22 @@ describe('a key label off macOS', () => {
   })
   it('leaves macOS as written', () => {
     expect(keys('⇧⌘N', true)).toBe('⇧⌘N')
+  })
+})
+
+describe('the folded footer keys off macOS', () => {
+  it('writes the modifiers every key holds once and leaves each key the rest', () => {
+    // Send feedback, Mail, Dashboard, Settings, Pipeline, the theme.
+    const labels = ['⇧⌘F', '⇧⌘M', DASHBOARD_KEY, '⌘,', PIPELINE_KEY, THEME_KEY].map((k) => keys(k, false))
+    const { prefix, rest } = sharedModifiers(labels)
+    expect(prefix).toBe('Ctrl+Shift')
+    expect(rest).toEqual(['Alt+F', 'M', 'D', ',', 'P', 'Alt+P'])
+    for (const r of rest) expect(isPlainKeyLabel(r)).toBe(true)
+  })
+  it('keeps whole labels when nothing is shared, and a "+" key whole', () => {
+    expect(sharedModifiers(['Ctrl+Shift+A', 'F5'])).toEqual({ prefix: '', rest: ['Ctrl+Shift+A', 'F5'] })
+    expect(sharedModifiers(['Ctrl+Shift++', 'Ctrl+Shift+M'])).toEqual({ prefix: 'Ctrl+Shift', rest: ['+', 'M'] })
+    expect(sharedModifiers([])).toEqual({ prefix: '', rest: [] })
   })
 })
 

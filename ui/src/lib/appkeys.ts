@@ -559,6 +559,30 @@ function offMac(k: string): string {
   return `Ctrl+Shift+${key}`
 }
 
+/**
+ * A row of off-macOS key labels split into the modifiers they all hold and
+ * what is left of each: Ctrl+Alt+Shift+F, Ctrl+Shift+M and Ctrl+Shift+D are
+ * `Ctrl+Shift` and Alt+F, M, D. The folded sidebar footer draws the prefix
+ * once and each rest over its icon (components/SidebarFooter): the whole
+ * chords are 63–141px, a column 32–48px. Modifiers keep the first label's
+ * order; with nothing shared each label keeps its whole text.
+ */
+export function sharedModifiers(labels: readonly string[]): { prefix: string; rest: string[] } {
+  const split = labels.map((l) => {
+    // A key that is itself "+" ends the label with "++".
+    const plus = l.endsWith('++')
+    const parts = (plus ? l.slice(0, -2) : l).split('+')
+    const key = plus ? '+' : parts.pop() ?? ''
+    return { mods: parts.filter(Boolean), key }
+  })
+  if (split.length === 0) return { prefix: '', rest: [] }
+  const common = split[0]!.mods.filter((m) => split.every((s) => s.mods.includes(m)))
+  return {
+    prefix: common.join('+'),
+    rest: split.map((s) => [...s.mods.filter((m) => !common.includes(m)), s.key].join('+')),
+  }
+}
+
 /** The digit that jumps to the tab at `index` of `count`: 1–8 by
  *  position, 9 the last one, else none. */
 export function tabDigit(index: number, count: number): number | null {

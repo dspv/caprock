@@ -954,20 +954,18 @@ html[data-app][data-vibrancy], html[data-app][data-vibrancy] body { background: 
 [data-app] :focus-visible > .app-kbd-reveal,
 [data-app] :has(> :focus-visible) > .app-kbd-reveal,
 [data-app][data-show-keys] .app-kbd-reveal,
-[data-app][data-show-keys] .app-kbd-held,
-[data-app] [data-key-slot]:has(:focus-visible) > .app-kbd-float,
-[data-app][data-show-keys] .app-kbd-float { visibility: visible; }
+[data-app][data-show-keys] .app-kbd-held { visibility: visible; }
 /* The key over an icon in the folded sidebar footer (components/SidebarFooter
  * KeySlot) is the same .app-kbd-key as everywhere else: a small faint one
  * (.app-kbd-faint, 10px) could not be read (owner, 2026-10-15, translated:
  * "the shortcuts there are tiny, you can't see a damn thing"), so a key that
- * has no room is left out and kept in the tooltip. `.app-kbd-float` is the
- * off-macOS form, shown over the icon under keyboard focus or while Ctrl is
- * held (above), never on hover, where the icon's tooltip already names the
- * key (2026-10-20): on the panel, above the list. */
-[data-app] .app-kbd-float {
-  background: var(--color-panel);
-  box-shadow: 0 4px 12px -6px rgba(0, 0, 0, 0.4);
+ * has no room is left out and kept in the tooltip. `.app-kbd-compact` is the
+ * off-macOS form (2026-11-28): the row's shared Ctrl+Shift is written once
+ * above it, so a chip holds M or Alt+F, at 11px with tighter padding: the
+ * two 43px Alt chips and four 32px columns fit the 260px sidebar. */
+[data-app] .app-kbd-key.app-kbd-compact {
+  font-size: 11px;
+  padding: 3px 4px;
 }
 /* A folded column's chip is part of its button (components/SidebarFooter
  * KeySlot): a click on the key is a click on the icon. The pointer over

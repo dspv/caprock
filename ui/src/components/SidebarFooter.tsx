@@ -50,7 +50,7 @@ import type { MouseEvent, ReactNode, RefObject } from 'react'
 import type { SettingsSection } from '@/lib/router'
 import { THEME_MODE_NAME, useThemeMode } from '@/lib/theme'
 import { THEMES } from '@/lib/themes'
-import { DASHBOARD_KEY, PIPELINE_KEY, THEME_KEY, THEME_MENU_EVENT, keys, revealClass } from '@/lib/appkeys'
+import { DASHBOARD_KEY, PIPELINE_KEY, THEME_KEY, THEME_MENU_EVENT, keys, revealClass, sharedModifiers } from '@/lib/appkeys'
 import { isMacPlatform } from '@/lib/appmode'
 import { useChipFit, useFoldedChipFit } from '@/lib/keyChipFit'
 import { ThemeMenu } from './ThemePicker'
@@ -94,16 +94,21 @@ const ICON = `${SQUARE} h-[32px] w-full min-w-[32px] rounded-[7px]`
 const GLYPH = 18
 
 /**
- * How the folded row draws its keys: above every icon, or above the one
- * under the pointer. A macOS chip at the New agent size is 32px (⌘D, ⌘P,
- * ⌘,) or 40px (⇧⌘F, ⇧⌘M, ⌥⌘P), so on a Mac a column widens to its chip;
- * where the six do not fit, the widest is left out first
- * (useFoldedChipFit). Off macOS the same keys are Ctrl+Shift+M and
- * Ctrl+Alt+Shift+F, 63–141px, three columns wide: there a key shows under
- * keyboard focus or while Ctrl is held, and on hover only in the tooltip.
+ * How the folded row draws its keys, always above every icon. A macOS chip
+ * at the New agent size is 32px (⌘D, ⌘P, ⌘,) or 40px (⇧⌘F, ⇧⌘M, ⌥⌘P), so
+ * on a Mac a column widens to its chip; where the six do not fit, the widest
+ * is left out first (useFoldedChipFit). Off macOS the whole keys are
+ * Ctrl+Shift+M and Ctrl+Alt+Shift+F, 63–141px, three columns wide, and until
+ * 2026-11-28 they showed only under keyboard focus or held Ctrl (owner,
+ * translated: "on Windows, above the bottom menu panel there are no keyboard
+ * shortcuts"). `prefixed`: the modifiers every key holds, Ctrl+Shift, are
+ * written once on a line above the row, and each column's chip is what is
+ * left (M, D, Alt+F; lib/appkeys sharedModifiers) in the compact chip
+ * (`.app-kbd-compact`), so all six fit a 260px sidebar. No Mac glyph:
+ * the fonts there may lack ⇧ (stripKey).
  */
-export function foldedKeys(isMac = isMacPlatform()): 'shown' | 'hover' {
-  return isMac ? 'shown' : 'hover'
+export function foldedKeys(isMac = isMacPlatform()): 'shown' | 'prefixed' {
+  return isMac ? 'shown' : 'prefixed'
 }
 
 /**
@@ -241,49 +246,59 @@ function FoldedFooter(props: SidebarFooterProps & { offer?: CompressOffer }) {
   const toPhone = () => (props.onSettingsSection ? props.onSettingsSection('phone') : props.onSettings?.())
   const hasBar = !!props.onPipeline
   const chips = foldedKeys()
-  const slots: { key?: string; edge: 'left' | 'right'; node: ReactNode }[] = [
-    { key: keys(FEEDBACK_KEY), edge: 'left', node: <FeedbackButton variant="icon" className={ICON} iconSize={GLYPH} /> },
+  const slots: { key?: string; node: ReactNode }[] = [
+    { key: keys(FEEDBACK_KEY), node: <FeedbackButton variant="icon" className={ICON} iconSize={GLYPH} /> },
     ...(props.onMail ? [{
-      key: keys(MAIL_KEY), edge: 'left' as const,
+      key: keys(MAIL_KEY),
       node: <IconButton label={`Mail (${keys(MAIL_KEY)})`} onClick={props.onMail}><MailIcon size={GLYPH} className="text-accent" /></IconButton>,
     }] : []),
-    { key: keys(DASHBOARD_KEY), edge: 'left', node: <IconButton label={`Dashboard (${keys(DASHBOARD_KEY)})`} onClick={props.onDashboard}><DashboardIcon size={GLYPH} /></IconButton> },
+    { key: keys(DASHBOARD_KEY), node: <IconButton label={`Dashboard (${keys(DASHBOARD_KEY)})`} onClick={props.onDashboard}><DashboardIcon size={GLYPH} /></IconButton> },
     ...(props.onSettings ? [{
-      key: keys('⌘,'), edge: 'right' as const,
+      key: keys('⌘,'),
       node: <IconButton label={`Settings: phone, Telegram (${keys('⌘,')})`} onClick={toPhone}><SettingsIcon size={GLYPH} /></IconButton>,
     }] : []),
-    ...(hasBar ? [{ key: keys(PIPELINE_KEY), edge: 'right' as const, node: <PipelineButton active={props.pipelineActive} onClick={props.onPipeline!} className={ICON} /> }] : []),
+    ...(hasBar ? [{ key: keys(PIPELINE_KEY), node: <PipelineButton active={props.pipelineActive} onClick={props.onPipeline!} className={ICON} /> }] : []),
     // ⌥⌘P opens its picker. Opening rightwards: from here a leftward picker left the window.
-    { key: keys(THEME_KEY), edge: 'right', node: <ThemeButton className={ICON} boxClassName="w-full" align="left" /> },
+    { key: keys(THEME_KEY), node: <ThemeButton className={ICON} boxClassName="w-full" align="left" /> },
   ]
-  const [ref, fit] = useFoldedChipFit<HTMLDivElement>(slots.length, chips === 'shown')
-  const anyShown = chips === 'shown' && slots.some((s, i) => s.key && fit[i] !== false)
+  const split = chips === 'prefixed' ? sharedModifiers(slots.map((s) => s.key ?? '')) : null
+  const prefix = split?.prefix ?? ''
+  const shownKey = (i: number) => (split && slots[i]?.key ? split.rest[i] : slots[i]?.key)
+  const [ref, fit] = useFoldedChipFit<HTMLDivElement>(slots.length, true)
+  const anyShown = slots.some((s, i) => s.key && fit[i] !== false)
+  const wrapped = !!props.offer || !!prefix
   const row = (
-    <div ref={ref as RefObject<HTMLDivElement>} data-sidebar-footer={props.offer ? undefined : ''} data-folded-keys={chips} className={`${props.offer ? '' : 'app-sidebar-footer '}flex shrink-0 items-end gap-0.5 px-1 pb-1.5 ${props.offer ? 'pt-0.5' : 'pt-2'}`}>
+    <div ref={ref as RefObject<HTMLDivElement>} data-sidebar-footer={wrapped ? undefined : ''} data-folded-keys={chips} className={`${wrapped ? '' : 'app-sidebar-footer '}flex shrink-0 items-end gap-0.5 px-1 pb-1.5 ${wrapped ? 'pt-0.5' : 'pt-2'}`}>
       {slots.map((s, i) => (
-        <KeySlot key={i} keyLabel={s.key} chips={chips} edge={s.edge} fits={fit[i] !== false} line={anyShown}>{s.node}</KeySlot>
+        <KeySlot key={i} keyLabel={shownKey(i)} compact={!!split} fits={fit[i] !== false} line={anyShown}>{s.node}</KeySlot>
       ))}
       <FooterToggle open={false} onToggle={props.onToggleFold} />
     </div>
   )
-  if (!props.offer) return row
+  if (!wrapped) return row
   return (
     <div data-sidebar-footer className="app-sidebar-footer flex shrink-0 flex-col pt-1.5">
-      <div className="flex px-1">
-        <CompressHintIcon offer={props.offer} size={GLYPH} className={`${SQUARE} h-[32px] w-[32px] rounded-[7px]`} />
-      </div>
+      {props.offer && (
+        <div className="flex px-1">
+          <CompressHintIcon offer={props.offer} size={GLYPH} className={`${SQUARE} h-[32px] w-[32px] rounded-[7px]`} />
+        </div>
+      )}
+      {prefix && anyShown && (
+        <div data-key-prefix title={`Hold ${prefix} and press the key over an icon`} className="px-2 pt-0.5 font-mono text-[11px] font-semibold leading-none text-fg-muted">
+          {prefix} +
+        </div>
+      )}
       {row}
     </div>
   )
 }
 
 /**
- * One column of the folded row: the key's chip, then the icon. `shown`: the
- * chip sits above the icon, and a column with no key keeps an empty slot of
- * the same height. `hover`: the chip floats above the column under keyboard
- * focus or while Ctrl is held (`.app-kbd-float`, design/tokens.css), held to
- * the `edge` side so it stays inside the sidebar; under the pointer only the
- * icon's tooltip shows, which names the key (a Windows tester, 2026-10-20).
+ * One column of the folded row: the key's chip, then the icon. The chip sits
+ * above the icon, and a column with no key keeps an empty slot of the same
+ * height. `compact` (off macOS): the chip holds only what is left after the
+ * row's shared modifiers (M, Alt+F), in `.app-kbd-compact`; its tooltip is
+ * the icon's, which spells the whole key.
  *
  * The chip is part of the button below it (owner, 2026-10-15, translated: "I
  * wanted to click the key combo with the mouse and it doesn't click"): a
@@ -293,7 +308,7 @@ function FoldedFooter(props: SidebarFooterProps & { offer?: CompressOffer }) {
  * hidden from both; the chip and the icon light up together under the
  * pointer (`[data-key-slot]` in design/tokens.css).
  */
-function KeySlot({ keyLabel, chips, edge, fits, line, children }: { keyLabel?: string; chips: 'shown' | 'hover'; edge: 'left' | 'right'; fits: boolean; line: boolean; children: ReactNode }) {
+function KeySlot({ keyLabel, compact, fits, line, children }: { keyLabel?: string; compact: boolean; fits: boolean; line: boolean; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null)
   const [title, setTitle] = useState<string>()
   // The action's tooltip changes with its state (Pipeline in front, the
@@ -308,15 +323,11 @@ function KeySlot({ keyLabel, chips, edge, fits, line, children }: { keyLabel?: s
     action(ref.current)?.click()
   }
   return (
-    <div ref={ref} data-key-slot className={`group relative flex max-w-[48px] flex-1 flex-col items-center ${chips === 'shown' && keyLabel && fits ? 'min-w-min' : 'min-w-[32px]'}`}>
-      {chips === 'shown' ? (
-        keyLabel ? (
-          <kbd aria-hidden data-key-chip data-dropped={fits ? undefined : ''} title={title} onClick={press} className={fits ? 'app-kbd-key app-kbd-press mb-[3px]' : 'app-kbd-key pointer-events-none invisible absolute bottom-full'}>{keyLabel}</kbd>
-        ) : line ? (
-          <kbd aria-hidden className="app-kbd-key invisible mb-[3px]">·</kbd>
-        ) : null
-      ) : keyLabel ? (
-        <kbd aria-hidden data-key-chip title={title} onClick={press} className={`app-kbd-key app-kbd-float app-kbd-press invisible absolute bottom-[calc(100%+3px)] z-10 ${edge === 'left' ? 'left-0' : 'right-0'}`}>{keyLabel}</kbd>
+    <div ref={ref} data-key-slot className={`group relative flex max-w-[48px] flex-1 flex-col items-center ${keyLabel && fits ? 'min-w-min' : 'min-w-[32px]'}`}>
+      {keyLabel ? (
+        <kbd aria-hidden data-key-chip data-dropped={fits ? undefined : ''} title={title} onClick={press} className={`app-kbd-key ${compact ? 'app-kbd-compact ' : ''}${fits ? 'app-kbd-press mb-[3px]' : 'pointer-events-none invisible absolute bottom-full'}`}>{keyLabel}</kbd>
+      ) : line ? (
+        <kbd aria-hidden className={`app-kbd-key ${compact ? 'app-kbd-compact ' : ''}invisible mb-[3px]`}>·</kbd>
       ) : null}
       {children}
     </div>
