@@ -526,3 +526,44 @@ func TestSettingsFile(t *testing.T) {
 		t.Fatalf("%+v", s)
 	}
 }
+
+// The owner types into a Talk: through the guard, marked as theirs, read by
+// the other side's next turn, moving no turn — except that a finished Talk
+// is the other side's agent's again.
+func TestTheOwnerTypesIn(t *testing.T) {
+	a, b := pair(t)
+	done := func(tn Turn) Answer { an := echo(tn); an.Done = true; return an }
+	a.answers(done)
+	b.answers(done)
+	a.use(Settings{NeverShare: []string{"Owl"}})
+	ctx := context.Background()
+	tk, err := a.eng.StartTalk(ctx, "key-B", "Say hello")
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitTalk(t, a, tk.ID, func(x store.Talk) bool { return x.State == StateFinished }, "finished")
+	if _, err := a.eng.Say(ctx, tk.ID, "about project owl"); !errors.Is(err, ErrCaught) {
+		t.Fatalf("a caught line: %v", err)
+	}
+	b.answers(echo)
+	if _, err := a.eng.Say(ctx, tk.ID, "One more thing: Friday?"); err != nil {
+		t.Fatal(err)
+	}
+	waitTalk(t, a, tk.ID, func(x store.Talk) bool { return x.Sent >= 2 }, "B's agent answering the person, then A's")
+	var heard bool
+	b.mu.Lock()
+	for _, tn := range b.turns {
+		for _, l := range tn.Transcript {
+			heard = heard || (l.From == "partner" && l.Text == "One more thing: Friday?")
+		}
+	}
+	b.mu.Unlock()
+	if !heard {
+		t.Fatal("B's agent never read what A's owner typed")
+	}
+	for _, e := range transcript(t, b, tk.ID) {
+		if e.Envelope.Kind == KindHuman && e.Envelope.Author.Kind != "person" {
+			t.Fatalf("a typed line came as %+v", e.Envelope.Author)
+		}
+	}
+}

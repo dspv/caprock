@@ -317,6 +317,12 @@ func (s *Server) gateDevice(r *http.Request) (status int, reason string, dev *pa
 //   - /v1/pair/state — pairing is managed from the machine, and its handler
 //     refuses the network anyway.
 var pairedDeviceRoutes = map[string]bool{
+	// Talks (ADR-110): the owner's phone reads its Talks, live, and the
+	// people it can start one with. Inviting, accepting, Remove and
+	// Settings → Talks stay on the machine.
+	"GET /v1/talks":                           true,
+	"GET /v1/talks/{id}":                      true,
+	"GET /v1/talks/people":                    true,
 	"GET /v1/sessions":                        true,
 	"GET /v1/sessions/{id}":                   true,
 	"GET /v1/sessions/{id}/events":            true,
@@ -488,20 +494,31 @@ var pairedDeviceRoutes = map[string]bool{
 //     outbound call; none of them is "work on a session".
 //   - POST /v1/tasks/{id}/verify — it runs the task's done-criteria commands.
 var controllerRoutes = map[string]bool{
-	"POST /v1/agents":             true, // start or continue a session; narrowed further in handleSpawn
-	"GET /v1/agents/models":       true, // the start form's model list
-	"GET /v1/agents/catalog":      true, // the start form's agents and their models
-	"GET /v1/subscriptions":       true, // the start form's subscription picker (ADR-048)
-	"GET /v1/recent-dirs":         true, // the start form's project list
-	"GET /v1/browse":              true, // the start form's folder picker, rooted inside home (handleBrowse)
-	"GET /v1/browse/repos":        true, // the project search, same root (handleLocalRepos)
-	"GET /v1/browse/stat":         true, // the start form's "exists / will be created", same root (handleBrowseStat)
-	"GET /v1/sessions/{id}/relay": true, // the brief a relay offers, to read before starting it
-	"GET /v1/agents/{id}/term":    true, // the terminal: output, and typing
-	"GET /v1/agents/{id}/exit":    true, // why its program ended at once, for the terminal's tab
-	"POST /v1/agents/{id}/input":  true,
-	"POST /v1/agents/{id}/signal": true, // pause, resume, stop
-	"POST /v1/paste":              true, // a photo or file from the phone, typed in as its path
+	// Talks (ADR-110): start one with a person already linked, type into it,
+	// and answer what it holds — Send, Edit, Drop, Continue, End — from the
+	// phone, as the hold's notification asks (27-talks.md P1.3).
+	"POST /v1/talks":                true,
+	"POST /v1/talks/{id}/messages":  true,
+	"POST /v1/talks/{id}/held/send": true,
+	"POST /v1/talks/{id}/held/edit": true,
+	"POST /v1/talks/{id}/held/drop": true,
+	"POST /v1/talks/{id}/continue":  true,
+	"POST /v1/talks/{id}/accept":    true,
+	"POST /v1/talks/{id}/end":       true,
+	"POST /v1/agents":               true, // start or continue a session; narrowed further in handleSpawn
+	"GET /v1/agents/models":         true, // the start form's model list
+	"GET /v1/agents/catalog":        true, // the start form's agents and their models
+	"GET /v1/subscriptions":         true, // the start form's subscription picker (ADR-048)
+	"GET /v1/recent-dirs":           true, // the start form's project list
+	"GET /v1/browse":                true, // the start form's folder picker, rooted inside home (handleBrowse)
+	"GET /v1/browse/repos":          true, // the project search, same root (handleLocalRepos)
+	"GET /v1/browse/stat":           true, // the start form's "exists / will be created", same root (handleBrowseStat)
+	"GET /v1/sessions/{id}/relay":   true, // the brief a relay offers, to read before starting it
+	"GET /v1/agents/{id}/term":      true, // the terminal: output, and typing
+	"GET /v1/agents/{id}/exit":      true, // why its program ended at once, for the terminal's tab
+	"POST /v1/agents/{id}/input":    true,
+	"POST /v1/agents/{id}/signal":   true, // pause, resume, stop
+	"POST /v1/paste":                true, // a photo or file from the phone, typed in as its path
 	// The Inbox: save a note, a link or a photo for later, and delete one
 	// (03-contracts.md § Inbox). Nothing in it is typed anywhere until the
 	// user starts a chat from it.

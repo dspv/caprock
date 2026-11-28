@@ -17,6 +17,7 @@
  * browser), storage and the install details. Settings and pairing change on
  * the machine Caprock runs on (ADR-029), and the daemon refuses them anyway.
  */
+import { TalksSetting } from '@/components/TalksSetting'
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { ThemePicker } from '@/components/ThemePicker'
 import { FaceDefaultSetting } from '@/components/SessionFace'
@@ -175,6 +176,8 @@ export function StatusScreen() {
       {/* The other computers this one reaches (ADR-067): the sidebar's
         * "+ Add a machine" and #/settings/computers land here. */}
       {owner && <Computers />}
+      {/* Talks (ADR-110): the people you talk with through your agents. */}
+      {owner && <TalksSetting />}
       {/* After the phone and Telegram, in the desktop app what you change
         * while working: how a new agent starts, how the window and terminal
         * look, which editor opens. */}

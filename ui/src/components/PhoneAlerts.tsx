@@ -96,7 +96,8 @@ export function PhoneAlerts() {
             Each one opens with whose it is — the agent, the project and the session's title — then its folder and branch,
             with a link when your phone can open this dashboard. A dialog adds the tool and the command or file it asks
             about; a finished run adds its time, cost, tool calls and changed files. Telegram can read every message; tool
-            output is never sent, and code only if you switch it on.
+            output is never sent, and code only if you switch it on. A Talk waiting for you sends who it is with and why,
+            never the held message.
           </p>
         </Details>
       )}

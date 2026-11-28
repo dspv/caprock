@@ -18,6 +18,7 @@ import { WorkScreen } from '@/screens/Work'
 import { JarvisScreen } from '@/screens/Jarvis'
 import { FilesScreen } from '@/screens/Files'
 import { ChatsScreen } from '@/screens/Chats'
+import { TalkScreen, TalksScreen } from '@/screens/Talks'
 import { ChatScreen } from '@/screens/Chat'
 import { MachineScreen, MachinesScreen } from '@/screens/Machine'
 import { NewProjectScreen } from '@/components/NewProject'
@@ -149,6 +150,8 @@ export function Dashboard({ route, inApp = false, shown = true, scroller = pageS
       case 'files': return <FilesScreen project={r.project} wt={r.wt} />
       case 'chats': return <ChatsScreen key={r.archived ? 'archived' : 'open'} archived={r.archived} />
       case 'chat': return <ChatScreen key={r.id} id={r.id} />
+      case 'talks': return <TalksScreen with={r.with} />
+      case 'talk': return <TalkScreen key={r.id} id={r.id} />
       case 'module': return <Suspense fallback={null}><ModuleScreen key={r.id} id={r.id} to={r.to} /></Suspense>
       case 'machines': return <MachinesScreen />
       case 'machine': return <MachineScreen key={`${r.id}/${r.session ?? ''}`} id={r.id} session={r.session} tab={r.tab} joined={r.joined} />

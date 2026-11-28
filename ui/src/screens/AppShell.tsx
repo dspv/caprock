@@ -11,6 +11,7 @@
 import { Activity, lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { api, ApiError, errText, isPairedDevice, type SessionSummary, type SpawnRequest } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
+import { talksApi } from '@/lib/talks'
 import { APP_ROUTE, isMacPlatform, isTauri, isWorkspaceHash } from '@/lib/appmode'
 import { stepUiScale } from '@/lib/uiscale'
 import { installExternalLinks } from '@/lib/externalLinks'
@@ -1775,6 +1776,8 @@ export function AppShell() {
   }, [source, focused, current, model.projects, activeProjectId])
   fileScopeRef.current = fileScope
 
+  // Talks (ADR-110): one palette row per person linked, two actions to a Talk.
+  const talkPeople = useApi(() => talksApi.people().catch(() => []), [], { live: false, intervalMs: 60_000, keepUnchanged: true }).data
   const paletteItems = useMemo<PaletteItem[]>(() => {
     const items: PaletteItem[] = model.inbox.map((i) => ({
       id: `w-${i.session.session_id}`,
@@ -1791,6 +1794,8 @@ export function AppShell() {
       { id: 'a-shell', group: 'Actions', label: 'New shell', hint: keys('⌘T'), icon: <TerminalIcon size={14} />, run: () => onNewShell() },
       { id: 'a-quick-chat', group: 'Actions', label: 'Quick chat', detail: 'starts at once on the agent and model used last', hint: keys('⌥⌘N'), icon: <ChatIcon size={14} />, run: onQuickChatNow },
       { id: 'a-quick-chat-with', group: 'Actions', label: 'Quick chat with…', detail: 'pick the agent and model; Enter starts the last one used', icon: <ChatIcon size={14} />, run: onQuickChatChooser },
+      { id: 'a-talk', group: 'Actions', label: 'Talk with…', detail: 'your agent and someone else’s, talking for you two: invite, accept, people', icon: <ChatIcon size={14} />, run: () => goHash('#/talks') },
+      ...(talkPeople ?? []).map((p) => ({ id: `a-talk-${p.id}`, group: 'Actions' as const, label: `Talk with ${p.name || 'them'}`, detail: `a new Talk: ${p.status === 'online' ? 'online' : 'offline, it goes when they are back'}`, icon: <ChatIcon size={14} />, run: () => goHash(`#/talks?with=${encodeURIComponent(p.id)}`) })),
       { id: 'a-chats', group: 'Actions', label: 'Chats', detail: 'every chat, searchable; archive or delete one', icon: <ChatIcon size={14} />, run: () => goHash('#/chats') },
       { id: 'a-project', group: 'Actions', label: 'Add a project', hint: keys('⌘O'), icon: <FolderPlusIcon size={14} />, run: onAddProject },
       ...(source === 'api' && !isPairedDevice()
@@ -1895,7 +1900,7 @@ export function AppShell() {
       }
     }
     return items
-  }, [data.sessions, onCompare, savedItems, manageSaved, ws.tabs, labels, model.projects, model.inbox, sessionsById, projectsById, openSessions, prefs.inspector, current, onNewAgent, onNewShell, onQuickChatNow, onQuickChatChooser, goHash, onAddProject, onDashboard, onMail, toggleTheme, onSettings, run, showWorkspace, openSession, openSplit, onSelectProject, onOpenInbox, jumpToWaiting, splitShell, detach, editors, focusedSession?.cwd, openInEditor, source, onOpenChanges, fileScope, focused?.kind, activeProject, activeProjectId, onCleanCopies, onFromTemplate])
+  }, [data.sessions, onCompare, savedItems, manageSaved, ws.tabs, labels, model.projects, model.inbox, sessionsById, projectsById, openSessions, prefs.inspector, current, onNewAgent, onNewShell, onQuickChatNow, onQuickChatChooser, goHash, onAddProject, onDashboard, onMail, toggleTheme, onSettings, run, showWorkspace, openSession, openSplit, onSelectProject, onOpenInbox, jumpToWaiting, splitShell, detach, editors, focusedSession?.cwd, openInEditor, source, onOpenChanges, fileScope, focused?.kind, activeProject, activeProjectId, onCleanCopies, onFromTemplate, talkPeople])
 
   // Every session the daemon knows, by what it was about; one that is open or
   // live is already in the list above under its own id.

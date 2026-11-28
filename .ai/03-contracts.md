@@ -822,10 +822,21 @@ the target runs its ordinary Host and gate, and pairs it as a computer
   `bound: true`. A controller whose keys are reset (`caprock remote
   reset`) is refused by every computer it had reached and pairs again.
 
-**Talks (ADR-110, P1's backend; [27-talks.md](27-talks.md)).** Two people
+**Talks (ADR-110, P1; [27-talks.md](27-talks.md)).** Two people
 link their Caprocks once; a Talk is one goal between this side's agent and
 the other's. Code: `internal/talks` (the engine, the guard, the turn),
-`internal/api/talks.go`, `internal/daemon/talks.go`, `internal/store/talks.go`.
+`internal/api/talks.go`, `internal/daemon/talks.go`, `internal/store/talks.go`;
+the screens `ui/src/screens/Talks.tsx`, `ui/src/components/TalksSetting.tsx`,
+`ui/src/lib/talks.ts`.
+
+- **Who reaches what.** Invite, accept, `PATCH`/`DELETE
+  /v1/talks/people/{id}` and Settings → Talks are loopback only (`403`
+  elsewhere). The owner's paired phone also reads `GET /v1/talks`, `GET
+  /v1/talks/{id}` and `GET /v1/talks/people` (a viewer), and with control
+  starts a Talk with a person already linked and answers one: `POST
+  /v1/talks`, `/messages`, `held/send|edit|drop`, `continue`, `accept`,
+  `end` (`pairedDeviceRoutes`, `controllerRoutes`). A person reaches none of
+  them (`403`).
 
 - **The person link.** Another person's Caprock is a paired device of
   `kind: "person"`, role `talk` (`pairing.KindPerson`, `RoleTalk`): only a
@@ -923,7 +934,18 @@ the other's. Code: `internal/talks` (the engine, the guard, the turn),
   guard — `internal/redact` plus the never-share terms, case-folded — holds
   a message it catches (`redaction`, `draft_caught` the counts). A hold
   publishes a `notify` frame, kind `talk_hold`, `route` `#/talks/<id>`,
-  naming the person and why, never the message.
+  naming the person and why, never the message; and, when a Telegram bot
+  and chat are set up and Telegram is not muted, sends the same two lines
+  there (the bridge's outbox, else the report bot, as the alerts do) with
+  `Answer it in Caprock: <phone page>/#/talks/<id>` when the phone has an
+  address — the destination the owner chose (ADR-047), nothing new.
+- **Typing in.** **`POST /v1/talks/{id}/messages {text}`** sends what
+  this side's owner typed as a `human` envelope (`author.kind: person`,
+  `how: typed`), through the guard first: caught is `422` and nothing is
+  sent. It moves no turn — the next turn on either side reads it — except
+  that in a `finished` Talk it is the other side's agent's turn again
+  (`waiting` here; received there, a `finished` Talk is `my_turn`). `409`
+  in an `invited` or `ended` Talk; `400` without text.
 - **The hold's buttons.** **`POST /v1/talks/{id}/held/send`** sends the
   draft as it would leave — each value caught replaced by `[redacted:
   <kind>]` (`never-share term` for a term); **`held/edit {text}`** sends
@@ -952,8 +974,9 @@ the other's. Code: `internal/talks` (the engine, the guard, the turn),
   waits 5 s doubling to 5 minutes; a `401` ends the person's Talks here.
   **`GET /v1/talks/inbox/{talk}`** → `{have, state}`, what that side holds.
   Nothing is stored anywhere between the two machines.
-- **`/v1/live`.** `{type: "talks", data: {id, why}}` (local only) says a
-  Talk changed: `why` one of `started`, `sent`, `received`, `delivered`,
+- **`/v1/live`.** `{type: "talks", data: {id, why}}` (to this machine's
+  clients and the owner's paired devices, never a person) says a Talk
+  changed: `why` one of `started`, `sent`, `received`, `delivered`,
   `held`, `dropped`, `continued`, `accepted`, `ended`, `offline`.
 
 **The way back to a paired phone (2026-10-15).** `GET /v1/pair/state`
@@ -1498,7 +1521,7 @@ Every `/v1/live` frame carries a `seq`, so a client that reconnects gets exactly
 - **Liveness.** The daemon sends `{type:"ping", seq, data:t}` every 10 s, and answers a client's `{"ping":t}` with `{type:"pong", seq, data:t}`; the client answers the daemon's ping with `{"pong":t}`. A ping or pong's `seq` is the client's position, not a new frame. Either side takes 25 s with nothing received for a dead socket and closes it (the daemon also counts a WebSocket protocol pong, which every browser sends by itself, so a client that predates the ping frame is not cut off); the client reconnects with `since`.
 - **Client.** `ui/src/lib/live.ts` drops a frame whose seq is not above the last applied (a hello or reset sets the position outright), bumps the refetch tick on `reset`, and keeps the `notify` frames it received, newest first and one per `id`, for WP-09 to show.
 - **Only some types** (ADR-067, Phase 2). Query `?types=notify,permission` sends only frames of those types, plus `hello`, `reset`, `ping` and `pong`; a type is lowercase letters and `_`, at most 32, else **400**; empty or absent is every type. A frame left out still moves the position, so `since` works as before. Another computer's daemon asks this way, so a prompt there costs the relay one frame, not every event of every session. A daemon that predates it ignores the parameter and sends everything; the caller drops what it did not ask for.
-- **Local only.** A frame that carries what another computer said — a `notify` with `machine`, and every `machines` frame (§ Other computers) — and every `talks` frame (§ Talks), goes to this machine's own clients only (loopback, not forwarded: `isLocal`), never to a paired phone or computer, so access is not transitive. It is numbered and replayed like any other; a device's socket skips it.
+- **Local only.** A frame that carries what another computer said — a `notify` with `machine`, and every `machines` frame (§ Other computers) — goes to this machine's own clients only (loopback, not forwarded: `isLocal`), never to a paired phone or computer, so access is not transitive. It is numbered and replayed like any other; a device's socket skips it.
 
 ### Client reconnect policy
 
@@ -1513,7 +1536,7 @@ One policy for both sockets, `ui/src/lib/reconnect.ts` (WP-13, [21-app.md § Pha
 
 ### Notify frame
 
-`{type:"notify", seq, data:{id, kind, session_id, project?, title, body, prompt_id?, actions?, route?}}` — an alert for the desktop app (kind `module`, with an empty `session_id`, is a private module's `POST /v1/x/<id>/notify` — `id` `module-<id>-<ns>`, `title` `<module name> · <title>`, `body` the module's, `route` `#/x/<id>`, which a click opens: the `notify` command's `route`, kept only when it is `#/x/<module id>`, then `caprock:open-route` on macOS and Linux, the app coming forward elsewhere; published only while `notify_approval` or `notify_finished` is on, § Private modules; kinds `ci` and `review`, with an empty `session_id`, come from GitHub, § GitHub; kind `talk_hold`, with an empty `session_id`, is a Talk held for its owner (§ Talks) — `id` `talk-<talk id>-<ns>`, `title` `Talk with <name> is waiting for you`, `body` why (what the guard caught, the cap, the agent asking, a failed turn) and never the message, `route` `#/talks/<id>`; kind `window`, also with an empty `session_id`, is the plan-window stop pausing or resuming sessions — `id` `window-paused-<ms>` or `window-resumed-<ms>`, `title` `Paused 2 sessions · Claude's 5-hour limit at 91%` or `Resumed 2 sessions · Claude's plan window reset`, `body` one session per line (project · title) and, for a pause, `They resume after it resets at 19:00.`; published whenever the stop acts, not behind a notify switch) (WP-09, [21-app.md § Notifications](21-app.md#notifications)). Code: `internal/alerts` (`Notify`), `internal/daemon/phonealerts.go`, `ui/src/lib/notify.ts`, `app/src-tauri/src/notify.rs`, `app/src-tauri/src/notify_macos.rs`.
+`{type:"notify", seq, data:{id, kind, session_id, project?, title, body, prompt_id?, actions?, route?}}` — an alert for the desktop app (kind `module`, with an empty `session_id`, is a private module's `POST /v1/x/<id>/notify` — `id` `module-<id>-<ns>`, `title` `<module name> · <title>`, `body` the module's, `route` `#/x/<id>`, which a click opens: the `notify` command's `route`, kept only when it is `#/x/<module id>`, then `caprock:open-route` on macOS and Linux, the app coming forward elsewhere; published only while `notify_approval` or `notify_finished` is on, § Private modules; kinds `ci` and `review`, with an empty `session_id`, come from GitHub, § GitHub; kind `talk_hold`, with an empty `session_id`, is a Talk held for its owner (§ Talks) — `id` `talk-<talk id>-<ns>`, `title` `Talk with <name> is waiting for you`, `body` why (what the guard caught, the cap, the agent asking, a failed turn) and never the message, `route` `#/talks/<id>`, which a click opens (`notifyRoute`, `notify::is_route`); kind `window`, also with an empty `session_id`, is the plan-window stop pausing or resuming sessions — `id` `window-paused-<ms>` or `window-resumed-<ms>`, `title` `Paused 2 sessions · Claude's 5-hour limit at 91%` or `Resumed 2 sessions · Claude's plan window reset`, `body` one session per line (project · title) and, for a pause, `They resume after it resets at 19:00.`; published whenever the stop acts, not behind a notify switch) (WP-09, [21-app.md § Notifications](21-app.md#notifications)). Code: `internal/alerts` (`Notify`), `internal/daemon/phonealerts.go`, `ui/src/lib/notify.ts`, `app/src-tauri/src/notify.rs`, `app/src-tauri/src/notify_macos.rs`.
 
 - **From another computer** (ADR-067, Phase 2; buttons Phase 3, 2026-11-07). A frame with `machine` and `machine_name` was decided on a computer this one reaches and re-published here, local only (§ Other computers). Its `session_id`, `prompt_id` and `actions` are that computer's. The app shows it with ` · on <machine_name>` after the title and hands the shell `{title, body, id: "m-<id>", sessionId, promptId, actions, machine}`: with `machine` set the shell's Approve and Deny answer **there**, with `POST /v1/m/{machine}/v1/agents/{session_id}/permission` `{id: prompt_id, choice}` to its loopback daemon, which carries it through its link (a 409 there is *Already answered*; a `403`, `502` or `503` from the link is *Could not answer*, *the other computer could not be reached*), and a click on the body opens `#/m/<machine>/session/<session_id>` (the shell's `caprock:open-route`, which the page takes only in that shape, ids of letters, digits, `_`, `-` and `.`). Whether it still waits is asked with `GET /v1/m/{machine}/v1/agents/{session_id}/permission`; when a `machines` frame says `why: "answered"` for that computer and session, the page withdraws it (`withdraw_notifications`). On Windows, as for this machine's, the click opens the session, whose prompt card answers it. A shell from before `machine` ignores it and would answer on this machine, where no such session waits: the daemon refuses it and the shell says *Could not answer*. Telegram here never sends it.
 - **One decision, two senders.** The alert rules (below, § Phone alerts) run once over the stored events; a kind is decided while Telegram's switch or the app's is on, and the 3-minute per-session cooldown and the 20-an-hour cap count each decision once for both. Each sender then delivers it only if its own switch is on. `PUT /v1/settings` takes `notify_approval` (on unless turned off; every "Needs you": a dialog, and since 2026-10-21 a turn that ended on a question or an error) and `notify_finished` (accepted and returned, no longer read: a Done turn raises no notification, § Needs you and Done), stored as pointers in `config.json`; `GET` returns both. Telegram's `alert_*` switches are untouched and stay off unless turned on.

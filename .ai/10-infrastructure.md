@@ -125,6 +125,13 @@ stand per run, started by `ui/e2e/stand.ts`, and torn down after it:
   `ui/e2e/has-browser.mjs` checks for it and prints that command.
 - **What it kills** is only what it started: the daemon, `vite preview`, and
   the pty-hosts that daemon recorded in its own data directory.
+- **Two people** (Talks, ADR-110): `ui/e2e/talks.spec.ts` starts its own
+  pair with `ui/e2e/talks-stand.ts` — a relay on loopback
+  (`testdata/looprelay`, which refuses any other interface; never the hosted
+  relay), and two daemons set up as above, Dima's and Ana's, each with its
+  own `vite preview`, both pointed at that relay with access from anywhere
+  off until the invitation turns it on. It stops all five when the spec
+  ends.
 
 Every test gets a fresh page and fails on any console error, uncaught
 exception or request that leaves the stand. It also fails when it leaves the

@@ -123,8 +123,14 @@ pub fn machine_route(machine: &str, session: &str) -> String {
 }
 
 /// A route a notification may open: a private module's screen, `#/x/<id>`
-/// with the dashboard's module id (lowercase, digits, '-', up to 32).
+/// with the dashboard's module id (lowercase, digits, '-', up to 32), or a
+/// Talk a hold waits in, `#/talks/t_<24 hex>` (ADR-110).
 pub fn is_route(s: &str) -> bool {
+    if let Some(t) = s.strip_prefix("#/talks/t_") {
+        return t.len() == 24
+            && t.bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b));
+    }
     let Some(id) = s.strip_prefix("#/x/") else {
         return false;
     };
@@ -433,6 +439,9 @@ mod tests {
     #[test]
     fn only_a_module_screen_is_a_route() {
         assert!(is_route("#/x/ops"));
+        assert!(is_route("#/talks/t_0123456789abcdef01234567"));
+        assert!(!is_route("#/talks/t_0123456789abcdef0123456"));
+        assert!(!is_route("#/talks/t_0123456789ABCDEF01234567"));
         assert!(is_route("#/x/ops-desk2"));
         for r in [
             "",

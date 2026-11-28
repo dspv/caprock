@@ -2955,7 +2955,9 @@ export const api = {
   retention: () => get<Retention>('/v1/claude/retention'),
   /** Writes cleanupPeriodDays (keep_days) into ~/.claude/settings.json, the one key; refused (409) when the file is not valid JSON. */
   keepTranscripts: () => post<Retention>('/v1/claude/retention', {}),
-  pairState: () => get<PairState>('/v1/pair/state'),
+  // A person linked for Talks (ADR-110) is not a device of the owner's: the
+  // phone list leaves them out; Talks → People lists them.
+  pairState: () => get<PairState>('/v1/pair/state').then((st) => ({ ...st, devices: (st.devices ?? []).filter((d) => (d.kind as string | undefined) !== 'person') })),
   /** Exchange a code for a token. The one call a device makes before it is trusted. */
   pairRedeem: (code: string, name: string) =>
     post<{ token: string; id: string; name: string }>('/v1/pair', { code, name }),
@@ -3825,3 +3827,6 @@ export interface Permission {
 
 /** `dismiss` types nothing: it takes away the card of a prompt settled where no hook saw it. */
 export type PermissionChoice = 'allow' | 'always' | 'deny' | 'dismiss'
+
+/** The request helpers, for a feature's own module (lib/talks.ts). */
+export { get as getJSON, post as postJSON }

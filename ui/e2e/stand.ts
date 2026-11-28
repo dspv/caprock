@@ -43,7 +43,7 @@ export function readState(): StandState {
   return JSON.parse(readFileSync(p, 'utf8')) as StandState
 }
 
-function freePort(): Promise<number> {
+export function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const s = net.createServer()
     s.unref()
@@ -55,9 +55,9 @@ function freePort(): Promise<number> {
   })
 }
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
-async function waitHTTP(url: string, ms: number, alive: () => boolean): Promise<void> {
+export async function waitHTTP(url: string, ms: number, alive: () => boolean): Promise<void> {
   const until = Date.now() + ms
   for (;;) {
     try {
@@ -70,12 +70,12 @@ async function waitHTTP(url: string, ms: number, alive: () => boolean): Promise<
   }
 }
 
-function run(cmd: string, args: string[], cwd: string, env: NodeJS.ProcessEnv = process.env): void {
+export function run(cmd: string, args: string[], cwd: string, env: NodeJS.ProcessEnv = process.env): void {
   const r = spawnSync(cmd, args, { cwd, env, encoding: 'utf8' })
   if (r.status !== 0) throw new Error(`${cmd} ${args.join(' ')} failed:\n${r.stdout}\n${r.stderr}`)
 }
 
-function alive(p: ChildProcess): boolean {
+export function alive(p: ChildProcess): boolean {
   return p.exitCode === null && p.signalCode === null
 }
 
@@ -194,7 +194,7 @@ export async function startStand({ bare = false }: { bare?: boolean } = {}): Pro
  * recorded each in its own data directory, so these are pids this stand
  * started, never anyone else's.
  */
-function killHolders(data: string): void {
+export function killHolders(data: string): void {
   const reg = path.join(data, 'ptyhost')
   let names: string[] = []
   try { names = readdirSync(reg).filter((n) => n.endsWith('.json')) } catch { return }

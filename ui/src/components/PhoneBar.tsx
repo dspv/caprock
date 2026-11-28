@@ -63,6 +63,9 @@ export function PhoneBar({ link, heardAt }: { link: LinkStatus; heardAt: () => n
             <a role="menuitem" href="#/chats" className={item} onClick={() => setOpen(false)}>
               <ChatIcon size={18} /> Chats
             </a>
+            <a role="menuitem" href="#/talks" className={item} onClick={() => setOpen(false)}>
+              <ChatIcon size={18} /> Talks
+            </a>
             <a role="menuitem" href="#/home" className={item} onClick={() => setOpen(false)}>
               <DashboardIcon size={18} /> Dashboard
             </a>
