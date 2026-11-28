@@ -84,6 +84,8 @@ func TestTheScriptSaysWhatItChecks(t *testing.T) {
 		"as_caprock caprock service install",
 		"as_caprock caprock join",
 		"for 60 minutes",
+		"s/^ID_LIKE=//p",
+		"https://deb.nodesource.com/node_22.x nodistro main",
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("the script lacks %q", want)

@@ -183,6 +183,19 @@ export const serverApi = {
     call<ServerScript>('/v1/machines/server-script', { method: 'POST', body: JSON.stringify({ ssh_key: sshKey }) }),
 }
 
+/** The systems the setup script supports, as the screen says it (internal/serverscript). */
+export const SERVER_SYSTEMS = 'For the Debian family: Debian, Ubuntu, Kali and the systems built on them'
+
+/**
+ * "Need a Mac server? Ask for it": a new GitHub issue, filled in. The user
+ * reads it and submits it themselves; nothing about them or this computer is
+ * in it.
+ */
+export const MAC_SERVER_ISSUE = 'https://github.com/dspv/caprock/issues/new?' + new URLSearchParams({
+  title: 'New server: set up a Mac server',
+  body: "I'd like New server to set up a Mac (for example a rented Mac mini) the way it sets up a Linux server.\n\nWhere I would rent it:\n\nWhat I would run on it:\n",
+}).toString()
+
 /** Where each provider's create form takes the script, and its own price page (ADR-109: no price here). */
 export const SERVER_PROVIDERS: readonly { name: string; field: string; prices: string }[] = [
   { name: 'Hetzner Cloud', field: 'Cloud config', prices: 'https://www.hetzner.com/cloud' },

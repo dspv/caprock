@@ -86,10 +86,17 @@ what it left open:
   after this lands is its first run. Open: once a signed release exists,
   the laptop should require signatures for that version and later, so a
   missing `.minisig` cannot quietly downgrade a script to checksum-only.
-- Supported systems: Ubuntu 24.04 LTS or newer and Debian 12 or newer,
-  because the agents need Node.js 18 or newer and those are the releases
-  whose own `nodejs` package has it (Ubuntu 22.04's is 12). Node.js comes
-  from the distribution, not the vendor's archive.
+- Supported systems (owner, 2026-11-28): the whole Debian family, found by
+  `ID` or `ID_LIKE` in `/etc/os-release` naming `debian` or `ubuntu` —
+  Debian 12 and 13, Ubuntu 22.04 and newer, Kali rolling and the systems
+  built on them — any version. The agents need Node.js 18 or newer: the
+  distribution's when its candidate is, otherwise NodeSource's signed
+  repository with Node.js 22 (Ubuntu 22.04's own is 12), and the step
+  stops naming itself if what is installed is still older. Not Arch,
+  Alpine or macOS; a Mac server is *Ask for it* on the New server screen,
+  a GitHub issue filled in for the user to submit. Kali's
+  `unattended-upgrades` is installed and on, but its default origins name
+  Debian's security archive, which Kali does not use.
 - Codex is `npm install --global @openai/codex` (its documented install),
   not a GitHub release archive. Claude Code is `https://claude.ai/install.sh`,
   run as `caprock`.
@@ -109,18 +116,22 @@ what it left open:
   container is behind build tags** (`smoke servercontainer`, `make
   server-container-test`, Linux with Docker; `CAPROCK_SERVER_IMAGE` picks the
   image, `debian:12` when unset): Ubuntu 24.04 (Hetzner's and DigitalOcean's
-  default) and Debian 12, each with systemd as
+  default), Ubuntu 22.04 (the NodeSource path), Debian 12 and 13 and Kali
+  rolling, each with systemd as
   PID 1 in a privileged container, the release served locally, the relay
   and file server reached through socat on the container's loopback, the
   agents skipped (`CAPROCK_SETUP_SKIP_AGENTS=1`), ending in the join and
   reads of lingering, the firewall, unattended upgrades and the user unit.
   It is not in `make check` (minutes, a privileged container, package
   mirrors); CI runs it as `ci.yml`'s required `server-container` matrix
-  (`ubuntu:24.04`, `debian:12`) on
+  (`ubuntu:24.04`, `ubuntu:22.04`, `debian:12`, `debian:13`,
+  `kalilinux/kali-rolling`) on
   ubuntu-latest when `internal/serverscript/`, `internal/peers/`,
-  `cmd/caprock/`, the test or `ci.yml` change, and on `workflow_dispatch`. It
-  was not run when it was written: the machine it was written on had no
-  Docker daemon.
+  `cmd/caprock/`, the test or `ci.yml` change, and on `workflow_dispatch`.
+  Its first runs (#1117) found two gaps the script now closes: it starts
+  `user@<uid>.service` itself after lingering (and prints its status and
+  journal when that fails), and it installs `procps`, whose `sysctl` `ufw
+  enable` runs and a minimal Debian lacks.
 
 ### P2 — the Hetzner Cloud path
 

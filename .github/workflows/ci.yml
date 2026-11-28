@@ -327,8 +327,10 @@ jobs:
   # A new server's setup script (ADR-109 P1), run as root with systemd in a
   # privileged container, joining a daemon on the runner through a relay in
   # the test (make server-container-test,
-  # internal/smoke/server_container_test.go), on each supported family:
-  # ubuntu:24.04 (Hetzner's and DigitalOcean's default image) and debian:12,
+  # internal/smoke/server_container_test.go), across the Debian family:
+  # ubuntu:24.04 (Hetzner's and DigitalOcean's default image), ubuntu:22.04
+  # (its Node.js is too old: the NodeSource path), debian:12, debian:13 and
+  # kalilinux/kali-rolling,
   # booted the same way. The agents' installs are skipped
   # (CAPROCK_SETUP_SKIP_AGENTS=1): no Claude Code or Codex download, no
   # sign-in. ubuntu-latest only, the runner with Docker; required.
@@ -339,7 +341,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        image: ["ubuntu:24.04", "debian:12"]
+        image: ["ubuntu:24.04", "ubuntu:22.04", "debian:12", "debian:13", "kalilinux/kali-rolling"]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:

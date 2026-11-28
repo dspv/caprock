@@ -127,7 +127,8 @@ func header(in Input) string {
 # DigitalOcean: User data; any provider that runs cloud-init), or run it once
 # as root over SSH: sudo sh caprock-setup.sh
 #
-# For Ubuntu 24.04 LTS or newer, or Debian 12 or newer. As root, each step
+# For the Debian family: Debian, Ubuntu, Kali and the systems built on them
+# (by ID or ID_LIKE in /etc/os-release). As root, each step
 # printed before it runs, and the first that fails stops the script with
 # its name:
 #   - a user "caprock" with no password and no sudo, lingering on, so its
@@ -135,7 +136,8 @@ func header(in Input) string {
 #   - unattended security upgrades, and a firewall that admits nothing
 #     inbound but SSH when SSH stays on
 #   - ` + ssh + `
-#   - Git, Node.js and npm from the distribution; Claude Code with
+#   - Git from the distribution; Node.js 18 or newer from the distribution,
+#     or NodeSource's signed repository when it is older; Claude Code with
 #     Anthropic's own installer; Codex from npm
 #   - Caprock ` + in.Version + ` from its GitHub release, checked by
 #     ` + check + `
@@ -175,33 +177,24 @@ stop() {
 }
 
 unsupported() {
-	stop "this system is not supported: use Ubuntu 24.04 LTS or newer, or Debian 12 or newer"
+	stop "this system ($1) is not supported: use one of the Debian family (Debian, Ubuntu, Kali and the systems built on them)"
 }
 
 step 'check the system'
 [ "$(id -u)" -eq 0 ] || stop 'run this as root: sudo sh caprock-setup.sh'
-[ -r /etc/os-release ] || unsupported
+[ -r /etc/os-release ] || unsupported 'no /etc/os-release'
 os_id=$(sed -n 's/^ID=//p' /etc/os-release | tr -d '"')
+os_like=$(sed -n 's/^ID_LIKE=//p' /etc/os-release | tr -d '"')
 os_ver=$(sed -n 's/^VERSION_ID=//p' /etc/os-release | tr -d '"')
-os_major=${os_ver%%.*}
-case "$os_major" in
-'' | *[!0-9]*) unsupported ;;
-esac
-case "$os_id" in
-ubuntu)
-	# An LTS release is an even year's .04.
-	case "$os_ver" in
-	*.04) ;;
-	*) unsupported ;;
+# The family is the package manager and the tools the steps below use: a
+# system is in it by its own ID or by one it names in ID_LIKE.
+family=''
+for id in $os_id $os_like; do
+	case "$id" in
+	debian | ubuntu) family=debian ;;
 	esac
-	[ $((os_major % 2)) -eq 0 ] || unsupported
-	[ "$os_major" -ge 24 ] || unsupported
-	;;
-debian)
-	[ "$os_major" -ge 12 ] || unsupported
-	;;
-*) unsupported ;;
-esac
+done
+[ -n "$family" ] || unsupported "$os_id"
 case "$(uname -m)" in
 x86_64 | amd64)
 	arch=amd64
@@ -216,7 +209,7 @@ esac
 if [ "$CAPROCK_SSH_KEY" != 1 ] && [ -n "${SSH_CONNECTION:-}" ]; then
 	stop 'you are running this over SSH, and this script would stop SSH: make it again on the computer you work on with "I log in with an SSH key" ticked'
 fi
-echo "$os_id $os_ver, $arch"
+echo "$os_id ${os_ver:-rolling} ($family family), $arch"
 
 step 'install packages from the distribution'
 export DEBIAN_FRONTEND=noninteractive
@@ -224,21 +217,48 @@ apt_get() {
 	apt-get -o DPkg::Lock::Timeout=600 -y "$@"
 }
 apt_get update
-apt_get install --no-install-recommends ca-certificates curl git tar gzip procps nodejs npm ufw unattended-upgrades
+apt_get install --no-install-recommends ca-certificates curl git tar gzip procps gnupg ufw unattended-upgrades
 if [ -n "$CAPROCK_MINISIGN_KEY" ]; then
 	apt_get install --no-install-recommends minisign
 fi
+
+step 'install Node.js 18 or newer'
+# The distribution's own when it is new enough; otherwise NodeSource's
+# signed repository (its documented setup), Node.js 22.
+candidate=$(apt-cache policy nodejs | sed -n 's/^ *Candidate: //p')
+candidate=${candidate#*:}
+candidate_major=${candidate%%.*}
+case "$candidate_major" in
+'' | *[!0-9]*) candidate_major=0 ;;
+esac
+if [ "$candidate_major" -ge 18 ]; then
+	echo "from the distribution: $candidate"
+	apt_get install --no-install-recommends nodejs npm
+else
+	echo "the distribution has Node.js ${candidate:-none}: from NodeSource instead"
+	mkdir -p /etc/apt/keyrings
+	nskey=$(mktemp)
+	curl -fsSL --retry 3 -o "$nskey" https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key
+	gpg --dearmor --yes -o /etc/apt/keyrings/nodesource.gpg "$nskey"
+	rm -f "$nskey"
+	echo 'deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main' >/etc/apt/sources.list.d/nodesource.list
+	apt_get update
+	apt_get install nodejs
+fi
 node_major=$(node -p 'process.versions.node.split(".")[0]')
 [ "$node_major" -ge 18 ] || stop "Node.js $node_major is too old for the agents: 18 or newer is needed"
+echo "Node.js $(node --version)"
 
 step 'create the user caprock: no password, no sudo, its services running with nobody logged in'
 if ! id caprock >/dev/null 2>&1; then
 	useradd --create-home --user-group --shell /bin/bash caprock
 fi
-passwd --lock caprock >/dev/null
-if id -nG caprock | tr ' ' '\n' | grep -qx sudo; then
-	gpasswd --delete caprock sudo >/dev/null
-fi
+usermod --lock caprock
+for g in sudo wheel; do
+	if id -nG caprock | tr ' ' '\n' | grep -qx "$g"; then
+		gpasswd --delete caprock "$g" >/dev/null
+	fi
+done
 loginctl enable-linger caprock
 cuid=$(id -u caprock)
 chome=$(getent passwd caprock | cut -d: -f6)
