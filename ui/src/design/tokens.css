@@ -961,11 +961,17 @@ html[data-app][data-vibrancy], html[data-app][data-vibrancy] body { background: 
  * "the shortcuts there are tiny, you can't see a damn thing"), so a key that
  * has no room is left out and kept in the tooltip. `.app-kbd-compact` is the
  * off-macOS form (2026-11-28): the row's shared Ctrl+Shift is written once
- * above it, so a chip holds M or Alt+F, at 11px with tighter padding: the
- * two 43px Alt chips and four 32px columns fit the 260px sidebar. */
+ * above it, so a chip holds M or Alt+F, at 11px with tighter padding. It
+ * is the bundled JetBrains Mono everywhere (--font-mono, main.tsx), but
+ * Linux and Windows may round each glyph to a whole pixel: 6.6px here, 7px
+ * in CI's headless shell, where at 4px a side the Alt+P chip went (45px).
+ * At 3px a side an Alt chip is 41-43px, and a glyph up to 7.3px wide (0.66em,
+ * past every monospace face at 11px, rounded up) still fits the two Alt
+ * chips and four 32px columns in the 260px sidebar's 217px
+ * (ui/e2e/sidebar-keys-fit.spec.ts holds it at 7.1px). */
 [data-app] .app-kbd-key.app-kbd-compact {
   font-size: 11px;
-  padding: 3px 4px;
+  padding: 3px 3px;
 }
 /* A folded column's chip is part of its button (components/SidebarFooter
  * KeySlot): a click on the key is a click on the icon. The pointer over
