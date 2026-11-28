@@ -126,9 +126,10 @@ export function useChipFit<T extends HTMLElement>(deps: readonly unknown[] = [])
 /**
  * The folded row's chips: which are drawn. Its columns are the children
  * marked `data-key-slot`, each with its chip as `[data-key-chip]`; every
- * other child (the fold arrow) keeps its width.
+ * other child (the fold arrow) keeps its width. `minCol` is the narrowest
+ * an icon's column may get (32px on a Mac, 28px for the compact chips).
  */
-export function useFoldedChipFit<T extends HTMLElement>(count: number, enabled: boolean): [RefObject<T | null>, boolean[]] {
+export function useFoldedChipFit<T extends HTMLElement>(count: number, enabled: boolean, minCol = 32): [RefObject<T | null>, boolean[]] {
   const ref = useRef<T>(null)
   const [shown, setShown] = useState<boolean[]>(() => Array<boolean>(count).fill(true))
   const last = useRef('')
@@ -145,9 +146,9 @@ export function useFoldedChipFit<T extends HTMLElement>(count: number, enabled: 
       const k = s.querySelector<HTMLElement>('[data-key-chip]')
       return k ? k.getBoundingClientRect().width : null
     })
-    const next = fitFoldedChips(chips, room)
+    const next = fitFoldedChips(chips, room, minCol)
     const key = next.join()
     if (key !== last.current) { last.current = key; setShown(next) }
-  }, [count, enabled])
+  }, [count, enabled, minCol])
   return [ref, shown]
 }

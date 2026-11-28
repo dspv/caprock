@@ -594,26 +594,36 @@ describe('the sidebar', () => {
     }
   })
 
-  it('spells the folded keys for Windows and Linux, shows them on focus or held Ctrl, and on hover leaves the key to the tooltip', () => {
-    const platform = vi.spyOn(navigator, 'platform', 'get').mockReturnValue('Linux x86_64')
-    try {
-      localStorage.setItem(FOLDS_KEY, JSON.stringify(['footer']))
-      renderSidebar({ onSettings: vi.fn(), onMail: vi.fn(), onPipeline: vi.fn() })
-      const footer = document.querySelector('[data-sidebar-footer]')!
-      expect(footer.getAttribute('data-folded-keys')).toBe('hover')
-      const chips = [...footer.querySelectorAll('[data-key-slot] > kbd')]
-      expect(chips.map((k) => k.textContent)).toEqual(['Ctrl+Alt+Shift+F', 'Ctrl+Shift+M', 'Ctrl+Shift+D', 'Ctrl+Shift+,', 'Ctrl+Shift+P', 'Ctrl+Alt+Shift+P'])
-      for (const k of chips) {
-        expect(k).toHaveClass('app-kbd-key', 'app-kbd-float', 'invisible')
-        // A chip on hover was a second tooltip beside the icon's (a Windows tester, 2026-10-20).
-        expect(k.className).not.toMatch(/group-hover|group-focus-within/)
-        const button = k.parentElement!.querySelector('button')!
-        expect(button.getAttribute('title') ?? button.getAttribute('aria-label')).toContain(k.textContent!)
-      }
-    } finally { platform.mockRestore() }
-    expect(foldedKeys(true)).toBe('shown')
-    expect(foldedKeys(false)).toBe('hover')
-  })
+  // Owner, 2026-11-28, translated: "on Windows, above the bottom menu panel
+  // there are no keyboard shortcuts — and remember they must fit correctly
+  // there". Ctrl+Shift once above the row, the rest of each key over its icon.
+  for (const platformName of ['Win32', 'Linux x86_64']) {
+    it(`shows the folded keys at rest on ${platformName}: Ctrl+Shift once, the rest over each icon, the whole key in its tooltip`, () => {
+      const platform = vi.spyOn(navigator, 'platform', 'get').mockReturnValue(platformName)
+      try {
+        localStorage.setItem(FOLDS_KEY, JSON.stringify(['footer']))
+        renderSidebar({ onSettings: vi.fn(), onMail: vi.fn(), onPipeline: vi.fn() })
+        const footer = document.querySelector('[data-sidebar-footer]')!
+        const row = footer.querySelector('[data-folded-keys]')!
+        expect(row.getAttribute('data-folded-keys')).toBe('prefixed')
+        expect(footer.querySelector('[data-key-prefix]')!.textContent!.trim()).toBe('Ctrl+Shift +')
+        const chips = [...row.querySelectorAll<HTMLElement>('[data-key-slot] > kbd[data-key-chip]')]
+        expect(chips.map((k) => k.textContent)).toEqual(['Alt+F', 'M', 'D', ',', 'P', 'Alt+P'])
+        const full = ['Ctrl+Alt+Shift+F', 'Ctrl+Shift+M', 'Ctrl+Shift+D', 'Ctrl+Shift+,', 'Ctrl+Shift+P', 'Ctrl+Alt+Shift+P']
+        chips.forEach((k, i) => {
+          expect(k).toHaveClass('app-kbd-key', 'app-kbd-compact')
+          expect(k).not.toHaveClass('invisible')
+          // No Mac glyph: Windows fonts drew ⇧ as a blob that read as @ (stripKey).
+          expect(k.textContent).not.toMatch(/[⇧⌘⌥⌃@]/)
+          expect(k.title).toContain(full[i])
+          const button = k.parentElement!.querySelector('button')!
+          expect(button.getAttribute('title') ?? button.getAttribute('aria-label')).toContain(full[i])
+        })
+      } finally { platform.mockRestore() }
+      expect(foldedKeys(true)).toBe('shown')
+      expect(foldedKeys(false)).toBe('prefixed')
+    })
+  }
 
   it('shows the Pipeline button folded too, marked while the page is in front, and none when the shell offers no Pipeline', () => {
     localStorage.setItem(FOLDS_KEY, JSON.stringify(['footer']))
@@ -719,7 +729,6 @@ describe('the sidebar', () => {
       const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'design', 'tokens.css'), 'utf8')
       expect(css).not.toMatch(/:hover\s*>\s*\.app-kbd-reveal/)
       expect(css).toMatch(/\[data-show-keys\] \.app-kbd-reveal/)
-      expect(css).toMatch(/\[data-show-keys\] \.app-kbd-float/)
     })
   }
 
