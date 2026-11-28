@@ -41,6 +41,12 @@ import (
 // the new computer first.
 const JoinTTL = 15 * time.Minute
 
+// ServerJoinTTL is how long a key made by New server works (ADR-108 amended
+// by ADR-109): it waits inside a setup script while the user signs up at a
+// provider, picks a server and the server boots and installs its tools, and
+// an expired key in a server's user data cannot be replaced without SSH.
+const ServerJoinTTL = 60 * time.Minute
+
 // JoinTries is how many wrong secrets burn a key.
 const JoinTries = 5
 
@@ -75,8 +81,9 @@ type JoinOptions struct {
 	Pair func(ctx context.Context, link string) (Status, error)
 	// Base bounds every rendezvous: the daemon's life.
 	Base context.Context
-	// TTL overrides JoinTTL, for tests.
-	TTL time.Duration
+	// TTL overrides JoinTTL, and ServerTTL ServerJoinTTL, for tests.
+	TTL       time.Duration
+	ServerTTL time.Duration
 }
 
 // JoinState is GET /v1/machines/join-key: never the key.
@@ -93,6 +100,9 @@ type JoinState struct {
 	// Machine is the computer that joined, as GET /v1/machines lists it.
 	Machine *Status `json:"machine,omitempty"`
 	Error   string  `json:"error,omitempty"`
+	// Server says the key was made by New server (ServerJoinTTL), so the
+	// screen that made the other kind knows its own key was withdrawn.
+	Server bool `json:"server,omitempty"`
 }
 
 // NewJoinKey is POST /v1/machines/join-key's answer: the key, once.
@@ -117,6 +127,7 @@ type joinKey struct {
 	host    *remote.Host
 	stop    context.CancelFunc
 	tries   int
+	server  bool
 	state   string
 	joiner  string
 	machine *Status
@@ -136,6 +147,9 @@ func NewJoinDesk(opt JoinOptions) *JoinDesk {
 	if opt.TTL <= 0 {
 		opt.TTL = JoinTTL
 	}
+	if opt.ServerTTL <= 0 {
+		opt.ServerTTL = ServerJoinTTL
+	}
 	return &JoinDesk{opt: opt, log: opt.Log}
 }
 
@@ -143,7 +157,13 @@ func NewJoinDesk(opt JoinOptions) *JoinDesk {
 var ErrNoIdentity = errors.New("this computer has no relay key yet: open Settings → Use on your phone once, or run `caprock remote on` and off")
 
 // New makes a key, replacing any open one, and starts waiting for it.
-func (j *JoinDesk) New() (NewJoinKey, error) {
+func (j *JoinDesk) New() (NewJoinKey, error) { return j.open(false) }
+
+// NewServer is New for a key that goes into a server's setup script: the
+// same key, open for ServerJoinTTL. It replaces any open key, of either kind.
+func (j *JoinDesk) NewServer() (NewJoinKey, error) { return j.open(true) }
+
+func (j *JoinDesk) open(server bool) (NewJoinKey, error) {
 	if j.opt.Controller == nil || j.opt.Controller() == "" {
 		return NewJoinKey{}, ErrNoIdentity
 	}
@@ -155,7 +175,11 @@ func (j *JoinDesk) New() (NewJoinKey, error) {
 	if err != nil {
 		return NewJoinKey{}, err
 	}
-	k := &joinKey{hash: sha256.Sum256(jk.Secret), expires: time.Now().Add(j.opt.TTL), relay: relay, state: JoinWaiting}
+	ttl := j.opt.TTL
+	if server {
+		ttl = j.opt.ServerTTL
+	}
+	k := &joinKey{hash: sha256.Sum256(jk.Secret), expires: time.Now().Add(ttl), relay: relay, server: server, state: JoinWaiting}
 	ctx, stop := context.WithDeadline(j.opt.Base, k.expires)
 	k.stop = stop
 	k.host = remote.NewHost(remote.Options{
@@ -186,7 +210,7 @@ func (j *JoinDesk) New() (NewJoinKey, error) {
 		}
 		j.mu.Unlock()
 	}()
-	j.log.Info("a join key is open", "component", "peers", "relay", relay, "expires_in", j.opt.TTL.String())
+	j.log.Info("a join key is open", "component", "peers", "relay", relay, "expires_in", ttl.String(), "server", server)
 	return NewJoinKey{JoinState: j.State(), Key: jk.String()}, nil
 }
 
@@ -198,7 +222,7 @@ func (j *JoinDesk) State() JoinState {
 	if k == nil {
 		return JoinState{State: JoinNone}
 	}
-	st := JoinState{State: k.state, Relay: k.relay, Joiner: k.joiner, Machine: k.machine, Error: k.err}
+	st := JoinState{State: k.state, Relay: k.relay, Joiner: k.joiner, Machine: k.machine, Error: k.err, Server: k.server}
 	if k.state == JoinWaiting && !time.Now().Before(k.expires) {
 		st.State = JoinExpired
 	}
@@ -385,7 +409,7 @@ type Joined struct {
 var (
 	// ErrJoinGone is a key whose rendezvous is not there: expired, used,
 	// withdrawn, or the issuing computer offline.
-	ErrJoinGone = errors.New("that key's computer is not waiting for it: the key expired (15 minutes), was used, or was withdrawn, or that computer is off. Make a new key there")
+	ErrJoinGone = errors.New("that key's computer is not waiting for it: the key expired (15 minutes, or 60 for a server's), was used, or was withdrawn, or that computer is off. Make a new key there")
 	// ErrJoinRefused is a key the rendezvous refused.
 	ErrJoinRefused = errors.New("that computer did not accept the key")
 )

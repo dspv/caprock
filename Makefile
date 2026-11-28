@@ -161,6 +161,14 @@ lint-ui: ## tsc --noEmit
 smoke: build-go ## Phase 0 DoD scenario + the Phase 2 e2e (what CI's smoke step runs)
 	go test -tags smoke -count=1 ./internal/smoke/... ./internal/board/...
 
+# The new server's setup script (ADR-109) run on Ubuntu or Debian with systemd in a
+# privileged container, joining a daemon here. Linux with Docker only; not in
+# `make check` (minutes, a privileged container, package mirrors); CI runs it
+# in ci.yml's server-container job when its files change.
+.PHONY: server-container-test
+server-container-test: ## the server setup script in a container: CAPROCK_SERVER_IMAGE=ubuntu:24.04 or debian:12 (Linux + Docker)
+	go test -tags 'smoke servercontainer' -count=1 -timeout 40m -run TestTheSetupScriptOnALinuxServer -v ./internal/smoke/
+
 # The app's golden paths in a headless browser (ui/e2e, .ai/10-infrastructure.md
 # § E2E): this checkout's dashboard, built into a temp directory and served by
 # `vite preview`, in front of a daemon under `env -i` with a temp HOME and data

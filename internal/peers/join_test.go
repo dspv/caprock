@@ -161,6 +161,44 @@ func TestAJoinKeyExpiresAndCanBeWithdrawn(t *testing.T) {
 	}
 }
 
+// ADR-109: a key made for a server's setup script lives ServerJoinTTL, says
+// it is a server's, and replaces an ordinary key (and the other way round).
+func TestAServerKeyLivesAnHourAndReplacesTheOtherKind(t *testing.T) {
+	tg := newTarget(t)
+	m := open(t, t.TempDir())
+	d, _ := desk(t, tg, m, 0)
+	plain, err := d.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := time.Now()
+	srv, err := d.NewServer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	left := time.UnixMilli(srv.ExpiresAt).Sub(before)
+	if !srv.Server || left < peers.ServerJoinTTL-time.Minute || left > peers.ServerJoinTTL+time.Minute {
+		t.Fatalf("a server key: server=%v, open for %s", srv.Server, left)
+	}
+	if plain.Server || time.UnixMilli(plain.ExpiresAt).Sub(before) > peers.JoinTTL+time.Minute {
+		t.Fatalf("an ordinary key: %+v", plain.JoinState)
+	}
+	if st := d.State(); !st.Server || st.State != peers.JoinWaiting {
+		t.Fatalf("the open key: %+v", st)
+	}
+	// The ordinary key was withdrawn by the server's.
+	_, err = peers.Join(ctx5(t), plain.Key, peers.JoinWithOptions{Link: func(context.Context, string) (string, error) { return tg.link("1"), nil }})
+	if !errors.Is(err, peers.ErrJoinGone) {
+		t.Fatalf("an ordinary key after a server's: %v", err)
+	}
+	if _, err := d.New(); err != nil {
+		t.Fatal(err)
+	}
+	if st := d.State(); st.Server {
+		t.Fatalf("an ordinary key after a server's still says server: %+v", st)
+	}
+}
+
 func TestNoKeyWithoutAControllerIdentity(t *testing.T) {
 	d := peers.NewJoinDesk(peers.JoinOptions{Controller: func() string { return "" }})
 	if _, err := d.New(); !errors.Is(err, peers.ErrNoIdentity) {

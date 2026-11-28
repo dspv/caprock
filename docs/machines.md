@@ -37,6 +37,53 @@ not. While it is open your laptop waits for the new computer at its relay;
 only end-to-end ciphertext passes through. **Cancel** withdraws it. The
 steps below are the same thing by hand, with a link.
 
+## A new server, with a script
+
+A server you rent on your own provider account — so agents keep working
+with your laptop closed — is set up by one script Caprock writes.
+
+1. **On your laptop:** Settings → Computers → *This is where I work* →
+   **New server**. Tick *I log in with an SSH key* if you gave the provider
+   one or will run the script over SSH; otherwise SSH is stopped on the
+   server and the provider's web console is the way in. **Make the
+   script**.
+2. **At your provider:** create the server (Ubuntu 24.04 LTS or newer, or
+   Debian 12 or newer) and paste the whole script where its form takes
+   one — Hetzner Cloud: *Cloud config*; DigitalOcean: *User data*; any
+   provider that runs cloud-init: its user data. On a machine without
+   cloud-init (a dedicated server, a box at home), save it as
+   `caprock-setup.sh` and run `sudo sh caprock-setup.sh` there once.
+   `caprock machines server-script [--ssh-key] > caprock-setup.sh` on the
+   laptop prints the same script.
+3. **Wait.** The server boots and runs it; your laptop's Caprock must stay
+   running and online until it joins (the key inside works once, for 60
+   minutes). Then the server's page opens on the laptop, with the sign-ins
+   still to do there.
+
+The script, as root, printing each step and stopping at the first that
+fails, with its name in the provider's console log:
+
+- creates a user `caprock` with no password and no sudo, and turns on
+  lingering for it, so its services run with nobody logged in;
+- turns on unattended security upgrades and a firewall (`ufw`) that admits
+  nothing inbound but SSH when SSH stays on;
+- SSH: password login off, keys only; or, without a key, SSH stopped;
+- installs Git, Node.js and npm from the distribution, Claude Code with
+  Anthropic's own installer, and Codex from npm;
+- installs Caprock at your laptop's version from its GitHub release, its
+  SHA-256 checked against the one your laptop read from that release's
+  `checksums.txt`, and — for a release whose Linux archives are signed —
+  its minisign signature against the key the desktop app's updater uses.
+  Releases from before signing are checked by the SHA-256 alone, and the
+  script's header says so;
+- as `caprock`: `caprock hooks install`, `caprock service install`, then
+  `caprock join` with the key.
+
+The key carries no token or credential. The agents' sign-ins are made on
+the server, by the agents themselves, and stay in their files there;
+whoever controls the server — you, and the provider, as any host can — can
+read them.
+
 ## 1. Install Caprock on both computers
 
 - **Windows:** the installer from the

@@ -166,6 +166,52 @@ jobs:
           CAPROCK_MAIL_GOOGLE_CLIENT_SECRET: ${{ secrets.CAPROCK_MAIL_GOOGLE_CLIENT_SECRET || '' }}
           CAPROCK_MAIL_MICROSOFT_CLIENT_ID: ${{ secrets.CAPROCK_MAIL_MICROSOFT_CLIENT_ID || '' }}
 
+  # A minisign signature beside each Linux archive (ADR-109, OQ-32), made
+  # with the key the desktop app's updater verifies with (ADR-042,
+  # TAURI_SIGNING_PRIVATE_KEY): a new server's setup script checks it before
+  # the SHA-256. `tauri signer sign` writes <file>.sig, base64 of a minisign
+  # signature; decoded, it is <file>.minisig, which minisign itself checks
+  # here against the public key in tauri.conf.json before it is attached.
+  # Without the key nothing is signed, and the laptop writes checksum-only
+  # scripts for this release (it asks for the .minisig files). Never fatal:
+  # the release is published by now and a tag is never re-run.
+  linux-sign:
+    needs: goreleaser
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - name: sign, check and attach the Linux archives' signatures
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
+        run: |
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "::warning::no TAURI_SIGNING_PRIVATE_KEY: the Linux archives stay unsigned (checksum-only server scripts)"
+            exit 0
+          fi
+          sudo apt-get install -y minisign
+          (cd app && npm ci)
+          V="${GITHUB_REF_NAME#v}"
+          dir="${RUNNER_TEMP}/linux-sign"
+          mkdir -p "$dir"
+          pub=$(python3 -c 'import json,base64;print(base64.b64decode(json.load(open("app/src-tauri/tauri.conf.json"))["plugins"]["updater"]["pubkey"]).decode().splitlines()[1])')
+          for arch in amd64 arm64; do
+            f="caprock_${V}_linux_${arch}.tar.gz"
+            gh release download "${GITHUB_REF_NAME}" -p "$f" -D "$dir"
+            (cd app && npx tauri signer sign "$dir/$f")
+            base64 -d "$dir/$f.sig" > "$dir/$f.minisig"
+            minisign -V -P "$pub" -m "$dir/$f" -x "$dir/$f.minisig"
+          done
+          gh release upload "${GITHUB_REF_NAME}" "$dir"/*.minisig
+
   # The desktop app (app/, Tauri v2; WP-17), built from the same tagged commit
   # so it bundles that daemon. Each OS builds while verify runs and hands its
   # files on as an artifact; the attach jobs put them on the release only once
