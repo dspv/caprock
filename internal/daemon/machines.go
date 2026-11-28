@@ -72,6 +72,13 @@ func (a *machinesAdapter) Leave(ctx context.Context, id string) error {
 
 func (a *machinesAdapter) Forget(id string) error { return a.mgr().Forget(id) }
 
+// SetSetupDone keeps the steps marked done on the computer's own screen
+// (issue #1088). Without it the API answered 501 "this daemon cannot keep
+// setup marks" to every Done there.
+func (a *machinesAdapter) SetSetupDone(id string, done []string) error {
+	return a.mgr().SetSetupDone(id, done)
+}
+
 func (a *machinesAdapter) Do(id string, req *http.Request) (*http.Response, error) {
 	return a.mgr().Do(id, req)
 }
