@@ -122,7 +122,7 @@ import { CI_IDLE_MS, CI_RUNNING_MS, PRS_PENDING_MS, usePoll } from '@/lib/usePol
 import { costText, costTitle } from '@/lib/prboard'
 import { titleIsNumber } from '@/lib/work'
 import { prAgents, quickActions, type DeckWorktree } from '@/lib/prforce'
-import { FORCE_TITLE, usePRForce, type ForceKind } from '@/lib/usePRForce'
+import { FORCE_TITLE, queueWhy, usePRForce, type ForceKind } from '@/lib/usePRForce'
 import { PipelineHostContext } from '@/lib/pipelineHost'
 import { useCanControl } from '@/lib/useCanControl'
 import { sessionTitle } from '@/lib/sidebar'
@@ -335,9 +335,7 @@ export function CockpitCI({ sessionId, repoScope, onOpen, s }: { sessionId: stri
   const host = useContext(PipelineHostContext)
   const canControl = useCanControl()
   const worktrees = host.worktreesOf?.(sessionId)
-  const why = !s ? 'The session is not listed.' : !canControl ? 'This device can only watch. To act from it, open the Caprock app on your computer: Settings → Use on your phone, then press Allow control next to this device.'
-    : !s.owned ? 'Caprock did not start this session, so it never types into it.'
-      : s.status === 'ended' || s.detached ? 'This session is no longer running here, so nothing can be queued to it.' : ''
+  const why = queueWhy(s, canControl)
   const kit = usePRForce({
     sessionId, s: s ?? ({ session_id: sessionId } as SessionSummary), worktrees, onToast: host.onToast, canControl, connected: prs.d?.connected, why,
     onStartAgent: host.onStartAgent ? (req, title) => host.onStartAgent!(req, title, sessionId) : undefined,

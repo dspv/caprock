@@ -39,7 +39,7 @@ import { batchOf, groupNotes, notesHeading, notesOf, notInIt, viaLine, withNext,
 import { stageWords, stripStages, type StripStage } from '@/lib/releasestatus'
 import { fmtWhen } from '@/lib/format'
 import { LastRelease, ReleaseInFlight, ReleaseStages, ReleaseStrip, ReleaseWhy } from './ReleaseStatus'
-import { ageText, BLOCKS, onMaster, planForRepo, planSections, shownRows, type OSDot, type OSSquare, type LinePart, type PlanRow, type ReleasePlanData, type Wait } from '@/lib/releaseplan'
+import { ageText, BLOCKS, linePR, onMaster, rowFailsCI, planForRepo, planSections, shownRows, type OSDot, type OSSquare, type LinePart, type PlanRow, type ReleasePlanData, type Wait } from '@/lib/releaseplan'
 import { api } from '@/lib/api'
 import type { SessionBranches } from '@/lib/branches'
 import { CI_IDLE_MS, CI_RUNNING_MS, usePoll } from '@/lib/usePoll'
@@ -81,9 +81,16 @@ export interface ReleasePlanProps {
   status?: ReleaseStatus
   /** The clock the last release's age is said against; with `status`. */
   now?: number
+  /**
+   * The phone's Fix CI and Re-run for a pull request whose checks failed
+   * (components/PhonePRFix): drawn under the release line for the PR it
+   * tells (*PR #1117 CI failed*), and under every other failing PR's row.
+   * Phone only.
+   */
+  ciFix?: (r: PlanRow) => ReactNode
 }
 
-export function ReleasePlan({ plan, compact = false, showRepo = false, onOpen, empty, phone = false, status, now = Date.now() }: ReleasePlanProps) {
+export function ReleasePlan({ plan, compact = false, showRepo = false, onOpen, empty, phone = false, status, now = Date.now(), ciFix }: ReleasePlanProps) {
   const nothing = plan.rows.length === 0 && plan.later.length === 0
   if (nothing && !plan.next && !empty) return null
   const merge = plan.ships === 'merge'
@@ -96,6 +103,10 @@ export function ReleasePlan({ plan, compact = false, showRepo = false, onOpen, e
   // The right panel draws the release's stages as one compact strip at the
   // top (owner, 2026-11-18), not the Pipeline's pills.
   const strip = compact && !phone
+  // The PR the line says failed gets its Fix CI under the line; its row then does not repeat it.
+  const told = phone && ciFix ? linePR(plan.rows) : undefined
+  const lineFix = told?.number && rowFailsCI(told) ? told : undefined
+  const rowFix = phone && ciFix ? (r: PlanRow) => (r.section === 'pr' && r.number && r.key !== lineFix?.key && rowFailsCI(r) ? ciFix(r) : null) : undefined
   return (
     <section data-release-plan={plan.name} data-release-ships={plan.ships ?? ''} aria-label={`${plan.name}: ${merge ? 'work in flight' : 'next release'}`} className="grid min-w-0 gap-1.5">
       {strip && !merge && status && status.phase !== 'idle' && <ReleaseStrip status={status} version={status.phase === 'tagged'} />}
@@ -126,10 +137,11 @@ export function ReleasePlan({ plan, compact = false, showRepo = false, onOpen, e
       </header>
       )}
       {pre && !strip && <ReleaseStages status={pre} />}
+      {lineFix && <div data-release-line-fix={lineFix.number} className="min-w-0">{ciFix!(lineFix)}</div>}
       {nothing ? (
         <p className={`text-fg-muted ${phone ? 'text-[14px]' : compact ? 'text-[11.5px]' : 'text-[12.5px]'}`}>{merge ? 'No pull request open and no agent at work here.' : empty ?? 'Nothing waiting for a release.'}</p>
       ) : phone ? (
-        <PhoneRows plan={plan} steps={steps} />
+        <PhoneRows plan={plan} steps={steps} fix={rowFix} />
       ) : compact ? (
         <CompactRows plan={plan} onOpen={onOpen} />
       ) : (
@@ -387,7 +399,7 @@ function OSDots({ dots }: { dots: OSDot[] }) {
  * and what it waits for (cut) on the second, so the bars stand in one column
  * at the left edge at any width. A pull request row is a link to it on GitHub, the whole row its target; an agent's row, a link into its session's chat.
  */
-function PhoneRows({ plan, steps }: { plan: ReleasePlanData; steps: BarSteps }) {
+function PhoneRows({ plan, steps, fix }: { plan: ReleasePlanData; steps: BarSteps; fix?: (r: PlanRow) => ReactNode }) {
   const [open, setOpen] = useState<{ all?: boolean; older?: boolean }>({})
   const row = (r: PlanRow) => {
     if (r.stage === 'branch') {
@@ -420,6 +432,7 @@ function PhoneRows({ plan, steps }: { plan: ReleasePlanData; steps: BarSteps }) 
           : r.session
             ? <a href={href({ name: 'session', id: r.session.id, tab: 'chat' })} data-release-session={r.session.id} title={`Open the session: ${r.title}`} className={`${cls} text-fg no-underline active:bg-panel-2`}>{body}</a>
             : <div title={r.title} className={cls}>{body}</div>}
+        {fix?.(r) && <div data-release-row-fix={r.number} className="min-w-0 px-3 pb-2">{fix(r)}</div>}
       </li>
     )
   }

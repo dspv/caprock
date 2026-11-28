@@ -47,6 +47,7 @@ import { PlanShare } from '@/components/PlanShare'
 import { sessionParts } from '@/lib/planShare'
 import { MovingLine } from '@/components/MoveNotice'
 import { backgroundShort, backgroundWait, phoneHealth } from '@/lib/cockpit'
+import { PhoneSessionPRs } from '@/components/PhonePRFix'
 
 type Tab = 'chat' | 'timeline' | 'notes' | 'changes' | 'terminal'
 
@@ -323,6 +324,9 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
               <ConnectionState link={link} heardAt={live.heardAt} className="text-[12px]" />
             </div>
             <div className="flex flex-wrap items-center gap-3">{controls}</div>
+            {/* A failing pull request of the session, with Fix CI and Re-run
+              * (owner, 2026-11-28; components/PhonePRFix). Nothing when none fails. */}
+            {!detail.stale && <PhoneSessionPRs sessionId={s.session_id} s={s} />}
             <div className="grid min-w-0 grid-cols-1 gap-2 border-t border-border pt-2.5 [&_*]:max-w-full [&_*]:[overflow-wrap:anywhere]">{details}</div>
           </div>
         </PhoneSessionBar>

@@ -29,7 +29,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { api, errText, type CIJob, type CIRun, type SessionCI, type SessionCIStats, type SessionPRLive, type SessionPRs, type SessionRepoCI, type SessionSummary, type SpawnRequest } from '@/lib/api'
 import { ciActive, ciTone, fmtRun, investigateMessage, keepStats, jobVsMedian, keyStep, prReviewText, prVerdict, repoShort, type CITone } from '@/lib/ci'
 import { hasConflict, isBehind, topChip, type DeckWorktree } from '@/lib/prforce'
-import { FORCE_LABEL, FORCE_TITLE, usePRForce, type ForceKind } from '@/lib/usePRForce'
+import { FORCE_LABEL, FORCE_TITLE, queueWhy, usePRForce, type ForceKind } from '@/lib/usePRForce'
 import { GRID_OS_LABEL, SCOPE_LABEL, jobGrid, spanText, tabRows, vsMedianText, type TabPR, type TabScope } from '@/lib/prstats'
 import { AGENT_COST_NOTE, FLOW_COST_NOTE, asBoard, asCostliest, costText, costTitle, flowCost, noPRCost, readExpensivePeriod, writeExpensivePeriod, type Costliest, type ExpensivePeriod, type PRBoard } from '@/lib/prboard'
 import type { BranchPR } from '@/lib/branches'
@@ -224,9 +224,7 @@ function ViewBody({ sessionId, session: s, visible, onBack, onToast, worktrees, 
     live: ci?.pr?.live ?? row.mine?.live,
   } : undefined
 
-  const why = !canControl ? 'This device can only watch. To act from it, open the Caprock app on your computer: Settings → Use on your phone, then press Allow control next to this device.'
-    : !s.owned ? 'Caprock did not start this session, so it never types into it.'
-      : s.status === 'ended' || s.detached ? 'This session is no longer running here, so nothing can be queued to it.' : ''
+  const why = queueWhy(s, canControl)
   const kit = usePRForce({
     sessionId, s, worktrees, onStartAgent, onToast, canControl, connected, why,
     runsOf: (x) => (ci?.pr?.number === x.number ? runs : undefined),

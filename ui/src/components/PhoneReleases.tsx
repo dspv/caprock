@@ -23,15 +23,25 @@
  *
  * On the phone home the section folds to one line (`releasesSummary`); the
  * reads are the same folded or open, so that line is current.
+ *
+ * **Fix CI** (owner, 2026-11-28, translated: "on the phone there is simply
+ * no button to send a red CI to be fixed"): under the line that says *PR
+ * #1117 CI failed*, and under every other pull request row whose checks
+ * failed, Fix CI and Re-run, asked once inline (components/PhonePRFix,
+ * `releaseFixTarget`). Their reads go through the repository's
+ * `via_session`, as the bars' do.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { api, errText, type SessionCIStats, type WorkRepo } from '@/lib/api'
+import { api, errText, type SessionCIStats, type SessionSummary, type WorkRepo } from '@/lib/api'
 import { readDeck, writeDeck } from '@/lib/deckCache'
 import { live } from '@/lib/live'
 import { onPageVisibility, pageHidden } from '@/lib/visible'
 import { fmtAgo } from '@/lib/format'
 import { useNow } from '@/lib/useNow'
-import { planForRepo, type ReleasePlanData } from '@/lib/releaseplan'
+import { planForRepo, rowFailsCI, type PlanRow, type ReleasePlanData } from '@/lib/releaseplan'
+import { useCanControl } from '@/lib/useCanControl'
+import { queueWhy } from '@/lib/usePRForce'
+import { PhonePRFix } from './PhonePRFix'
 import { changesRelease, useWork } from '@/lib/useWork'
 import { keepStats } from './PipelineView'
 import { ReleasePlan } from './ReleasePlan'
@@ -120,7 +130,7 @@ export interface SummaryPart { text: string; red?: boolean }
 export function releasesSummary(plan: ReleasePlanData | undefined): SummaryPart[] {
   if (!plan) return [{ text: 'Reading your releases…' }]
   const prs = plan.rows.filter((r) => r.section === 'pr')
-  const failed = prs.filter((r) => r.red || !!r.ci?.some((d) => d.state === 'fail'))
+  const failed = prs.filter(rowFailsCI)
   const merged = plan.rows.filter((r) => r.section === 'merged').length
   const agents = plan.rows.filter((r) => r.section === 'agent').length
   const parts: SummaryPart[] = failed.map((r) => ({ text: `${r.number ? `PR #${r.number}` : 'A PR'} CI failed`, red: true }))
@@ -131,6 +141,24 @@ export function releasesSummary(plan: ReleasePlanData | undefined): SummaryPart[
   ].filter(Boolean).join(', ') || 'nothing merged'
   parts.push({ text: plan.next?.version ? `${plan.next.version}: ${facts}` : facts })
   return parts
+}
+
+/**
+ * Who a release row's Fix CI goes to: the agent Caprock started that is on
+ * the pull request's branch (`r.session`, owned and live), typed into; else
+ * nobody can be typed into (`why`), and a new agent starts in a worktree at
+ * the PR's head in the repository's folder. A synthetic summary: the row
+ * knows the session's id, name and that Caprock started it, which is all
+ * lib/usePRForce reads of it.
+ */
+export function releaseFixTarget(r: PlanRow, repo: WorkRepo, canControl: boolean): { s: SessionSummary; why: string } {
+  const base = { repo_root: repo.root, cwd: repo.root, project: repo.name, kind: 'agent' }
+  if (r.session?.owned) {
+    const s = { ...base, session_id: r.session.id, name: r.session.name, owned: true, status: 'active' } as unknown as SessionSummary
+    return { s, why: queueWhy(s, canControl) }
+  }
+  const s = { ...base, session_id: repo.via_session, owned: false, status: 'ended' } as unknown as SessionSummary
+  return { s, why: canControl ? 'No agent Caprock started is on this pull request.' : queueWhy(s, canControl) }
 }
 
 /** The section: drawn once the Work answer names a repository; nothing on a daemon that refuses it. */
@@ -145,6 +173,7 @@ export function PhoneReleases({ pull, folded = false, onToggle }: { pull: number
   const [picked, setPicked] = useState(readRepo)
   const repo = pickRepo(repos, picked)
   const stats = useReleaseStats(repo, asked)
+  const canControl = useCanControl()
   const now = useNow(60_000)
   const plan = useMemo(() => (repo ? planForRepo(work.data, repo.root, stats.d, now) : undefined), [work.data, repo, stats.d, now])
 
@@ -178,6 +207,10 @@ export function PhoneReleases({ pull, folded = false, onToggle }: { pull: number
         ) : (
           <div className={`px-3 pt-3 ${empty ? 'pb-3' : ''}`}>
             <ReleasePlan plan={plan} phone showRepo={repos.length <= 1}
+              ciFix={repo?.via_session ? (r) => {
+                const t = releaseFixTarget(r, repo, canControl)
+                return <PhonePRFix sessionId={repo.via_session} s={t.s} why={t.why} number={r.number!} pull={asked} />
+              } : undefined}
               empty="Nothing merged since the last tag, no pull request open and no agent at work here." />
           </div>
         )}
