@@ -1,6 +1,6 @@
 # Talks: agents speak for two people
 
-**Status: accepted 2026-11-28; nothing built.** The decision is
+**Status: accepted 2026-11-28; P1's backend built (below), no screen yet.** The decision is
 [ADR-110](08-decisions.md#adr-110--talks-agents-speak-for-two-people); this
 file is its build plan. Two people who trust each other link their Caprocks
 once; after that, a one-line goal starts a Talk in which each side's own
@@ -97,6 +97,18 @@ usable before its guard exists.
 - **P1.5 Rule 4 and the docs.** ADR-110's draft sentence into `CLAUDE.md`
   rule 4 and `.ai/00-index.md`'s rule 4; `docs/talks.md` for users;
   `03-contracts.md` § Talks; the friction test.
+- **Built, the backend (2026-11-28):** P1.1 without the site page and the
+  partner's screen; P1.2 without ⌘K; P1.3 with the hold notification on
+  the desktop and the phone, not Telegram, and the settings through `PUT
+  /v1/talks/settings`; P1.5's rule 4 and contracts
+  (`03-contracts.md` § Talks, § Talks DDL). The turn has no tool at all:
+  this side's 2nd Brain is handed to it read only, as grounding in the
+  prompt (up to 12 memories about the goal), rather than through ADR-078's
+  tools. Cost is what the agent reports (Claude Code reports dollars; for
+  an agent that reports only tokens it is 0 until priced from `pricing/`).
+  Open in P1: the chat view, the log view and the hold's buttons on screen
+  (P1.4), ⌘K *Talk with…*, Telegram for a hold, `docs/talks.md`, the
+  friction test, and the site page in `caprock-web`.
 - **Tests:** two daemons and a local relay in the smoke setup with a fake
   agent: invite, accept, a Talk of four turns, a redaction hit held and
   sent from the hold, a cap reached, Remove from each side; an incoming

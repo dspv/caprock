@@ -60,6 +60,9 @@ const (
 type Options struct {
 	// Dir is the data directory machines.json lives in.
 	Dir string
+	// File is the list's file in Dir: File (machines.json) when empty, or
+	// PeopleFile for the people linked for Talks (ADR-110).
+	File string
 	// Self is this machine's own relay id, refused as a target; "" when
 	// unknown.
 	Self string
@@ -102,6 +105,8 @@ type Status struct {
 	Streams int `json:"streams"`
 	// SetupDone are the steps marked done there by hand (Machine.SetupDone).
 	SetupDone []string `json:"setup_done,omitempty"`
+	// LetStart is Machine.LetStart: a person's, for Talks (ADR-110).
+	LetStart bool `json:"let_start,omitempty"`
 	// Traffic is what this machine's channel to it has cost the relay since
 	// this daemon started or paired it (OQ-14): the relay messages and their
 	// bytes each way, the relay's own pings included.
@@ -144,9 +149,9 @@ func Open(opt Options) (*Manager, error) {
 		opt.Log = slog.New(slog.DiscardHandler)
 	}
 	m := &Manager{opt: opt, log: opt.Log, peers: map[string]*peer{}}
-	ms, err := Read(opt.Dir)
+	ms, err := ReadFile(opt.Dir, m.file())
 	if err != nil {
-		return m, fmt.Errorf("peers: %s: %w", File, err)
+		return m, fmt.Errorf("peers: %s: %w", m.file(), err)
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -160,6 +165,13 @@ func Open(opt Options) (*Manager, error) {
 		m.peers[mach.ID] = p
 	}
 	return m, nil
+}
+
+func (m *Manager) file() string {
+	if m.opt.File != "" {
+		return m.opt.File
+	}
+	return File
 }
 
 func (m *Manager) newPeer(mach Machine) (*peer, error) {
@@ -217,7 +229,7 @@ func (m *Manager) findLocked(id string) (Machine, bool) {
 }
 
 func (m *Manager) statusLocked(mach Machine) Status {
-	s := Status{ID: mach.ID, Name: mach.Name, Relay: mach.Relay, AddedAt: mach.AddedAt, SetupDone: mach.SetupDone}
+	s := Status{ID: mach.ID, Name: mach.Name, Relay: mach.Relay, AddedAt: mach.AddedAt, SetupDone: mach.SetupDone, LetStart: mach.LetStart}
 	p := m.peers[mach.ID]
 	if p == nil {
 		s.Status = "offline"
@@ -306,7 +318,7 @@ func (m *Manager) Pair(ctx context.Context, link string) (Status, error) {
 		}
 	}
 	list = append(list, mach)
-	if err := Write(m.opt.Dir, list); err != nil {
+	if err := WriteFile(m.opt.Dir, m.file(), list); err != nil {
 		m.mu.Unlock()
 		p.client.Close()
 		// The computer now lists a device whose token nobody holds; its
@@ -348,7 +360,7 @@ func (m *Manager) Rename(id, name string) error {
 	if !found {
 		return ErrUnknown
 	}
-	if err := Write(m.opt.Dir, list); err != nil {
+	if err := WriteFile(m.opt.Dir, m.file(), list); err != nil {
 		return err
 	}
 	m.list = list
@@ -380,7 +392,29 @@ func (m *Manager) SetSetupDone(id string, done []string) error {
 	if !found {
 		return ErrUnknown
 	}
-	if err := Write(m.opt.Dir, list); err != nil {
+	if err := WriteFile(m.opt.Dir, m.file(), list); err != nil {
+		return err
+	}
+	m.list = list
+	return nil
+}
+
+// SetLetStart keeps a person's *Let them start talks with my agent*
+// (ADR-110).
+func (m *Manager) SetLetStart(id string, on bool) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	list := append([]Machine(nil), m.list...)
+	found := false
+	for i := range list {
+		if list[i].ID == id {
+			list[i].LetStart, found = on, true
+		}
+	}
+	if !found {
+		return ErrUnknown
+	}
+	if err := WriteFile(m.opt.Dir, m.file(), list); err != nil {
 		return err
 	}
 	m.list = list
@@ -397,6 +431,10 @@ func (m *Manager) Leave(ctx context.Context, id string) error {
 	}
 	req, _ := http.NewRequestWithContext(ctx, http.MethodDelete, "http://machine/v1/pair/me", nil)
 	req.Header.Set("X-Caprock-Device", tok)
+	// The forgery guard (internal/api, csrf.go) refuses a state-changing
+	// request with no JSON content type: without it this answered 403, and
+	// the other side never heard.
+	req.Header.Set("Content-Type", "application/json")
 	res, err := p.client.RoundTrip(req)
 	if err != nil {
 		return err
@@ -424,7 +462,7 @@ func (m *Manager) Forget(id string) error {
 	if len(list) == len(m.list) {
 		return ErrUnknown
 	}
-	if err := Write(m.opt.Dir, list); err != nil {
+	if err := WriteFile(m.opt.Dir, m.file(), list); err != nil {
 		return err
 	}
 	m.list = list

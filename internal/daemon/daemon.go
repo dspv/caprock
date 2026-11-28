@@ -344,7 +344,9 @@ type Daemon struct {
 	// machines are the other computers this one reaches (ADR-067).
 	machines *machinesAdapter
 	// join is join keys, both sides (ADR-108).
-	join       *joinAdapter
+	join *joinAdapter
+	// talks is Talks (ADR-110): the people linked and their Talks.
+	talks      *talksAdapter
 	remoteStop context.CancelFunc
 	// devShare opens a local dev server on a phone on the same Wi-Fi
 	// (ADR-087); every share ends when the daemon does.
@@ -805,6 +807,8 @@ func (d *Daemon) run(ctx context.Context) error {
 	defer d.machines.close()
 	d.join = &joinAdapter{d: d}
 	defer d.join.close()
+	d.talks = newTalksAdapter(d)
+	defer d.talks.close()
 	// The daemon's own port is never shared: a share of the dashboard would
 	// put it on the network behind a link instead of a pairing code.
 	d.devShare = devshare.New(devshare.Options{Log: d.log, Forbid: func(p int) bool { return p == d.port }})
@@ -863,7 +867,7 @@ func (d *Daemon) run(ctx context.Context) error {
 		Browsers: &browser.Opener{
 			Env: func() []string { return userenv.Environ(d.log) },
 		},
-		Pairing: d.pairing, LANURL: d.lanURL, Started: d.start, LAN: d, Remote: d, Machines: d.machines, Join: d.join, Servers: d.join, TelegramVia: d, DevShare: d.devShare, Secrets: &secretShare{d: d},
+		Pairing: d.pairing, LANURL: d.lanURL, Started: d.start, LAN: d, Remote: d, Machines: d.machines, Join: d.join, Talks: d.talks, Servers: d.join, TelegramVia: d, DevShare: d.devShare, Secrets: &secretShare{d: d},
 		Projects: d.projs, Templates: tpls, Shells: &shellAdapter{m: d.mgr, live: d.livePIDs}, GitHub: d.gh,
 		Obsidian: vaults, Mail: d.mail.Handler(), BrainAuto: &brainAdapter{d: d, eng: d.brain},
 		TLDR:              d.newTLDRRunner(),
@@ -879,6 +883,8 @@ func (d *Daemon) run(ctx context.Context) error {
 	// The Telegram bridge calls the agent manager and the API, so it starts
 	// once both exist (ADR-047).
 	d.goBg(func() { d.tg.Run(ctx) })
+	// Talks resume once the API serves the inbox (ADR-110).
+	d.talks.start()
 	// What waits for the computer whose bot this one sends through, and the
 	// presses that come back (ADR-047, amended 2026-11-27).
 	d.goBg(func() { d.runTelegramVia(ctx) })

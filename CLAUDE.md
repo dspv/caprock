@@ -60,7 +60,14 @@ whole corpus. Contributing? See [`CONTRIBUTING.md`](CONTRIBUTING.md).
    Settings ([ADR-086](.ai/08-decisions.md)). And one download, on the
    user's click in Settings → Voice input on Windows and Linux: the voice
    model from huggingface.co, its SHA-256 checked against hashes built into
-   the app, nothing sent with it ([ADR-104](.ai/08-decisions.md)).
+   the app, nothing sent with it ([ADR-104](.ai/08-decisions.md)). And
+   Talks, with a person the user invited or whose invitation they
+   accepted: their two Caprocks exchange, through the relay as end-to-end
+   ciphertext, only what the Talk lists as sent — the messages the user's
+   agent wrote, past redaction, what the user typed or sent from a hold, the
+   artifacts and outcome cards shared, and their side's cost total unless
+   switched off — never their Second Brain, sessions or files themselves;
+   Remove ends the link from either side ([ADR-110](.ai/08-decisions.md)).
 
 5. **English only, in every file.** Code, comments, docs, data, commits, PR
    titles and descriptions: no Russian and no other language. A quote from a

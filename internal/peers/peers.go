@@ -36,6 +36,12 @@ import (
 // threads.
 const File = "machines.json"
 
+// PeopleFile holds the people this machine is linked with for Talks
+// (ADR-110), in the same shape and at the same mode as File: another
+// person's Caprock is reached exactly as a computer is, through its relay,
+// with a narrower token (pairing.KindPerson) on each side.
+const PeopleFile = "people.json"
+
 // Machine is one computer this machine has paired with.
 type Machine struct {
 	// ID is the computer's relay id: its Ed25519 public key, base64url. Also
@@ -58,6 +64,9 @@ type Machine struct {
 	// that the user marked done there from here (*Done there*, issue
 	// #1088): SetupChromeExtension, SetupSiteSignIns. Nothing checks them.
 	SetupDone []string `json:"setup_done,omitempty"`
+	// LetStart is a person's *Let them start talks with my agent* (ADR-110),
+	// set on at accept; people.json only.
+	LetStart bool `json:"let_start,omitempty"`
 }
 
 // The setup steps only the computer's own screen can do, which the laptop
@@ -70,8 +79,11 @@ const (
 // Read loads the list. A missing file is no computers; a corrupt one is an
 // error the caller logs and treats as none — the safe reading of "I cannot
 // tell which computers I may reach" costs a re-pair and risks nothing.
-func Read(dir string) ([]Machine, error) {
-	b, err := os.ReadFile(filepath.Join(dir, File))
+func Read(dir string) ([]Machine, error) { return ReadFile(dir, File) }
+
+// ReadFile is Read for a list kept in file: File or PeopleFile.
+func ReadFile(dir, file string) ([]Machine, error) {
+	b, err := os.ReadFile(filepath.Join(dir, file))
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
 	}
@@ -93,7 +105,10 @@ func Read(dir string) ([]Machine, error) {
 
 // Write saves the list, 0600, atomically. On Windows the mode is not
 // enforced; the file lives in the user's own profile, as devices.json does.
-func Write(dir string, ms []Machine) error {
+func Write(dir string, ms []Machine) error { return WriteFile(dir, File, ms) }
+
+// WriteFile is Write for a list kept in file: File or PeopleFile.
+func WriteFile(dir, file string, ms []Machine) error {
 	if ms == nil {
 		ms = []Machine{}
 	}
@@ -101,7 +116,7 @@ func Write(dir string, ms []Machine) error {
 	if err != nil {
 		return err
 	}
-	return config.WriteFileAtomic(filepath.Join(dir, File), b, 0o600)
+	return config.WriteFileAtomic(filepath.Join(dir, file), b, 0o600)
 }
 
 // cleanName keeps a computer's label short and printable. It comes from a

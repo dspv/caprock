@@ -200,6 +200,9 @@ type Deps struct {
 	// Join is join keys (ADR-108, join.go): making one here, and using one
 	// from another computer. Nil answers 501.
 	Join JoinControl
+	// Talks is Talks (ADR-110, talks.go): the people linked, their Talks and
+	// the inbox their Caprocks deliver to. Nil answers 501.
+	Talks TalksControl
 	// Servers makes a new server's setup script with a server join key in it
 	// (ADR-109, serverscript.go). Nil answers 501.
 	Servers ServerScripts
@@ -884,6 +887,30 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/machines/join-key", s.handleJoinKeyState)
 	m.HandleFunc("DELETE /v1/machines/join-key", s.handleWithdrawJoinKey)
 	m.HandleFunc("POST /v1/join", s.handleJoin)
+
+	// Talks (ADR-110, talks.go). The owner's routes are loopback only, in
+	// the handlers, and on no device's allowlist; the inbox two are a
+	// person's, personRoutes in lanauth.go, and nothing else is.
+	m.HandleFunc("POST /v1/talks/invite", s.handleTalkInvite)
+	m.HandleFunc("GET /v1/talks/invite", s.handleTalkInviteState)
+	m.HandleFunc("DELETE /v1/talks/invite", s.handleTalkInviteWithdraw)
+	m.HandleFunc("POST /v1/talks/accept", s.handleTalkAccept)
+	m.HandleFunc("GET /v1/talks/people", s.handleTalkPeople)
+	m.HandleFunc("PATCH /v1/talks/people/{id}", s.handleTalkPersonPatch)
+	m.HandleFunc("DELETE /v1/talks/people/{id}", s.handleTalkPersonRemove)
+	m.HandleFunc("GET /v1/talks/settings", s.handleTalkSettings)
+	m.HandleFunc("PUT /v1/talks/settings", s.handleTalkSettingsPut)
+	m.HandleFunc("GET /v1/talks", s.handleTalks)
+	m.HandleFunc("POST /v1/talks", s.handleTalkStart)
+	m.HandleFunc("GET /v1/talks/{id}", s.handleTalk)
+	m.HandleFunc("POST /v1/talks/{id}/held/send", s.handleTalkAction("send"))
+	m.HandleFunc("POST /v1/talks/{id}/held/edit", s.handleTalkAction("edit"))
+	m.HandleFunc("POST /v1/talks/{id}/held/drop", s.handleTalkAction("drop"))
+	m.HandleFunc("POST /v1/talks/{id}/continue", s.handleTalkAction("continue"))
+	m.HandleFunc("POST /v1/talks/{id}/accept", s.handleTalkAction("accept"))
+	m.HandleFunc("POST /v1/talks/{id}/end", s.handleTalkAction("end"))
+	m.HandleFunc("POST /v1/talks/inbox", s.handleTalkInbox)
+	m.HandleFunc("GET /v1/talks/inbox/{talk}", s.handleTalkDelivery)
 	// A new server's setup script (ADR-109, serverscript.go): loopback only,
 	// in the handler, and on no device's allowlist.
 	m.HandleFunc("POST /v1/machines/server-script", s.handleServerScript)

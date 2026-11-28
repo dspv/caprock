@@ -814,6 +814,140 @@ the target runs its ordinary Host and gate, and pairs it as a computer
   `bound: true`. A controller whose keys are reset (`caprock remote
   reset`) is refused by every computer it had reached and pairs again.
 
+**Talks (ADR-110, P1's backend; [27-talks.md](27-talks.md)).** Two people
+link their Caprocks once; a Talk is one goal between this side's agent and
+the other's. Code: `internal/talks` (the engine, the guard, the turn),
+`internal/api/talks.go`, `internal/daemon/talks.go`, `internal/store/talks.go`.
+
+- **The person link.** Another person's Caprock is a paired device of
+  `kind: "person"`, role `talk` (`pairing.KindPerson`, `RoleTalk`): only a
+  Talks invitation makes one (`pairing.Store.NewCodeForKeyKind(key,
+  "person")`), never pending, its token bound to that person's relay key
+  from the start (`key`, `bound: true`), so it works on no channel that
+  proved another key or none (`401`). `PUT /v1/pair/devices/{id}/role`
+  cannot move it (`404`). Past the gate it reaches **`personRoutes`** and
+  nothing else — `POST /v1/talks/inbox`, `GET /v1/talks/inbox/{talk}`, `GET
+  /v1/pair/me`, `DELETE /v1/pair/me` — every other API route, a phone's
+  reads included, is `403` *a Talks link delivers Talk messages and nothing
+  else*. This side's token on theirs is in **`people.json`** beside
+  `machines.json`: the same array and mode (0600, atomic), plus
+  `let_start` (*Let them start talks with my agent*), reached through the
+  same channel as a computer (`peers.Manager` with `File: "people.json"`).
+- **Invite.** **`POST /v1/talks/invite {name?}`** (loopback only, as every
+  owner route here; `501` without Talks) saves `name` as this side's Talks
+  name when given, turns access from anywhere on when it is off, waits up
+  to 30 s for the relay, and opens a rendezvous as `POST
+  /v1/machines/join-key` does (ADR-108) but for **24 hours**
+  (`daemon.TalkInviteTTL`), one open at a time; it answers `{state,
+  expires_at, relay, relay_status, key, link, turned_on_remote?}` with
+  `Cache-Control: no-store`, `link` being `https://caprock.dev/talk#<key>`
+  — the key in the fragment, which a browser never sends. `GET` answers the
+  join state (`joiner` once the person proved the secret), never the key;
+  `DELETE` withdraws it. The rendezvous is symmetric (`JoinOptions.Back`):
+  `POST /v1/join/link` pairs only a link whose host id is the key the
+  channel proved (else `401`), then lists the person by the name they gave
+  in `hello`, sets `let_start` on, and answers `{id, name, status, link}` —
+  `link` this side's pairing link with a code for a person that
+  pre-approves the proven key and no other.
+- **Accept.** **`POST /v1/talks/accept {key, name?}`** takes the key or the
+  whole link (what follows the last `#`), turns access from anywhere on
+  (at the key's relay when this side never chose one), says hello with
+  this side's relay key proved (`JoinWithOptions.Identity`), hands over its
+  own link with a person code that pre-approves the inviter, pairs back
+  with the link the inviter answered, keeps the inviter under their Talks
+  name with `let_start` on, and answers the person as `GET
+  /v1/talks/people` lists them plus `turned_on_remote`. Errors: `400` not
+  an invitation; `404` nobody waits for it (expired, used, withdrawn, that
+  Caprock off); `403` refused; `504` out of time; `502` anything else.
+- **People.** **`GET /v1/talks/people`** → `{people: [{id, name, relay,
+  added_at, status, let_start, safety_code, …}]}`, each as `GET
+  /v1/machines` lists a computer; `safety_code` is twelve digits in three
+  groups from both relay keys (`daemon.SafetyCode`), the same on both
+  sides. **`PATCH /v1/talks/people/{id} {name?, let_start?}`** renames or
+  sets the switch. **`DELETE /v1/talks/people/{id}`** is Remove: it asks
+  the other side to drop this one (`DELETE /v1/pair/me` there, best effort),
+  forgets them here, revokes every person token bound to their key here
+  (in memory or in `devices.json`), and ends their Talks as `ended_by:
+  "me"`; the other side, on that `DELETE /v1/pair/me`, forgets this one and
+  ends them as `ended_by: "them"` — or on its next delivery, which is `401`.
+  Each side keeps its transcripts.
+- **Settings → Talks.** **`GET /v1/talks/settings`** → `{settings,
+  effective, defaults}`; **`PUT`** replaces them with `{name?, brief?,
+  never_share?, max_messages?, max_usd?, share_cost?, agent?, model?}` (a
+  field left out is its default) and answers the same. Kept in **`talks.json`** (0600), not `config.json`: the never-share
+  terms are the owner's own words. Defaults, Caprock's limits and not
+  estimates: `max_messages` **12**, `max_usd` **$5** per side per Talk, the
+  brief *Never share secrets, keys, credentials, or other people's private
+  data.*, `share_cost` on. Bounds: name 40 runes, brief 4,000, at most 100
+  terms of 200.
+- **A Talk.** **`POST /v1/talks {person, goal}`** starts one: `goal` one
+  line, at most 500 runes (`400` empty); a goal the guard catches is `422`;
+  `409` while 10 Talks with that person are open (`talks.MaxOpenPerPerson`,
+  not finished or ended).
+  It answers the Talk row (§ Talks DDL): `{id, person, person_name, goal,
+  started_by, state, hold?, ended_by?, brief, agent?, model?, max_messages,
+  max_usd, sent, cost_usd, their_cost_usd?, draft?, draft_redacted?,
+  draft_caught?, draft_done?, note?, last_error?, created_at, updated_at}`.
+  **`GET /v1/talks`** → `{talks}`, newest change first, at most 500;
+  **`GET /v1/talks/{id}`** adds `transcript` (every envelope, both sides,
+  in the order stored: `{talk, side, seq, kind, hash, how?, caught?,
+  cost_usd?, at, delivered_at?, envelope}`), `waiting` (this side's envelopes not yet
+  taken) and `offline` (the last delivery failure while any wait).
+  `state` is `invited` (the other side started it while `let_start` is off
+  here), `my_turn`, `waiting`, `held`, `finished` (both agents set `done`)
+  or `ended`; `hold` is `redaction`, `needs_owner`, `cap` or `error`.
+- **The turn.** Starting sends the goal (a `state` envelope, `open`) and
+  runs this side's agent; each message received makes it this side's turn.
+  A turn is one headless call through Second Brain's runners (ADR-103) with
+  no tool at all (`claude -p --tools ""` and its peers): the agent and
+  model of Settings → Talks, else the agent 2nd Brain reads with, else the
+  first installed; for Claude Code the model `opus`. Its system prompt is
+  the brief and the rules; the goal, up to 12 memories of this side's 2nd
+  Brain about the goal (agents' scope: vaults not shared with agents,
+  folders excluded from Second Brain and sessions in folders labelled
+  Personal left out) and the transcript go in the prompt, each transcript
+  line a JSON object `{from: you|owner|them|partner, text}`, so the other
+  side's text is data and cannot close its quote. The answer's shape is
+  `talks.TurnSchema`: `{message, note, sources, done, needs_owner}`; only
+  `message` can leave. Before a turn a cap reached (`sent >=
+  max_messages` or `cost_usd >= max_usd`) holds the Talk (`cap`); a
+  failed turn holds it (`error`); `needs_owner` holds the message; the
+  guard — `internal/redact` plus the never-share terms, case-folded — holds
+  a message it catches (`redaction`, `draft_caught` the counts). A hold
+  publishes a `notify` frame, kind `talk_hold`, `route` `#/talks/<id>`,
+  naming the person and why, never the message.
+- **The hold's buttons.** **`POST /v1/talks/{id}/held/send`** sends the
+  draft as it would leave — each value caught replaced by `[redacted:
+  <kind>]` (`never-share term` for a term); **`held/edit {text}`** sends
+  the owner's text instead, marked `edited`, through the guard (`422` when
+  caught); **`held/drop`** tells the next turn the draft was not sent and
+  why, and runs it. **`POST /v1/talks/{id}/continue`** answers a cap (the
+  cap reached grows by the default again) or a failed turn; **`accept`**
+  starts an `invited` Talk; **`end`** ends it and tells the other side.
+  `409` when the Talk is not in a state that allows it.
+- **The envelope** (`talks.Envelope`): `{v: 1, kind: message|human|state,
+  talk, seq, prev, author: {kind: agent|person, name, agent?, model?,
+  edited?}, body, state?: open|ended, done?, cost_usd?, at}`. `seq` counts
+  the sender's envelopes in a Talk from 1, `prev` is the hash of its
+  previous one; `cost_usd` is the sender's total, while `share_cost` is
+  on. Its JSON is stored on both sides byte for byte as sent (`raw`), and
+  `hash` is the hex SHA-256 of those bytes, so the two copies can be
+  compared. A body is at most 32 KiB.
+- **Delivery.** Each envelope goes into `talk_outbox` and is posted, one
+  Talk's in order, as **`POST /v1/talks/inbox {envelope}`** on the other
+  side through the person link; the sender is the key the person token is
+  bound to, never a field. `200 {have, state}` takes it (a retry of one
+  already taken too); `409 {have}` is out of order (a `have` at or past the
+  seq counts as taken); `400` a body this version does not read; `403` a
+  Talk that is not with that person, or an `open` for none; `429` an
+  `open` while 10 Talks with that person are open here. A failure
+  waits 5 s doubling to 5 minutes; a `401` ends the person's Talks here.
+  **`GET /v1/talks/inbox/{talk}`** → `{have, state}`, what that side holds.
+  Nothing is stored anywhere between the two machines.
+- **`/v1/live`.** `{type: "talks", data: {id, why}}` (local only) says a
+  Talk changed: `why` one of `started`, `sent`, `received`, `delivered`,
+  `held`, `dropped`, `continued`, `accepted`, `ended`, `offline`.
+
 **The way back to a paired phone (2026-10-15).** `GET /v1/pair/state`
 carries `telegram: true` when a Telegram bot and chat are set up.
 `POST /v1/pair/send-link` (loopback-only, no body read) sends one message to
@@ -1356,7 +1490,7 @@ Every `/v1/live` frame carries a `seq`, so a client that reconnects gets exactly
 - **Liveness.** The daemon sends `{type:"ping", seq, data:t}` every 10 s, and answers a client's `{"ping":t}` with `{type:"pong", seq, data:t}`; the client answers the daemon's ping with `{"pong":t}`. A ping or pong's `seq` is the client's position, not a new frame. Either side takes 25 s with nothing received for a dead socket and closes it (the daemon also counts a WebSocket protocol pong, which every browser sends by itself, so a client that predates the ping frame is not cut off); the client reconnects with `since`.
 - **Client.** `ui/src/lib/live.ts` drops a frame whose seq is not above the last applied (a hello or reset sets the position outright), bumps the refetch tick on `reset`, and keeps the `notify` frames it received, newest first and one per `id`, for WP-09 to show.
 - **Only some types** (ADR-067, Phase 2). Query `?types=notify,permission` sends only frames of those types, plus `hello`, `reset`, `ping` and `pong`; a type is lowercase letters and `_`, at most 32, else **400**; empty or absent is every type. A frame left out still moves the position, so `since` works as before. Another computer's daemon asks this way, so a prompt there costs the relay one frame, not every event of every session. A daemon that predates it ignores the parameter and sends everything; the caller drops what it did not ask for.
-- **Local only.** A frame that carries what another computer said — a `notify` with `machine`, and every `machines` frame (§ Other computers) — goes to this machine's own clients only (loopback, not forwarded: `isLocal`), never to a paired phone or computer, so access is not transitive. It is numbered and replayed like any other; a device's socket skips it.
+- **Local only.** A frame that carries what another computer said — a `notify` with `machine`, and every `machines` frame (§ Other computers) — and every `talks` frame (§ Talks), goes to this machine's own clients only (loopback, not forwarded: `isLocal`), never to a paired phone or computer, so access is not transitive. It is numbered and replayed like any other; a device's socket skips it.
 
 ### Client reconnect policy
 
@@ -1371,7 +1505,7 @@ One policy for both sockets, `ui/src/lib/reconnect.ts` (WP-13, [21-app.md § Pha
 
 ### Notify frame
 
-`{type:"notify", seq, data:{id, kind, session_id, project?, title, body, prompt_id?, actions?, route?}}` — an alert for the desktop app (kind `module`, with an empty `session_id`, is a private module's `POST /v1/x/<id>/notify` — `id` `module-<id>-<ns>`, `title` `<module name> · <title>`, `body` the module's, `route` `#/x/<id>`, which a click opens: the `notify` command's `route`, kept only when it is `#/x/<module id>`, then `caprock:open-route` on macOS and Linux, the app coming forward elsewhere; published only while `notify_approval` or `notify_finished` is on, § Private modules; kinds `ci` and `review`, with an empty `session_id`, come from GitHub, § GitHub; kind `window`, also with an empty `session_id`, is the plan-window stop pausing or resuming sessions — `id` `window-paused-<ms>` or `window-resumed-<ms>`, `title` `Paused 2 sessions · Claude's 5-hour limit at 91%` or `Resumed 2 sessions · Claude's plan window reset`, `body` one session per line (project · title) and, for a pause, `They resume after it resets at 19:00.`; published whenever the stop acts, not behind a notify switch) (WP-09, [21-app.md § Notifications](21-app.md#notifications)). Code: `internal/alerts` (`Notify`), `internal/daemon/phonealerts.go`, `ui/src/lib/notify.ts`, `app/src-tauri/src/notify.rs`, `app/src-tauri/src/notify_macos.rs`.
+`{type:"notify", seq, data:{id, kind, session_id, project?, title, body, prompt_id?, actions?, route?}}` — an alert for the desktop app (kind `module`, with an empty `session_id`, is a private module's `POST /v1/x/<id>/notify` — `id` `module-<id>-<ns>`, `title` `<module name> · <title>`, `body` the module's, `route` `#/x/<id>`, which a click opens: the `notify` command's `route`, kept only when it is `#/x/<module id>`, then `caprock:open-route` on macOS and Linux, the app coming forward elsewhere; published only while `notify_approval` or `notify_finished` is on, § Private modules; kinds `ci` and `review`, with an empty `session_id`, come from GitHub, § GitHub; kind `talk_hold`, with an empty `session_id`, is a Talk held for its owner (§ Talks) — `id` `talk-<talk id>-<ns>`, `title` `Talk with <name> is waiting for you`, `body` why (what the guard caught, the cap, the agent asking, a failed turn) and never the message, `route` `#/talks/<id>`; kind `window`, also with an empty `session_id`, is the plan-window stop pausing or resuming sessions — `id` `window-paused-<ms>` or `window-resumed-<ms>`, `title` `Paused 2 sessions · Claude's 5-hour limit at 91%` or `Resumed 2 sessions · Claude's plan window reset`, `body` one session per line (project · title) and, for a pause, `They resume after it resets at 19:00.`; published whenever the stop acts, not behind a notify switch) (WP-09, [21-app.md § Notifications](21-app.md#notifications)). Code: `internal/alerts` (`Notify`), `internal/daemon/phonealerts.go`, `ui/src/lib/notify.ts`, `app/src-tauri/src/notify.rs`, `app/src-tauri/src/notify_macos.rs`.
 
 - **From another computer** (ADR-067, Phase 2; buttons Phase 3, 2026-11-07). A frame with `machine` and `machine_name` was decided on a computer this one reaches and re-published here, local only (§ Other computers). Its `session_id`, `prompt_id` and `actions` are that computer's. The app shows it with ` · on <machine_name>` after the title and hands the shell `{title, body, id: "m-<id>", sessionId, promptId, actions, machine}`: with `machine` set the shell's Approve and Deny answer **there**, with `POST /v1/m/{machine}/v1/agents/{session_id}/permission` `{id: prompt_id, choice}` to its loopback daemon, which carries it through its link (a 409 there is *Already answered*; a `403`, `502` or `503` from the link is *Could not answer*, *the other computer could not be reached*), and a click on the body opens `#/m/<machine>/session/<session_id>` (the shell's `caprock:open-route`, which the page takes only in that shape, ids of letters, digits, `_`, `-` and `.`). Whether it still waits is asked with `GET /v1/m/{machine}/v1/agents/{session_id}/permission`; when a `machines` frame says `why: "answered"` for that computer and session, the page withdraws it (`withdraw_notifications`). On Windows, as for this machine's, the click opens the session, whose prompt card answers it. A shell from before `machine` ignores it and would answer on this machine, where no such session waits: the daemon refuses it and the shell says *Could not answer*. Telegram here never sends it.
 - **One decision, two senders.** The alert rules (below, § Phone alerts) run once over the stored events; a kind is decided while Telegram's switch or the app's is on, and the 3-minute per-session cooldown and the 20-an-hour cap count each decision once for both. Each sender then delivers it only if its own switch is on. `PUT /v1/settings` takes `notify_approval` (on unless turned off; every "Needs you": a dialog, and since 2026-10-21 a turn that ended on a question or an error) and `notify_finished` (accepted and returned, no longer read: a Done turn raises no notification, § Needs you and Done), stored as pointers in `config.json`; `GET` returns both. Telegram's `alert_*` switches are untouched and stay off unless turned on.
@@ -10023,6 +10157,77 @@ CREATE TABLE IF NOT EXISTS telegram_outbox (
 CREATE INDEX IF NOT EXISTS idx_telegram_outbox_created ON telegram_outbox(created_at, id);
 ```
 
+### Talks DDL (migration 0097)
+
+A Talk on this side (§ Talks, ADR-110): one `talks` row each, both sides'
+envelopes in `talk_envelopes` byte for byte as they travelled (`raw`, with
+`hash` over it; `side` is `me` or `them`; `how` how one of this side's left
+— `auto`, `from_hold`, `edited`, `typed`; `caught` what the guard counted;
+`cost_usd` the turn's cost), and `talk_outbox` the envelopes of this side
+the other has not taken (`next_at` unix ms, `tries`, `last_error`).
+`person` is the other side's relay id. `draft*` hold the one message held
+for the owner, `note` the agent's last private note, `steer` what the next
+turn is told first; none of these is ever sent. Talks are kept until a
+later phase deletes them.
+
+```sql
+CREATE TABLE IF NOT EXISTS talks (
+  id             TEXT PRIMARY KEY,
+  person         TEXT NOT NULL,
+  person_name    TEXT NOT NULL DEFAULT '',
+  goal           TEXT NOT NULL,
+  started_by     TEXT NOT NULL,
+  state          TEXT NOT NULL,
+  hold           TEXT NOT NULL DEFAULT '',
+  ended_by       TEXT NOT NULL DEFAULT '',
+  brief          TEXT NOT NULL DEFAULT '',
+  agent          TEXT NOT NULL DEFAULT '',
+  model          TEXT NOT NULL DEFAULT '',
+  max_messages   INTEGER NOT NULL,
+  max_usd        REAL NOT NULL,
+  sent           INTEGER NOT NULL DEFAULT 0,
+  cost_usd       REAL NOT NULL DEFAULT 0,
+  their_cost_usd REAL,
+  draft          TEXT NOT NULL DEFAULT '',
+  draft_redacted TEXT NOT NULL DEFAULT '',
+  draft_caught   TEXT NOT NULL DEFAULT '',
+  draft_done     INTEGER NOT NULL DEFAULT 0,
+  note           TEXT NOT NULL DEFAULT '',
+  steer          TEXT NOT NULL DEFAULT '',
+  last_error     TEXT NOT NULL DEFAULT '',
+  created_at     INTEGER NOT NULL,
+  updated_at     INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_talks_updated ON talks(updated_at);
+CREATE INDEX IF NOT EXISTS idx_talks_person ON talks(person, state);
+
+CREATE TABLE IF NOT EXISTS talk_envelopes (
+  talk         TEXT NOT NULL,
+  side         TEXT NOT NULL,
+  seq          INTEGER NOT NULL,
+  kind         TEXT NOT NULL,
+  hash         TEXT NOT NULL,
+  raw          TEXT NOT NULL,
+  how          TEXT NOT NULL DEFAULT '',
+  caught       TEXT NOT NULL DEFAULT '',
+  cost_usd     REAL NOT NULL DEFAULT 0,
+  at           INTEGER NOT NULL,
+  delivered_at INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (talk, side, seq)
+);
+
+CREATE TABLE IF NOT EXISTS talk_outbox (
+  talk       TEXT NOT NULL,
+  seq        INTEGER NOT NULL,
+  person     TEXT NOT NULL,
+  tries      INTEGER NOT NULL DEFAULT 0,
+  next_at    INTEGER NOT NULL,
+  last_error TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY (talk, seq)
+);
+CREATE INDEX IF NOT EXISTS idx_talk_outbox_next ON talk_outbox(next_at);
+```
+
 ### Kept parts DDL (migration 0093)
 
 [0093_parts_kept.sql](../internal/store/migrations/0093_parts_kept.sql):
@@ -10684,7 +10889,7 @@ A platform without a signed bundle is absent. The signature is minisign over the
 
 ### File permissions
 
-Everything Caprock writes into `<data_dir>` is owner-only on POSIX. The data directory is `0700`; `config.json`, `runtime.json`, `telegram.json`, `ci-auto-rerun.json` and the log are `0600`; and **`caprock.db` plus its `-wal`/`-shm` siblings are `0600`**.
+Everything Caprock writes into `<data_dir>` is owner-only on POSIX. The data directory is `0700`; `config.json`, `runtime.json`, `telegram.json`, `ci-auto-rerun.json`, `people.json`, `talks.json` and the log are `0600`; and **`caprock.db` plus its `-wal`/`-shm` siblings are `0600`**.
 
 The database is included because it stores prompts and responses in cleartext — that is what makes the Memory screen searchable — so a world-readable mode hands every other local account the user's entire session history. It was previously left at whatever the process umask produced, which under a default umask is `0644`, while `config.json` beside it had always been `0600`.
 

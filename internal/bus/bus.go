@@ -91,6 +91,11 @@ const (
 	// down — so a screen listing their sessions reads GET
 	// /v1/machines/sessions again. Local only.
 	FrameMachines FrameType = "machines"
+	// FrameTalks says a Talk changed on this side (ADR-110): {id, why} — a
+	// message sent, received or delivered, a hold, an end — so a screen
+	// showing it reads GET /v1/talks/{id} again. Local only: a Talk is
+	// read on the machine.
+	FrameTalks FrameType = "talks"
 )
 
 // Frame is what goes over /v1/live. Seq is set by Publish: one more than the

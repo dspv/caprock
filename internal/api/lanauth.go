@@ -200,6 +200,9 @@ const (
 	controllerRefusal = "this is done on the machine Caprock runs on"
 	// pendingRefusal is a computer the owner has not allowed yet (ADR-067).
 	pendingRefusal = "this computer is waiting to be allowed on the machine Caprock runs on"
+	// personRefusal is a person linked for Talks asking for anything but
+	// delivering to a Talk (ADR-110).
+	personRefusal = "a Talks link delivers Talk messages and nothing else"
 )
 
 // gateDevice is gate, plus the device that is asking when the request came
@@ -245,8 +248,8 @@ func (s *Server) gateDevice(r *http.Request) (status int, reason string, dev *pa
 		// apart tells a stranger which of their guesses was once real.
 		return http.StatusUnauthorized, "this device is not paired with Caprock", nil
 	}
-	if dev.Kind == pairing.KindMachine {
-		// A computer's token is held to the key its channel proved
+	if dev.Kind == pairing.KindMachine || dev.Kind == pairing.KindPerson {
+		// A computer's token — and a person's, bound from the start (ADR-110) — is held to the key its channel proved
 		// (remote.KindProve, ADR-067 Phase 4): bound on the first request
 		// that carries a proof, refused from then on any channel that proved
 		// another key or none, so a token copied off that computer reaches
@@ -267,6 +270,12 @@ func (s *Server) gateDevice(r *http.Request) (status int, reason string, dev *pa
 			return 0, "", dev
 		}
 		return http.StatusForbidden, pendingRefusal, dev
+	}
+	if dev.Kind == pairing.KindPerson {
+		if s.personMay(r) {
+			return 0, "", dev
+		}
+		return http.StatusForbidden, personRefusal, dev
 	}
 	switch s.deviceMay(r, dev) {
 	case mayServe:
@@ -716,6 +725,30 @@ var computerRoutes = map[string]bool{
 	"POST /v1/telegram/hub/handover": true,
 }
 
+// What a person linked for Talks may do (ADR-110), and nothing else: not
+// the reads a phone makes (pairedDeviceRoutes), not a controller's or a
+// computer's routes, not the dashboard's live stream, not a private
+// module's pages. Another person's Caprock delivers envelopes into a Talk
+// the two share and reads what this side holds of one, asks where its link
+// stands and withdraws it (its owner's Remove). An allowlist like the
+// others, read on its own: a route added later is closed to a person until
+// it is named here.
+var personRoutes = map[string]bool{
+	"POST /v1/talks/inbox":       true,
+	"GET /v1/talks/inbox/{talk}": true,
+	"GET /v1/pair/me":            true,
+	"DELETE /v1/pair/me":         true,
+}
+
+// personMay decides one request from a person linked for Talks.
+func (s *Server) personMay(r *http.Request) bool {
+	if !strings.HasPrefix(r.URL.Path, "/v1/") {
+		return false
+	}
+	_, pattern := s.mux.Handler(r)
+	return personRoutes[pattern] && controllerMethod(r.Method, pattern)
+}
+
 // deviceVerdict is what a role may do with one request.
 type deviceVerdict int
 
@@ -812,6 +845,8 @@ func (s *Server) pairingGate(w http.ResponseWriter, r *http.Request) (*http.Requ
 		switch reason {
 		case pendingRefusal:
 			detail = "On the machine Caprock runs on, press Allow beside this computer's name, or run `caprock machines allow <name>` there."
+		case personRefusal:
+			detail = "A person linked for Talks reaches that Talk's inbox and nothing else on this machine."
 		case viewerRefusal:
 			detail = "To start, type into or stop sessions from here, open the Caprock app on your computer: Settings \u2192 Use on your phone, then press \u201cAllow control\u201d next to this device."
 		default:
