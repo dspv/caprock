@@ -519,10 +519,10 @@ Anything the spec did not answer. Do not resolve these by inventing an answer. "
   with a date. Owed before team rooms ship with the check as their default
   safeguard, and before any public page says anything about leak protection
   (rule 6).
-- `OQ-36` — **A guest in a team room.** Whether a person outside the team
-  (a client, a contractor) may join a team's room without a licence, and
-  what of the team's store and rules they see ([ADR-110](08-decisions.md)).
-  Decided by: the owner, before P5.
+- `OQ-36` — **A guest in a team room.** ANSWERED 2026-11-28 by the owner
+  (translated): "for now such rooms are only for our own people." A team room
+  takes members of the team only; no guest without a licence. Revisit when a
+  team asks to bring in a client or contractor ([ADR-110](08-decisions.md)).
 
 ## What would falsify the whole plan
 
