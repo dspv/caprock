@@ -57,7 +57,7 @@ jobs:
           # minutes long, so only when what it runs changed: on a pull request
           # its files, on a push to master the pushed commits' files, and
           # always by hand (workflow_dispatch) or when the files cannot be read.
-          server_re='^(internal/serverscript/|internal/peers/|internal/smoke/server_container_test\.go$|cmd/caprock/|\.github/workflows/ci\.yml$)'
+          server_re='^(internal/serverscript/|internal/peers/|internal/daemon/join\.go$|internal/api/serverscript\.go$|internal/smoke/server_container_test\.go$|cmd/caprock/|\.github/workflows/ci\.yml$)'
           if [ "$GITHUB_EVENT_NAME" != pull_request ]; then
             server=true
             if [ "$GITHUB_EVENT_NAME" = push ] && [ -n "$BEFORE" ] && [ "$BEFORE" != 0000000000000000000000000000000000000000 ] \
@@ -338,16 +338,25 @@ jobs:
   server-container:
     needs: changes
     if: needs.changes.outputs.code == 'true' && needs.changes.outputs.server == 'true'
-    name: server script (${{ matrix.image }})
+    name: server script (${{ matrix.image }}${{ matrix.via == 'ssh' && ', over ssh' || '' }})
     strategy:
       fail-fast: false
       matrix:
         image: ["ubuntu:24.04", "ubuntu:22.04", "debian:12", "debian:13", "kalilinux/kali-rolling", "fedora", "rockylinux:9", "almalinux:9"]
+        via: [file]
+        # I already have a server: root with a password, the typed ssh
+        # command run as it is, one image per family.
+        include:
+          - image: "ubuntu:24.04"
+            via: ssh
+          - image: "rockylinux:9"
+            via: ssh
     runs-on: ubuntu-latest
     timeout-minutes: 75
     env:
       CGO_ENABLED: "0"
       CAPROCK_SERVER_IMAGE: ${{ matrix.image }}
+      CAPROCK_SERVER_VIA: ${{ matrix.via }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0

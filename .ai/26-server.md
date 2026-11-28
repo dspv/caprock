@@ -1,6 +1,6 @@
 # A server in one click
 
-**Status: accepted 2026-11-28; P1 built (2026-11-28), P2–P4 not.** The decision is
+**Status: accepted 2026-11-28; P1 and I already have a server built (2026-11-28), P2–P4 not.** The decision is
 [ADR-109](08-decisions.md#adr-109--a-server-in-one-click-on-the-users-own-provider-account);
 this file is its build plan. The server is the user's own, rented on their
 own provider account; Caprock writes its setup script, optionally calls the
@@ -165,11 +165,74 @@ what it left open:
   (`ubuntu:24.04`, `ubuntu:22.04`, `debian:12`, `debian:13`,
   `kalilinux/kali-rolling`, `fedora`, `rockylinux:9`, `almalinux:9`) on
   ubuntu-latest when `internal/serverscript/`, `internal/peers/`,
-  `cmd/caprock/`, the test or `ci.yml` change, and on `workflow_dispatch`.
+  `internal/daemon/join.go`, `internal/api/serverscript.go`,
+  `cmd/caprock/`, the test or `ci.yml` change, and on `workflow_dispatch`;
+  plus `ubuntu:24.04` and `rockylinux:9` *over ssh* (below).
   Its first runs (#1117) found two gaps the script now closes: it starts
   `user@<uid>.service` itself after lingering (and prints its status and
   journal when that fails), and it installs `procps`, whose `sysctl` `ufw
   enable` runs and a minimal Debian lacks.
+
+### I already have a server
+
+The second path on New server (ADR-109, amended 2026-11-28), for a server
+the user already has — the shape of a customer's email: *Address <IP>, user
+root; ssh will ask for the password*.
+
+- **The form**: Address (an IPv4 or IPv6 address or a host name), User
+  (`root` by default; another user needs sudo), Port (22 when empty).
+  `serverscript.SSHTarget.Check`, and the same check in the form, accept
+  only letters, digits, `.`, `-` (an IPv6 address: hex digits and colons;
+  no zone, no brackets), a Linux user name, and 1–65535: nothing a shell or
+  ssh can read as anything else — no space, quote, `;`, `$`, backtick, `@`,
+  or a leading `-` that ssh would take as an option.
+- **Set up** is `POST /v1/machines/server-ssh`: the script made as
+  `server-script` with `ssh_key: true` (SSH stays on, keys only), saved to
+  `<data dir>/server-scripts/caprock-setup-*.sh`, mode 0600, and the command
+  for this computer's shell, typed into a terminal tab in the home folder and
+  not run (`SetupShell`, ADR-046's way; in a browser, the command to copy):
+  - root, macOS and Linux: `ssh -p 22 root@<address> 'sh -s' < '<file>'`;
+  - root, Windows (PowerShell, the shell tab there): `cmd --% /c ssh -p 22
+    root@<address> "sh -s" < "<file>"` — OpenSSH's `ssh.exe` with `cmd`'s
+    redirection, byte for byte, where PowerShell's pipe would rewrite line
+    endings and encoding;
+  - another user: `scp -P <port> '<file>' <user>@<address>:caprock-setup.sh
+    && ssh -t -p <port> <user>@<address> 'sudo sh caprock-setup.sh; rm -f
+    caprock-setup.sh'` (PowerShell: `; if ($?) { … }`), because sudo's
+    password needs a terminal that ssh's standard input cannot be.
+- The user presses Enter. ssh asks in that terminal for the host key, the
+  password or a key's passphrase; Caprock sees none of it and stores no
+  credential. The tab shows each step of the script as the server runs it.
+- **Read whole, then run.** The script's steps are one `{ … } </dev/null`
+  group, so `sh -s` reads them all before any runs and no step (apt, npm, an
+  installer) can read the rest of the script from standard input.
+- **Password login off.** With `CAPROCK_SSH_KEY=1` the script writes
+  `/etc/ssh/sshd_config.d/01-caprock.conf` (no password, no
+  keyboard-interactive, root by key only), which wins over a provider's
+  later drop-in (`50-cloud-init.conf`), checks it with `sshd -T`, and
+  *reloads* sshd, so the session it runs in stays; the firewall admits
+  sshd's ports. The screen says beforehand and while waiting that password
+  login is off afterwards: the way in is Caprock, or SSH with a key.
+- **The wait outlives the panel** (`ui/src/lib/serverJoinWatch.ts`): the
+  user is in the terminal tab, so the key is read every 2 s from there, the
+  server's page opens once it joins, and Settings shows the wait again when
+  the user comes back. Cancel withdraws the key.
+- **The file goes** once its key is no longer waiting — joined, failed,
+  withdrawn, replaced or expired (the daemon looks every 5 s) — and every
+  such file is removed at the daemon's start.
+- **Tests.** `internal/serverscript/ssh_test.go`: the injection list, the
+  command per OS and per user, the steps surviving a step that reads
+  standard input under `sh -s`. `internal/api/serverscript_test.go`: the
+  route refuses a bad target before the daemon sees it, answers no key or
+  script, and no device may ask. The two-daemon smoke test makes one, checks
+  the 0600 file under the data directory, and sees it removed when the next
+  key replaces its own. `ui/e2e/own-server.spec.ts`: the form, the refusal,
+  the command as macOS, Windows and Linux spell it typed into a real shell
+  tab, the wait back in Settings, the server's page. The container test with
+  `CAPROCK_SERVER_VIA=ssh` is the email's flow on a real sshd: root with a
+  password, the daemon's command run as it is (ssh's prompt answered through
+  `SSH_ASKPASS`), the whole checklist, sshd still on, and the password
+  refused afterwards.
 
 ### P2 — the Hetzner Cloud path
 

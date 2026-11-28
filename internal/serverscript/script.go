@@ -105,8 +105,18 @@ func Render(in Input) (string, error) {
 		b.WriteString("CAPROCK_SSH_KEY=0\n")
 	}
 	fmt.Fprintf(&b, "CAPROCK_JOIN_KEY='%s'\n", key)
-	b.WriteString(body)
+	// One group, read whole before any of it runs, with nothing on its
+	// standard input: run as ssh … 'sh -s' < script (I already have a
+	// server), the script is that standard input, and a step that reads it
+	// (apt, npm, an installer) would eat the rest of the script.
+	b.WriteString(group(body))
 	return b.String(), nil
+}
+
+// group wraps the script's steps so that sh reads them whole before running
+// any, and runs them with standard input closed.
+func group(steps string) string {
+	return "\n# Read whole before it runs; no step reads standard input.\n{" + steps + "} </dev/null\n"
 }
 
 // header is the comment a person reads first, in a provider's form or a

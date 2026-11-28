@@ -24,6 +24,8 @@ import { navigate } from '@/lib/router'
 import { useNow } from '@/lib/useNow'
 import { extTitle } from '@/lib/externalLinks'
 import { JOIN_POLL_MS, joinLine } from './JoinKey'
+import { OwnServer } from './OwnServer'
+import { serverJoin } from '@/lib/serverJoinWatch'
 
 /** A state that belongs to a key of the other kind reads as this key withdrawn. */
 export function ownServerState(s: JoinKeyState): JoinKeyState {
@@ -38,8 +40,11 @@ export function checkLine(made: Pick<ServerScript, 'version' | 'signed'>): strin
 }
 
 export function NewServer() {
-  const [open, setOpen] = useState(false)
+  // A server being set up over SSH (lib/serverJoinWatch): back in Settings,
+  // its wait is shown again.
+  const [open, setOpen] = useState(() => serverJoin() !== null)
   const [sshKey, setSshKey] = useState(false)
+  const [path, setPath] = useState<'provider' | 'own'>(() => serverJoin() ? 'own' : 'provider')
   const [made, setMade] = useState<ServerScript | null>(null)
   const [st, setSt] = useState<JoinKeyState | null>(null)
   const [busy, setBusy] = useState(false)
@@ -109,7 +114,17 @@ export function NewServer() {
     const ended = made && st && st.state !== 'none'
     return (
       <div className="grid min-w-0 gap-2.5 rounded-md border border-border bg-panel-2 px-3 py-2.5" data-new-server="setup">
-        <span className="text-[13px] font-medium text-fg">New server — I&apos;ll create it myself</span>
+        <span className="text-[13px] font-medium text-fg">New server</span>
+        <div role="radiogroup" aria-label="Where the server is" className="flex min-w-0 flex-wrap gap-x-4 gap-y-1 text-[13px]" data-new-server-path>
+          <label className="flex items-center gap-1.5">
+            <input type="radio" name="new-server-path" checked={path === 'provider'} onChange={() => setPath('provider')} />
+            I&apos;ll create it at a provider
+          </label>
+          <label className="flex items-center gap-1.5">
+            <input type="radio" name="new-server-path" checked={path === 'own'} onChange={() => setPath('own')} />
+            I already have a server
+          </label>
+        </div>
         <span className="text-[12.5px] text-fg-muted">
           The script runs once on the new server as root: a user <code className="mono">caprock</code> with no password and no sudo, unattended security upgrades,
           a firewall that admits nothing inbound, Git, Node.js, Claude Code with Anthropic&apos;s installer, Codex, a headless Chromium for the agents, Caprock at this computer&apos;s version, and then it links the server here.
@@ -119,6 +134,7 @@ export function NewServer() {
           Need a Mac server?{' '}
           <a href={MAC_SERVER_ISSUE} target="_blank" rel="noreferrer" title={extTitle('A new GitHub issue, filled in for you to read and submit')} className="text-accent hover:underline">Ask for it</a>
         </span>
+        {path === 'own' ? <OwnServer onClose={() => void cancel()} /> : <>
         <label className="flex min-w-0 items-start gap-2 text-[13px]">
           <input type="checkbox" checked={sshKey} onChange={(e) => setSshKey(e.target.checked)} className="mt-0.5" data-new-server-ssh />
           <span>I log in with an SSH key (I gave the provider one, or I&apos;ll run the script over SSH). <span className="text-fg-muted">SSH stays on for keys only; unticked, SSH is stopped there and the provider&apos;s web console is the way in.</span></span>
@@ -130,8 +146,9 @@ export function NewServer() {
           </button>
           <button type="button" onClick={() => void cancel()} className="text-[12.5px] text-fg-faint underline hover:text-fg">Close</button>
         </span>
+        </>}
         <span className="text-[12px] text-fg-muted">
-          Making it reads that release&apos;s checksums from GitHub and opens a key for 60 minutes, waiting at this computer&apos;s relay, end-to-end encrypted.
+          Making the script reads that release&apos;s checksums from GitHub and opens a key for 60 minutes, waiting at this computer&apos;s relay, end-to-end encrypted.
         </span>
         {err && <span role="alert" className="text-[12.5px] text-danger">{err}</span>}
       </div>

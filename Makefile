@@ -166,7 +166,7 @@ smoke: build-go ## Phase 0 DoD scenario + the Phase 2 e2e (what CI's smoke step 
 # `make check` (minutes, a privileged container, package mirrors); CI runs it
 # in ci.yml's server-container job when its files change.
 .PHONY: server-container-test
-server-container-test: ## the server setup script in a container: CAPROCK_SERVER_IMAGE=ubuntu:24.04 or debian:12 (Linux + Docker)
+server-container-test: ## the server setup script in a container: CAPROCK_SERVER_IMAGE=ubuntu:24.04, CAPROCK_SERVER_VIA=ssh (Linux + Docker)
 	go test -tags 'smoke servercontainer' -count=1 -timeout 60m -run TestTheSetupScriptOnALinuxServer -v ./internal/smoke/
 
 # The app's golden paths in a headless browser (ui/e2e, .ai/10-infrastructure.md

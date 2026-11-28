@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/dspv/caprock/internal/peers"
+	"github.com/dspv/caprock/internal/serverscript"
 )
 
 // New server (ADR-109, .ai/26-server.md P1): Settings → Computers → Add a
@@ -40,6 +41,25 @@ type ServerScript struct {
 // ServerScripts makes setup scripts: the daemon's side.
 type ServerScripts interface {
 	NewServerScript(ctx context.Context, req ServerScriptRequest) (ServerScript, error)
+	// NewServerSSH is I already have a server: the script with SSH kept on
+	// (keys only), saved to a 0600 file until its key is spent, withdrawn
+	// or expired, and the ssh command for this computer's terminal.
+	NewServerSSH(ctx context.Context, t serverscript.SSHTarget) (ServerSSH, error)
+}
+
+// ServerSSH is POST /v1/machines/server-ssh's answer. The script itself is
+// not in it: it is in the file the command reads.
+type ServerSSH struct {
+	peers.JoinState
+	// Command is typed into a terminal tab here and not run: the user's own
+	// ssh, which asks for its password or key in that terminal.
+	Command string `json:"command"`
+	// OS is this computer's, whose shell Command is spelled for.
+	OS      string `json:"os"`
+	Version string `json:"version"`
+	Signed  bool   `json:"signed"`
+	// Home is the folder the terminal tab opens in.
+	Home string `json:"home,omitempty"`
 }
 
 // Errors a script maker tells apart.
@@ -77,6 +97,43 @@ func (s *Server) handleServerScript(w http.ResponseWriter, r *http.Request) {
 		s.failCode(w, code, err)
 		return
 	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, out)
+}
+
+// handleServerSSH is POST /v1/machines/server-ssh {address, user, port?}: I
+// already have a server. Loopback only and on no device's allowlist, as the
+// script's route.
+func (s *Server) handleServerSSH(w http.ResponseWriter, r *http.Request) {
+	if !isLocal(r) {
+		s.failCode(w, http.StatusForbidden, errors.New("computers are linked from the machine Caprock runs on"))
+		return
+	}
+	if s.d.Servers == nil {
+		s.failCode(w, http.StatusNotImplemented, errors.New("this build cannot set up a server"))
+		return
+	}
+	var t serverscript.SSHTarget
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&t); err != nil {
+		s.failCode(w, http.StatusBadRequest, errors.New(`send {"address": "<IP or host>", "user": "root", "port"?: 22}`))
+		return
+	}
+	if err := t.Check(); err != nil {
+		s.failCode(w, http.StatusBadRequest, err)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), serverScriptWait)
+	defer cancel()
+	out, err := s.d.Servers.NewServerSSH(ctx, t)
+	if err != nil {
+		code := http.StatusConflict
+		if errors.Is(err, ErrNoRelease) {
+			code = http.StatusBadGateway
+		}
+		s.failCode(w, code, err)
+		return
+	}
+	out.Home = homeRoot()
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusOK, out)
 }

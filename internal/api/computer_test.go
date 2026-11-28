@@ -57,7 +57,7 @@ var neverAComputer = []string{
 	// Join keys (ADR-108): a computer that could mint one could add controllers here.
 	"POST /v1/machines/join-key", "GET /v1/machines/join-key", "DELETE /v1/machines/join-key", "POST /v1/join",
 	// A server's setup script holds a join key (ADR-109).
-	"POST /v1/machines/server-script",
+	"POST /v1/machines/server-script", "POST /v1/machines/server-ssh",
 }
 
 // pairedComputer adds to ps a computer that redeemed a code for one and,

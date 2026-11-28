@@ -62,6 +62,26 @@ with your laptop closed — is set up by one script Caprock writes.
    minutes). Then the server's page opens on the laptop, with the sign-ins
    still to do there.
 
+**A server you already have** (reached over SSH): in Caprock, Settings →
+Computers → Add a computer → **New server** → *I already have a server*.
+Enter its address (an IP or a host name) and the user — `root`, or a user
+with sudo — and the port if it is not 22, then **Set up**. A terminal tab
+opens on your computer with your own `ssh` command typed in, for example
+
+```sh
+ssh -p 22 root@203.0.113.7 'sh -s' < '/path/to/caprock-setup-….sh'
+```
+
+Press Enter there. ssh asks for the server's password (or uses your key);
+Caprock never sees it and stores nothing of it. The tab shows the script's
+steps as the server runs them, and the server's page opens when it has
+joined. The script file on your computer is deleted once its key is used or
+expires. **When it is done, password login to that server is off**, SSH
+stays on for keys only, and the way in is Caprock, or SSH with a key you
+add (from Caprock's terminal on the server, or your provider's console).
+On Windows the command is spelled for PowerShell, with Windows' own
+OpenSSH (`ssh.exe`).
+
 The script, as root, printing each step and stopping at the first that
 fails, with its name in the provider's console log:
 

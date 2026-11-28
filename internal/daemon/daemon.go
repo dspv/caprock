@@ -806,6 +806,7 @@ func (d *Daemon) run(ctx context.Context) error {
 	d.machines = &machinesAdapter{d: d}
 	defer d.machines.close()
 	d.join = &joinAdapter{d: d}
+	d.join.clearServerScripts()
 	defer d.join.close()
 	d.talks = newTalksAdapter(d)
 	defer d.talks.close()

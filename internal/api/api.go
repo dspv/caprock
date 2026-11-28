@@ -915,6 +915,7 @@ func New(d Deps) *Server {
 	// A new server's setup script (ADR-109, serverscript.go): loopback only,
 	// in the handler, and on no device's allowlist.
 	m.HandleFunc("POST /v1/machines/server-script", s.handleServerScript)
+	m.HandleFunc("POST /v1/machines/server-ssh", s.handleServerSSH)
 	// Send secrets (ADR-107, secretshare.go): the two sending routes are
 	// loopback only, like the rest; the receiving one is for a computer
 	// allowed here alone (computerRoutes, and the handler checks the kind).
