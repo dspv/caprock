@@ -102,7 +102,8 @@ apt_get() {
 	apt-get -o DPkg::Lock::Timeout=600 -y "$@"
 }
 if [ "$family" = redhat ]; then
-	dnf -y install ca-certificates git tar gzip procps-ng firewalld
+	# util-linux: runuser (a minimal Fedora has util-linux-core without it).
+	dnf -y install ca-certificates git tar gzip procps-ng util-linux firewalld
 	# An image with curl-minimal has a working curl; the full one conflicts.
 	command -v curl >/dev/null 2>&1 || dnf -y install curl
 	dnf -y install dnf-automatic || dnf -y install dnf5-plugin-automatic
@@ -176,6 +177,14 @@ for g in sudo wheel; do
 		gpasswd --delete caprock "$g" >/dev/null
 	fi
 done
+# Lingering is logind's: started here when the bus has not activated it yet.
+if ! systemctl is-active --quiet systemd-logind.service; then
+	systemctl start systemd-logind.service || {
+		systemctl status systemd-logind.service --no-pager -l >&2 || true
+		journalctl -b -u systemd-logind.service -n 40 --no-pager >&2 || true
+		stop 'systemd-logind is not running, and lingering needs it'
+	}
+fi
 loginctl enable-linger caprock
 cuid=$(id -u caprock)
 chome=$(getent passwd caprock | cut -d: -f6)
