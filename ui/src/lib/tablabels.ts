@@ -47,6 +47,12 @@ export interface TabLabel {
    * project, so the tab never reads as this machine's.
    */
   machine?: string
+  /**
+   * A session on another computer: the folder it runs in there, named as a
+   * project is here (its project's name there, else the folder's last
+   * part), so the tab says where it works as one of this machine's does.
+   */
+  folder?: string
   /** A session on another computer: its row in that computer's list, when the list has it. */
   remote?: SessionSummary
   dot: Dot
@@ -57,6 +63,13 @@ export interface TabLabel {
  * tabs: each computer's name by id, and their running sessions by tab key
  * (lib/tabs.ts remoteKey).
  */
+/** The folder a session on another computer runs in, named as a project: its project there, else the folder's last part, in that computer's own separators. */
+export function remoteFolder(s: { project?: string; cwd?: string }): string {
+  if (s.project) return s.project
+  const parts = (s.cwd ?? '').split(/[\\/]+/).filter(Boolean)
+  return parts[parts.length - 1] ?? ''
+}
+
 export interface RemoteLabels {
   names: ReadonlyMap<string, string>
   sessions: ReadonlyMap<string, SessionSummary>
@@ -123,7 +136,8 @@ export function tabLabels(
       // its own computer's word for it; the computer is its tag.
       const r = remote?.sessions.get(leaf.target.sessionId)
       const machine = remote?.names.get(leaf.target.machine ?? '') || leaf.target.machineName || 'another computer'
-      out.set(t.id, { title: r ? sessionTitle(r) : t.title || 'session', isShell: false, machine, ...(r ? { remote: r } : {}), dot: r ? dotOf(r, false) : 'idle' })
+      const folder = r ? remoteFolder(r) : ''
+      out.set(t.id, { title: r ? sessionTitle(r) : t.title || 'session', isShell: false, machine, ...(folder ? { folder } : {}), ...(r ? { remote: r } : {}), dot: r ? dotOf(r, false) : 'idle' })
       continue
     }
     if (leaf.target.kind === 'page') {

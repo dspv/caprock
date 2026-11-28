@@ -692,8 +692,10 @@ export function TerminalView({
         * because it is the one that works in every terminal with no setup, so
         * it is the answer when someone's keyboard or OS eats the others. */}
       {/* A keyboard without Esc, Tab, arrows or Ctrl: on a phone always, and
-        * on any narrow window. */}
-      <div className={phone ? '' : 'sm:hidden'}>
+        * on a narrow touch screen. Never under a mouse: a desktop has the
+        * keys, and a narrow window there is still a desktop (owner,
+        * 2026-11-28: "half-mobile"). */}
+      <div className={phone ? '' : touchScreen() ? 'sm:hidden' : 'hidden'}>
         <TerminalKeys
           send={(d) => sendRef.current(d)}
           attach={(files) => attachRef.current(files)}

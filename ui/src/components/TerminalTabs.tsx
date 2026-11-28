@@ -516,7 +516,7 @@ export function TabStrip(props: TabStripProps) {
           const inside = label?.inside
           const agent = file === undefined ? (inside ? `${agentGlyphLabel(inside.agent, false)} · in ${label?.shellName ?? 'a shell'}` : agentGlyphLabel(s?.agent, isShell)) : undefined
           const rename = renameOf(label)
-          const tip = [file ?? title, agent, label?.branch, label?.machine !== undefined ? `on ${label.machine}` : project].filter(Boolean).join(' · ') + (alert ? ` — ${ALERT_WORD[alert]}` : '') + (digit ? ` — ${keys(`⌘${digit}`)}` : '')
+          const tip = [file ?? title, agent, label?.branch, label?.machine !== undefined ? [label.folder, `on ${label.machine}`].filter(Boolean).join(' ') : project].filter(Boolean).join(' · ') + (alert ? ` — ${ALERT_WORD[alert]}` : '') + (digit ? ` — ${keys(`⌘${digit}`)}` : '')
           return (
             <div
               key={t.id}
@@ -556,8 +556,9 @@ export function TabStrip(props: TabStripProps) {
                 * on hover when even that is not enough. */}
               {/* A session on another computer: that computer's tag, as its
                 * sidebar rows carry it, in place of a project (issue #1085). */}
+              {/* Its folder there first, as a project is named here, then the tag. */}
               {label?.machine !== undefined
-                ? <MachineTag name={label.machine} />
+                ? <>{label.folder && <TabProject name={label.folder} hue={projectHue(`${label.machine}/${label.folder}`)} />}<MachineTag name={label.machine} /></>
                 : named && <TabProject name={project} hue={projectHue(t.projectId)} />}
               {file === undefined && <HotMark sessionId={s?.session_id} />}
               {/* The jump key and the × share one slot at the right end, so

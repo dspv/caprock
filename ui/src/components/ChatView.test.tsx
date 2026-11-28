@@ -465,11 +465,18 @@ describe('ChatView', () => {
   })
 
   it('offline, a raw key is refused, never queued', () => {
-    render(<ChatView sessionId="s" canType />)
+    // The key row open, as on a touch screen; under a mouse it is folded behind Keys.
+    render(<ChatView sessionId="s" canType foldKeys={false} />)
     setPhase('reconnecting')
     fireEvent.click(screen.getByRole('button', { name: /^Escape/ }))
     expect(screen.getByText(/Esc was not sent/)).toBeInTheDocument()
     expect(store.inputs).toEqual([])
+  })
+
+  it('under a mouse the raw keys are folded behind Keys, never a row of touch keys (owner, 2026-11-28)', () => {
+    render(<ChatView sessionId="s" canType />)
+    expect(screen.queryByRole('group', { name: 'Keys' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^Escape/ })).toBeNull()
   })
 
   it('back with a permission prompt waiting, the held message goes to the queue, never into the prompt', async () => {

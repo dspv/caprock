@@ -34,7 +34,43 @@ const (
 	NeedError      = "error"
 	NeedAsks       = "asks"
 	NeedDone       = "done"
+	// NeedStartPrompt: a Claude Code session Caprock started has sent no
+	// hook StartPromptAfter after it was started, with hooks installed: it
+	// is held at a screen before its first one — the folder trust or an
+	// added folder's question, a sign-in, a settings error (#1118). Its
+	// terminal shows which. A guess from silence, never a dialog seen.
+	NeedStartPrompt = "prompt"
 )
+
+// StartPromptAfter is how long a Claude Code session Caprock started may go
+// without its first hook before it reads as held at a prompt. SessionStart
+// fires as the TUI comes up, within a few seconds of the start on the
+// machines measured (an estimate, the same margin as the message queue's
+// wait for a first hook, daemon/queue.go queueNoHooks); a cold start on a
+// slow disk stays well inside 20 s.
+const StartPromptAfter = 20 * time.Second
+
+// StartPromptPhrase is what such a session's activity says.
+const StartPromptPhrase = "waiting at a prompt in its terminal"
+
+// HeldAtStart reports whether a session reads as held at a prompt before its
+// first hook (NeedStartPrompt): Claude Code's, started by Caprock, live, no
+// event of any kind yet, hooks installed to send one, and started at least
+// StartPromptAfter ago. Pure; the caller supplies what it knows.
+func HeldAtStart(agent string, owned, ended, hasHooks, hooksOn bool, events int, startedAt, now time.Time) bool {
+	if agent != "" && agent != "claude" {
+		return false
+	}
+	if !owned || ended || hasHooks || !hooksOn || events > 0 || startedAt.IsZero() {
+		return false
+	}
+	return now.Sub(startedAt) >= StartPromptAfter
+}
+
+// StartPromptActivity is the activity of a session HeldAtStart.
+func StartPromptActivity(startedAt time.Time) Activity {
+	return Activity{Phrase: StartPromptPhrase, Health: HealthWaiting, At: startedAt, Need: &Need{Reason: NeedStartPrompt, Guess: true}}
+}
 
 // Need is why a session waits, set beside Health waiting-on-you or done.
 type Need struct {

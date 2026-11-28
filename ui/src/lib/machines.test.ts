@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MACHINE_READ_MS, machineLook, machinesApi, type Machine } from './machines'
 import { ApiError } from './api'
-import { installMachineProxy, machinePageId, machinePageURL, rewriteForMachine } from './machinepage'
+import { installMachineProxy, machinePageId, machinePageURL, machineTabOf, machineTabURL, rewriteForMachine } from './machinepage'
 
 const ID = 'f7kc4QaG4HRPYEjg19Pr-au-FeTljmKHkikFrAmRTzM'
 const base: Machine = { id: ID, name: 'Mac mini', relay: 'wss://relay.example', added_at: 1, status: 'online', kind: 'machine', role: 'controller', streams: 0 }
@@ -25,6 +25,18 @@ describe('the machine page sends /v1/… to the other computer (ADR-067)', () =>
     expect(machinePageId('?machine=../../x')).toBe('')
     expect(machinePageId('')).toBe('')
     expect(machinePageURL(ID, 's 1', 'terminal')).toBe(`/?machine=${ID}#/session/s%201?tab=terminal`)
+  })
+
+  it('shows a session there as a tab of the app: its address says which and how it opens (#1085)', () => {
+    const url = machineTabURL(ID, 's 1', 'chat', false)
+    const search = url.slice(url.indexOf('?'))
+    expect(url).not.toContain('#')
+    expect(machinePageId(search)).toBe(ID)
+    expect(machineTabOf(search)).toEqual({ session: 's 1', view: 'chat', inspector: false })
+    expect(machineTabOf(machineTabURL(ID, 's2', 'terminal', true).slice(1))).toEqual({ session: 's2', view: 'terminal', inspector: true })
+    // The machine page's Session view is no tab, nor is a page with no computer.
+    expect(machineTabOf(`?machine=${ID}`)).toBeNull()
+    expect(machineTabOf('?as=tab&session=s1')).toBeNull()
   })
 
   it('patches fetch and WebSocket of the page it is installed on', async () => {

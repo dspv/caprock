@@ -6,7 +6,7 @@
  */
 import { useState } from 'react'
 import { api, errText, type Need, type SessionSummary } from '@/lib/api'
-import { GUESS_HINT, needLabel, needTone } from '@/lib/needs'
+import { GUESS_HINT, PROMPT_HINT, needLabel, needTone } from '@/lib/needs'
 
 const TONE = {
   warn: { text: 'text-warn', fill: 'bg-warn/15' },
@@ -23,7 +23,7 @@ export function NeedChip({ need, small = false }: { need?: Need; small?: boolean
     <span
       data-need={need.reason}
       data-guess={guess ? '' : undefined}
-      title={guess ? GUESS_HINT : need.moved ? 'You moved it; it holds until the next turn.' : undefined}
+      title={need.reason === 'prompt' ? PROMPT_HINT : guess ? GUESS_HINT : need.moved ? 'You moved it; it holds until the next turn.' : undefined}
       className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full font-medium leading-none ${small ? 'px-1.5 py-[3px] text-[11px]' : 'px-2 py-1 text-[12px]'} ${tone.text} ${
         guess ? 'border border-dashed border-current bg-transparent' : tone.fill
       }`}

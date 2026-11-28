@@ -3,7 +3,8 @@
  * — or put down an hour ago — comes back with one click in the sidebar's
  * *Recently closed* or ⇧⌘T, as in a browser (owner, 2026-10-20).
  *
- * Only agent conversations are kept: a shell's tab ends its shell (nothing
+ * Only agent conversations are kept — this machine's and those on another
+ * computer (issue #1085) alike: a shell's tab ends its shell (nothing
  * to come back to), a file reopens from the project, a browser tab is a page.
  * Kept in localStorage like the rest of the tab state, so the list survives a
  * reload and a restart; capped, the oldest going first. An entry is dropped
@@ -47,6 +48,15 @@ export interface ClosedTab {
   project?: string
   /** The tab's place in the strip when it closed (an index into the tabs), so it reopens there. */
   at?: number
+  /**
+   * A session on another computer (lib/tabs.ts `remote`): that computer's
+   * id, the session's id there and the computer's name. `sessionId` is then
+   * the tab's key (remoteKey). It reopens as its tab again, which shows
+   * *Continue* there once the session has ended (components/MachineTab.tsx).
+   */
+  machine?: string
+  remote?: string
+  machineName?: string
 }
 
 function valid(x: unknown): x is ClosedTab {
@@ -124,6 +134,19 @@ export function closedEntries(
   const closing = paneId ? all.filter((l) => l.id === paneId) : all
   const out: ClosedTab[] = []
   for (const l of closing) {
+    if (l.target.kind === 'remote' && l.target.machine && l.target.remote) {
+      out.push({
+        sessionId: l.target.sessionId,
+        title: title || 'session',
+        projectId: tab.projectId,
+        closedAt: now,
+        machine: l.target.machine,
+        remote: l.target.remote,
+        ...(l.target.machineName ? { machineName: l.target.machineName } : {}),
+        ...(at !== undefined && at >= 0 ? { at } : {}),
+      })
+      continue
+    }
     if (l.target.kind !== 'session' && l.target.kind !== 'observe') continue
     const s = sessions.get(l.target.sessionId)
     if (s?.kind === 'shell') continue

@@ -68,3 +68,55 @@ export function installMachineProxy(id: string, w: Window & typeof globalThis = 
   Object.assign(Shim, { CONNECTING: 0, OPEN: 1, CLOSING: 2, CLOSED: 3, prototype: NativeWebSocket.prototype })
   w.WebSocket = Shim
 }
+
+/**
+ * The machine page as a tab of the app (issue #1085; owner, 2026-11-28): the
+ * same pane, Chat and Cockpit as a tab of one of this machine's sessions
+ * (components/MachineTab.tsx), not the dashboard's Session view. `as=tab`
+ * in the query says so; `view` and `inspector` are how the tab opens, until
+ * the window around it says otherwise (MachineTabState).
+ */
+export const MACHINE_TAB_QUERY = 'as'
+
+/** The machine page's address for one of computer id's sessions shown as a tab. */
+export function machineTabURL(id: string, session: string, view: 'chat' | 'terminal', inspector: boolean): string {
+  const q = new URLSearchParams({ [MACHINE_QUERY]: id, [MACHINE_TAB_QUERY]: 'tab', session, view, inspector: inspector ? '1' : '0' })
+  return `/?${q.toString()}`
+}
+
+/**
+ * The tab this page draws, from its address: the session there and how it
+ * opens; null when it is not a tab (the machine page's Session view). The
+ * hash stays free: a link inside the tab to the session's page shows that
+ * page over it (components/MachineTab.tsx).
+ */
+export function machineTabOf(search: string = typeof location === 'undefined' ? '' : location.search): { session: string; view: 'chat' | 'terminal'; inspector: boolean } | null {
+  if (machinePageId(search) === '') return null
+  const q = new URLSearchParams(search)
+  const session = q.get('session') ?? ''
+  if (q.get(MACHINE_TAB_QUERY) !== 'tab' || !session) return null
+  return { session, view: q.get('view') === 'chat' ? 'chat' : 'terminal', inspector: q.get('inspector') !== '0' }
+}
+
+/** What the window around the tab tells it: the view in front, whether the inspector is open, whether the tab is shown. */
+export interface MachineTabState {
+  type: 'caprock:machine-tab'
+  view: 'chat' | 'terminal'
+  inspector: boolean
+  visible: boolean
+}
+
+/**
+ * What the tab asks of the window around it: the state again once it
+ * listens (`ready`), the view switched (the chat's
+ * *Open the terminal*), the inspector closed with its ×, the tab closed, a
+ * session there opened in a tab of its own, or one of the app's keys
+ * pressed while the tab had the keyboard (lib/appkeys matchAppShortcut).
+ */
+export type MachineTabAsk =
+  | { type: 'caprock:machine-tab-ask'; ask: 'ready' }
+  | { type: 'caprock:machine-tab-ask'; ask: 'view'; view: 'chat' | 'terminal' }
+  | { type: 'caprock:machine-tab-ask'; ask: 'inspector'; open: boolean }
+  | { type: 'caprock:machine-tab-ask'; ask: 'close' }
+  | { type: 'caprock:machine-tab-ask'; ask: 'open'; session: string; title: string }
+  | { type: 'caprock:machine-tab-ask'; ask: 'key'; key: string; code: string; meta: boolean; ctrl: boolean; shift: boolean; alt: boolean; repeat: boolean }

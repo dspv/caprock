@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import type { Need, SessionSummary } from './api'
-import { needLabel, needWord, oldestFirst, reasonsSentence } from './needs'
+import { heldAtPrompt, needLabel, needTone, needWord, oldestFirst, reasonsSentence } from './needs'
 import { buildPopover } from './traydata'
 import { buildTrayView } from './tray'
 import { buildSidebar, dotOf } from './sidebar'
@@ -29,6 +29,27 @@ function sess(id: string, health: SessionSummary['activity']['health'], need?: N
 
 const asks: Need = { reason: 'asks', detail: 'question', text: 'Merge it?', guess: true }
 const done: Need = { reason: 'done', text: 'Pushed the branch.', guess: true }
+
+describe('held at a prompt before its first hook (#1118)', () => {
+  const prompt: Need = { reason: 'prompt', guess: true }
+  const held = { ...sess('held', 'waiting-on-you', prompt), has_hooks: false, has_transcript: false, activity: { phrase: 'waiting at a prompt in its terminal', at: new Date(NOW).toISOString(), health: 'waiting-on-you', need: prompt } } as unknown as SessionSummary
+
+  it('reads waiting, in amber, with its words — never running', () => {
+    expect(dotOf(held, false)).toBe('waiting')
+    expect(needLabel(prompt)).toBe('waiting at a prompt in its terminal')
+    expect(needWord(prompt)).toBe('prompt')
+    expect(needTone(prompt)).toBe('warn')
+    expect(reasonsSentence([held])).toBe('a prompt in its terminal')
+  })
+
+  it('is on the phone’s Needs you, and its tab opens on the terminal', () => {
+    expect(waitingOnYou([held]).map((s) => s.session_id)).toEqual(['held'])
+    expect(heldAtPrompt(held)).toBe(true)
+    expect(heldAtPrompt({ ...held, status: 'ended' })).toBe(false)
+    expect(heldAtPrompt(sess('asks', 'waiting-on-you', asks))).toBe(false)
+    expect(heldAtPrompt(undefined)).toBe(false)
+  })
+})
 
 describe('the words', () => {
   it('labels each reason, certain and guessed', () => {

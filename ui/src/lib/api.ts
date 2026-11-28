@@ -25,7 +25,8 @@ export type Health = 'working' | 'idle' | 'waiting-on-you' | 'done' | 'looping' 
  * (a guess read from the last message); beside `done`, done (always a guess).
  */
 export interface Need {
-  reason: 'permission' | 'question' | 'plan' | 'error' | 'asks' | 'done'
+  /** `prompt`: started by Caprock and held before its first hook, at a screen in its terminal (#1118). */
+  reason: 'permission' | 'question' | 'plan' | 'error' | 'asks' | 'done' | 'prompt'
   /** error: why it stopped ("rate limit"); asks: "choice" or "question". */
   detail?: string
   /** The line of the last message the reading rests on, clipped. */

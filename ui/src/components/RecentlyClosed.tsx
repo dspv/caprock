@@ -11,6 +11,7 @@
  * closed should fold"; mockup V1). The viewer's choice is kept in this
  * browser (`RECENTLY_CLOSED_OPEN_KEY`). ⇧⌘T reopens the newest either way.
  */
+import { MachineTag } from './MachineTag'
 import { useState } from 'react'
 import { closedAgo, type ClosedTab } from '@/lib/recentlyClosed'
 import { endedClock } from '@/lib/endedAgent'
@@ -67,7 +68,7 @@ export function RecentlyClosed({ items, now, flat, onReopen, onShowAll }: {
           // Ended unexpectedly (lib/endedAgent.ts): a second line says so, with its project and the time.
           const what = e.unexpected
             ? `${e.title}${e.project ? ` (${e.project})` : ''}: ended unexpectedly at ${endedClock(e.closedAt, now)}. Resume it in a tab${hint}`
-            : `${e.title}: closed ${when}. Reopen it in a tab${hint}`
+            : `${e.title}${e.machine ? ` on ${e.machineName || 'another computer'}` : ''}: closed ${when}. Reopen it in a tab${hint}`
           return (
             <li key={e.sessionId}>
               <button
@@ -82,6 +83,8 @@ export function RecentlyClosed({ items, now, flat, onReopen, onShowAll }: {
               >
                 <span className="flex w-full min-w-0 items-center gap-2">
                   <span data-closed-title className="min-w-0 flex-1 truncate text-[13px] text-fg-muted">{e.title}</span>
+                  {/* A session on another computer: its tag, as its tab had it. */}
+                  {e.machine && <MachineTag name={e.machineName || 'another computer'} />}
                   <span data-closed-ago className="mono shrink-0 text-[11px] text-fg-faint">{ago}</span>
                 </span>
                 {e.unexpected && (

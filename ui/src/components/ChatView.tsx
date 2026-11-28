@@ -138,7 +138,9 @@ export function ChatView({ sessionId, earlier = NONE, canType, ended = false, cl
    *  a messenger's field, and no quick replies over it. */
   phone?: boolean
   /** The raw keys folded behind a Keys button off a phone too: a chat
-   *  (ADR-071) is a conversation, not a terminal. Defaults to `phone`. */
+   *  (ADR-071) is a conversation, not a terminal. Defaults to folded on a
+   *  phone and under a mouse; only a touch screen that is no phone shows
+   *  the row open (owner, 2026-11-28: no touch keys on a desktop). */
   foldKeys?: boolean
   /** A chat (ADR-071): a messenger's field (*Message…*) and no coding
    *  quick replies (Run tests, Commit), which mean nothing without a repo. */
@@ -697,7 +699,7 @@ export function ChatView({ sessionId, earlier = NONE, canType, ended = false, cl
           {/* One click sends a reply (lib/quickReplies.ts); only while it can be typed into (rule 7). */}
           {/* Not on a phone, where the row crowds a small screen. */}
           {canType && !phone && <QuickReplies sessionId={sessionId} onSend={submitText} chat={chat} className="px-3" />}
-          <TerminalKeys send={send} attach={attachPhotos} attachIn={attachIn} sendPaths={sendPaths} state={inputState} sessionId={sessionId} submitText={submitText} chips pickers voice={voice} deskVoice={!voice} foldKeys={foldKeys ?? phone} messenger={phone} placeholder={chat || phone || desk ? 'Message…' : undefined} />
+          <TerminalKeys send={send} attach={attachPhotos} attachIn={attachIn} sendPaths={sendPaths} state={inputState} sessionId={sessionId} submitText={submitText} chips pickers voice={voice} deskVoice={!voice} foldKeys={foldKeys ?? (phone || !touchScreen())} messenger={phone} placeholder={chat || phone || desk ? 'Message…' : undefined} />
         </div>
       )}
       {!showInput && footer && <div className="shrink-0 border-t border-border px-3 py-2.5 text-[13px] leading-snug text-fg-muted">{footer}</div>}

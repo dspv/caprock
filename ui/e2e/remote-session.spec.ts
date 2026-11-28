@@ -1,20 +1,24 @@
 /**
  * A session on another computer is a tab like one of this machine's (issue
- * #1085): its row under Computers opens it in the strip, tagged with the
- * computer's name, listed under Open with the same tag, and the tab is the
- * ordinary Session view on Chat — the conversation and the cost, tokens and
- * turns read from that computer through `/v1/m/<id>/…`.
+ * #1085; owner, 2026-11-28): its row under Computers opens it in the strip,
+ * tagged with the computer's name and the folder it runs in, listed under
+ * Open with the same tag — and the tab is the local tab's own component tree
+ * (components/MachineTab.tsx): the terminal pane first, the Chat/Terminal
+ * switch in the strip, the agent cockpit beside it, laid out where a local
+ * tab has them, read from that computer through `/v1/m/<id>/…`. No phone
+ * key row (Esc Tab ↑ ↓ ↵ Ctrl+C) on a desktop, and the dashboard's Session
+ * view is not what it shows.
  *
  * The other computer is answered at the page: its session list, the
- * session's detail and its events are made up here; whatever else the view
+ * session's detail and its events are made up here; whatever else the tab
  * asks of it goes to the stand's own daemon, so its answers have the real
- * shapes. Its live socket is accepted and stays quiet. Nothing reaches a
- * relay.
+ * shapes. Its live socket and terminal are accepted and stay quiet. Nothing
+ * reaches a relay.
  *
- * With CAPROCK_SHOTS_DIR set it photographs the tab.
+ * With CAPROCK_SHOTS_DIR set it photographs a local tab and the remote one.
  */
 import path from 'node:path'
-import type { Page } from '@playwright/test'
+import type { FrameLocator, Locator, Page } from '@playwright/test'
 import { expect, test } from './fixtures'
 
 const shotsDir = process.env.CAPROCK_SHOTS_DIR ? path.resolve(process.env.CAPROCK_SHOTS_DIR) : ''
@@ -49,7 +53,7 @@ async function answerWindowsPC(page: Page, sid: string) {
     if (own === `/v1/sessions/${sid}/events`) return r.fulfill(json(u.searchParams.has('before') ? [] : events))
     if (own === '/v1/sessions') return r.fulfill(json([summary]))
     if (own === '/v1/setup') return r.fulfill(json({ os: 'windows', items: [], agents: [] }))
-    // Anything else the Session view asks of it, the stand's own daemon answers.
+    // Anything else the tab asks of it, the stand's own daemon answers.
     u.pathname = own
     return r.continue({ url: u.toString() })
   })
@@ -57,14 +61,37 @@ async function answerWindowsPC(page: Page, sid: string) {
   await page.routeWebSocket(/\/v1\/m\//, () => {})
 }
 
-test('a session on another computer opens as a tab, tagged with the computer, on its Chat with its figures', async ({ app, page }) => {
-  test.setTimeout(60_000)
-  // A session id the stand's daemon knows, so what the view asks beyond the
-  // made-up detail has a real answer.
+/** A box on the page (Playwright measures one inside the frame on the page too). */
+async function box(l: Locator) {
+  const b = await l.boundingBox()
+  if (!b) throw new Error('no box')
+  return { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), h: Math.round(b.height) }
+}
+
+function near(a: { x: number; y: number; w: number; h: number }, b: { x: number; y: number; w: number; h: number }, what: string) {
+  for (const k of ['x', 'y', 'w', 'h'] as const) expect(Math.abs(a[k] - b[k]), `${what}: ${k} ${a[k]} vs ${b[k]}`).toBeLessThanOrEqual(2)
+}
+
+test('a session on another computer opens in the same tab as a local one: terminal pane, switch, cockpit, no phone keys', async ({ app, page }) => {
+  test.setTimeout(90_000)
   const sid = app.session('alpha').id
   await answerWindowsPC(page, sid)
   await page.setViewportSize({ width: 1440, height: 900 })
   await app.open()
+
+  // A local tab first, as the yardstick: its terminal pane and its cockpit.
+  // Only its layout is measured, so its terminal's text is not waited on: a
+  // spec in the other worker may hold the same fake session.
+  const beta = app.session('beta')
+  await app.row(beta.name).first().click()
+  await expect(app.tabs.getByRole('tab', { name: new RegExp(`^${beta.name}`), selected: true })).toBeVisible()
+  const localPanel = page.locator('[data-tab-panel]:visible').first()
+  const localInspector = page.getByRole('complementary', { name: 'Inspector' })
+  await expect(localInspector).toBeVisible()
+  await expect(page.locator('[data-view-switch]')).toBeVisible()
+  const localPanelBox = await box(localPanel)
+  const localInspectorBox = await box(localInspector)
+  if (shotsDir) await page.screenshot({ path: path.join(shotsDir, 'local-tab.png') })
 
   // Under Computers, the PC's running session: a click opens a tab.
   await page.locator(`[data-machine-session-row="${sid}"]`).click()
@@ -73,28 +100,69 @@ test('a session on another computer opens as a tab, tagged with the computer, on
   await expect(tab).toHaveAttribute('aria-selected', 'true')
   await expect(tab.locator('[data-row-title]')).toHaveText(TITLE)
   await expect(tab.locator('[data-machine-tag]')).toHaveText('Win PC1')
+  // Where it works there, as a project names a tab here.
+  await expect(tab).toContainText('caprock')
 
-  // Under Open, with the same tag where the project goes.
+  // Under Open, with the same tag and its folder.
   const open = page.locator('[data-open-section] [data-remote-row]')
   await expect(open).toHaveCount(1)
   await expect(open.locator('[data-row-title]')).toHaveText(TITLE)
   await expect(open.locator('[data-machine-tag]')).toHaveText('Win PC1')
 
-  // The tab is the Session view on Chat, read through the machine proxy.
-  const frame = page.frameLocator('[data-remote-pane] iframe')
+  // The tab is the local tab's tree, in a frame read through the proxy.
+  const frame: FrameLocator = page.frameLocator('[data-remote-pane] iframe')
+  await expect(frame.locator(`[data-machine-tab="${sid}"]`)).toBeVisible()
+  const remotePanel = frame.locator('[data-tab-panel]').first()
+  await expect(remotePanel.locator(`[data-term-host][data-term-session="${sid}"]`)).toBeAttached()
+  const remoteInspector = frame.getByRole('complementary', { name: 'Inspector' })
+  await expect(remoteInspector).toBeVisible()
+  await expect(remoteInspector).toContainText('$2.41')
+  // Not the dashboard's Session view, and no phone key row on a desktop.
+  await expect(frame.getByRole('group', { name: 'Keys' })).toHaveCount(0)
+  await expect(frame.getByText(/Nothing measured yet/)).toHaveCount(0)
+  await expect(frame.getByRole('tab', { name: 'Timeline' })).toHaveCount(0)
+  // This window's inspector is not drawn beside it; the strip's switch is.
+  await expect(page.getByRole('complementary', { name: 'Inspector' })).toBeHidden()
+  await expect(page.locator('[data-view-switch]')).toBeVisible()
+
+  // Laid out where a local tab is: the pane and the cockpit in the same places.
+  near(await box(remotePanel), localPanelBox, 'pane')
+  near(await box(remoteInspector), localInspectorBox, 'inspector')
+  if (shotsDir) await page.screenshot({ path: path.join(shotsDir, 'remote-tab.png') })
+
+  // The strip's switch shows its chat, with no key row; and back.
+  await page.locator('[data-view-switch]').click()
   await expect(frame.getByRole('log', { name: 'Conversation' })).toContainText('the session now counts its turns')
-  await expect(frame.locator('[data-stat="session-cost"]')).toContainText('$2.41')
-  await expect(frame.getByText(/does not measure it/)).toHaveCount(0)
-  // No inspector or terminal/chat switch of this machine's over it.
-  await expect(page.locator('[data-view-switch]')).toHaveCount(0)
+  await expect(frame.getByRole('group', { name: 'Keys' })).toHaveCount(0)
+  await page.locator('[data-view-switch]').click()
+  await expect(frame.getByRole('log', { name: 'Conversation' })).toHaveCount(0)
 
-  if (shotsDir) await page.screenshot({ path: path.join(shotsDir, 'remote-session.png') })
+  // An app key pressed while the frame has the keyboard is this window's: ⌘I.
+  await remotePanel.click()
+  await app.chord('i')
+  await expect(remoteInspector).toBeHidden()
+  await app.chord('i')
+  await expect(remoteInspector).toBeVisible()
 
-  // Opening it again brings the same tab forward; its × closes it, and the
-  // session runs on there.
+  // The cockpit's Dashboard shows that computer's Session view over the tab, with a way back.
+  await remoteInspector.getByRole('link', { name: 'Open in the dashboard' }).click()
+  await expect(frame.getByRole('button', { name: /Back to the tab/ })).toBeVisible()
+  await frame.getByRole('button', { name: /Back to the tab/ }).click()
+  await expect(frame.locator('[data-machine-tab-page]')).toHaveCount(0)
+  await expect(remotePanel).toBeVisible()
+
+  // Opening it again brings the same tab forward; its × closes it, the
+  // session runs on there, and Recently closed brings it back.
   await page.locator(`[data-machine-session-row="${sid}"]`).click()
   await expect(app.tabs.locator('[data-remote-tab]')).toHaveCount(1)
   await tab.hover()
   await tab.getByRole('button', { name: /^Close/ }).click()
   await expect(app.tabs.locator('[data-remote-tab]')).toHaveCount(0)
+  const closed = page.locator(`[data-closed-row="m:${WIN}/${sid}"]`)
+  if (!(await closed.isVisible())) await page.getByRole('button', { name: /Recently closed/ }).click()
+  await expect(closed.locator('[data-machine-tag]')).toHaveText('Win PC1')
+  await closed.click()
+  await expect(app.tabs.locator('[data-remote-tab]')).toHaveCount(1)
+  await app.tabs.locator('[data-remote-tab]').hover()
+  await app.tabs.locator('[data-remote-tab]').getByRole('button', { name: /^Close/ }).click()
 })
