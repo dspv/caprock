@@ -9624,8 +9624,8 @@ server. Recorded in [12-risks.md](12-risks.md#open-questions):
   how often the check holds a message it should not: a measurement, owed
   before rooms ship with the check as their safeguard and before any public
   page says anything about leak protection (rule 6).
-- **`OQ-36`** — whether a person outside the team (a client, a contractor)
-  may join a team room as a guest without a licence: the owner's call.
+- **`OQ-36`** — answered 2026-11-28: team rooms are for the team's own
+  members only, no guests without a licence, until a team asks for one.
 
 Risks: `RISK-13` (a trusted pair's agent says more than its owner meant),
 `RISK-14` (the other side's Caprock is not ours to trust), `RISK-15` (an

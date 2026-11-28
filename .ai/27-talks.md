@@ -168,7 +168,8 @@ usable before its guard exists.
 - The heavier defences as the team's defaults: the second-model check on, a
   brief required before a member's agent speaks, a held message for every
   flag.
-- Whether a guest without a licence may join a room is `OQ-36`, the owner's.
+- A room takes the team's own members only; no guest without a licence
+  (`OQ-36`, answered by the owner 2026-11-28).
 
 ## Not in this plan
 
